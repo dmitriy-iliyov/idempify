@@ -3,18 +3,21 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.dmitriy-iliyov.spring-idempotency</groupId>
-    <artifactId>spring-idempotency-parent</artifactId>
+    <groupId>io.github.dmitriy-iliyov.idempify</groupId>
+    <artifactId>idempify-parent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
-    <name>spring-idempotency</name>
-    <description>spring-idempotency</description>
+    <name>idempify</name>
+    <description>idempify</description>
     <packaging>pom</packaging>
 
     <modules>
-        <module>spring-idempotency-core</module>
-        <module>spring-idempotency-aop</module>
-        <module>spring-idempotency-jackson</module>
+        <module>idempify-postgresql</module>
+        <module>idempify-http</module>
+        <module>idempify-jackson</module>
+        <module>idempify-aop</module>
+        <module>idempify-core</module>
+        <module>idempify-starter</module>
     </modules>
 
     <url/>
@@ -40,7 +43,6 @@
 
     <dependencyManagement>
         <dependencies>
-
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -48,13 +50,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-            <dependency>
-                <groupId>com.github.f4b6a3</groupId>
-                <artifactId>uuid-creator</artifactId>
-                <version>6.0.0</version>
-            </dependency>
-
         </dependencies>
     </dependencyManagement>
 
@@ -67,6 +62,7 @@
                 <version>3.15.0</version>
                 <configuration>
                     <release>${java.version}</release>
+                    <parameters>true</parameters>
                 </configuration>
             </plugin>
 
