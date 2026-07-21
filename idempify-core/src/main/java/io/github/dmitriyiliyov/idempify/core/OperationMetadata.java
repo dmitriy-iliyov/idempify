@@ -82,7 +82,7 @@ public final class OperationMetadata {
         private TimeUnit timeUnit;
         private ConflictHandleStrategy conflictHandleStrategy;
         private Class<? extends ConflictHandler> conflictHandlerClass;
-        private boolean useFingerprint = false;
+        private boolean useFingerprint;
         private String fingerprint;
         private Class<? extends FingerprintPolicy> fingerprintPolicyClass;
 
