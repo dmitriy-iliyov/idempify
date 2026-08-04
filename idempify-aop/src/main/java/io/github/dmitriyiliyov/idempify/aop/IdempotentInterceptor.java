@@ -1,14 +1,18 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
 /**
- * Defines the contract for intercepting methods annotated with {@link Idempotent}.
- * Implementations of this interface can be used to add custom logic to the idempotency check.
+ * The step between the aspect and the core: takes what the aspect observed about an intercepted call and
+ * returns the value the caller should receive, whether that came from running the method or from replaying an
+ * earlier result.
  */
 public interface IdempotentInterceptor {
+
     /**
-     * Intercepts the execution of an idempotent method.
+     * Processes the intercepted call.
      *
-     * @param context the context of the interception, containing information about the method call.
+     * @param context what the aspect observed about the call.
+     * @param <T>     the type of the method's return value.
+     * @return the value to return to the caller.
      */
     <T> T intercept(InterceptContext<T> context);
 }

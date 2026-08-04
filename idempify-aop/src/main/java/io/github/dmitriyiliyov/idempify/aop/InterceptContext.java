@@ -1,73 +1,49 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotentOperation;
-import io.github.dmitriyiliyov.idempify.core.RequestContext;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
+import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Provides context for an idempotent method interception.
- * This interface gives access to the idempotency key, the request context, and the original method call.
- * @param <T> the type of the method return value
+ * Everything the aspect observed about one intercepted call, handed to the {@link IdempotentInterceptor}.
+ * <p>
+ * It carries both what identifies the call - the key, the request it arrived in, the method to run - and the
+ * settings resolved for its call site. The key is the one place where "not known yet" is allowed: the aspect
+ * only fills it in when the annotation names it, leaving the interceptor to extract it from the request
+ * otherwise.
+ *
+ * @param <T> the type of the method return value.
  */
 public interface InterceptContext<T> {
 
     /**
-     * Returns the result type of the intercepted method (operation).
+     * Returns the declared return type of the intercepted method, which a replayed result is deserialized
+     * back into.
      */
     Class<T> getOperationResultType();
 
     /**
-     * Returns a supplier that can be used to invoke the original method (operation).
+     * Returns the caller's business operation to run when this is the first attempt.
      */
-    IdempotentOperation<T> getOperation();
+    ExternalOperationCallback<T> getOperationCallback();
 
     /**
-     * Returns the context of the current request.
-     */
-    RequestContext getRequestContext();
-
-    /**
-     * Returns the idempotency key for the current request.
+     * Returns the key named by {@code @Idempotent(idempotencyKey = ...)}, or {@code null} when the annotation
+     * did not name one or its expression could not be resolved - in which case the key is to be extracted
+     * from the request instead.
      */
     UUID getIdempotencyKey();
 
     /**
-     * Returns the name of the header or metadata property that contains the idempotency key.
+     * Returns the context of the request the call arrived in, the source of both the idempotency key and the
+     * fingerprint.
      */
-    String getHeaderName();
+    RequestContext getRequestContext();
 
     /**
-     * Returns the TTL for the idempotency key.
+     * Returns the settings resolved for this call site.
      */
-    long getTtl();
-
-    /**
-     * Returns the unit of time for the TTL.
-     */
-    TimeUnit getTimeUnit();
-
-    /**
-     * Returns the strategy to apply when a conflict is detected.
-     */
-    ConflictHandleStrategy getConflictHandleStrategy();
-
-    /**
-     * Returns the custom conflict handler class to use.
-     */
-    Class<? extends ConflictHandler> getConflictHandlerClass();
-
-    /**
-     * Returns whether to use a fingerprint to identify the request payload.
-     */
-    boolean useFingerprint();
-
-    /**
-     * Returns the policy for generating a fingerprint from the request.
-     */
-    Class<? extends FingerprintPolicy> getFingerprintPolicyClass();
+    OperationMetadata getOperationMetadata();
 }

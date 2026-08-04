@@ -1,12 +1,8 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotentOperation;
-import io.github.dmitriyiliyov.idempify.core.RequestContext;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
-import io.github.dmitriyiliyov.idempify.core.conflict.RejectConflictHandler;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.DefaultFingerprintPolicy;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
+import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,99 +10,61 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class DefaultInterceptContextUnitTest {
+class DefaultInterceptContextUnitTest {
 
     @Mock
-    IdempotentOperation<Object> operation;
+    ExternalOperationCallback<String> operationCallback;
 
     @Mock
     RequestContext requestContext;
 
-    Class<String> resultType = String.class;
-    String headerName = "header-name";
-    long ttl = 24L;
-    TimeUnit timeUnit = TimeUnit.HOURS;
-    ConflictHandleStrategy conflictHandleStrategy = ConflictHandleStrategy.REJECT;
-    Class<? extends ConflictHandler> conflictHandlerClass = RejectConflictHandler.class;
-    boolean useFingerprint = true;
-    Class<? extends FingerprintPolicy> fingerprintPolicyClass = DefaultFingerprintPolicy.class;
+    Class<String> operationResultType = String.class;
+    OperationMetadata operationMetadata = TestOperationMetadata.builder().build();
 
     @Test
-    @DisplayName("UT constructor when resultType is null should throw NullPointerException")
-    void constructor_whenResultTypeIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(null, operation, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
+    @DisplayName("UT constructor when operationResultType is null should throw NullPointerException")
+    void constructor_whenOperationResultTypeIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new DefaultInterceptContext<>(null, operationCallback, UUID.randomUUID(), requestContext, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("resultType cannot be null");
+                .hasMessageContaining("operationResultType cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when operation is null should throw NullPointerException")
-    void constructor_whenOperationIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, null, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
+    @DisplayName("UT constructor when operationCallback is null should throw NullPointerException")
+    void constructor_whenOperationCallbackIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, null, UUID.randomUUID(), requestContext, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("methodCall cannot be null");
+                .hasMessageContaining("operationCallback cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when requestContext is null should throw NullPointerException")
     void constructor_whenRequestContextIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, null, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
+        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, operationCallback, UUID.randomUUID(), null, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("requestContext cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when headerName is null should throw NullPointerException")
-    void constructor_whenHeaderNameIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, requestContext, null, null, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
+    @DisplayName("UT constructor when operationMetadata is null should throw NullPointerException")
+    void constructor_whenOperationMetadataIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, operationCallback, UUID.randomUUID(), requestContext, null))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("headerName cannot be null");
+                .hasMessageContaining("operationMetadata cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when timeUnit is null should throw NullPointerException")
-    void constructor_whenTimeUnitIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, null, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("timeUnit cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor when conflictHandleStrategy is null should throw NullPointerException")
-    void constructor_whenConflictHandleStrategyIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, timeUnit, null, conflictHandlerClass, useFingerprint, fingerprintPolicyClass))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("conflictHandleStrategy cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor when conflictHandlerClass is null should throw NullPointerException")
-    void constructor_whenConflictHandlerClassIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, null, useFingerprint, fingerprintPolicyClass))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("conflictHandlerClass cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor when fingerprintPolicyClass is null should throw NullPointerException")
-    void constructor_whenFingerprintPolicyClassIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("fingerprintPolicyClass cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor when idempotentKey is null should create context")
-    void constructor_whenIdempotentKeyIsNull_shouldCreateContext() {
+    @DisplayName("UT constructor when idempotencyKey is null should create context")
+    void constructor_whenIdempotencyKeyIsNull_shouldCreateContext() {
         // when
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass);
+        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+                operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         // then
         assertThat(tested.getIdempotencyKey()).isNull();
@@ -116,38 +74,50 @@ public class DefaultInterceptContextUnitTest {
     @DisplayName("UT constructor when valid arguments provided should create context")
     void constructor_whenValidArgumentsProvided_shouldCreateContext() {
         // given
-        UUID idempotentKey = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
 
         // when
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(resultType, operation, requestContext, idempotentKey, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass);
+        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+                operationResultType, operationCallback, idempotencyKey, requestContext, operationMetadata);
 
         // then
-        assertThat(tested.getOperationResultType()).isEqualTo(resultType);
-        assertThat(tested.getRequestContext()).isEqualTo(requestContext);
-        assertThat(tested.getIdempotencyKey()).isEqualTo(idempotentKey);
-        assertThat(tested.getHeaderName()).isEqualTo(headerName);
-        assertThat(tested.getTtl()).isEqualTo(ttl);
-        assertThat(tested.getTimeUnit()).isEqualTo(timeUnit);
-        assertThat(tested.getConflictHandleStrategy()).isEqualTo(conflictHandleStrategy);
-        assertThat(tested.getConflictHandlerClass()).isEqualTo(conflictHandlerClass);
-        assertThat(tested.useFingerprint()).isEqualTo(useFingerprint);
-        assertThat(tested.getFingerprintPolicyClass()).isEqualTo(fingerprintPolicyClass);
+        assertThat(tested.getOperationResultType()).isEqualTo(operationResultType);
+        assertThat(tested.getOperationCallback()).isSameAs(operationCallback);
+        assertThat(tested.getIdempotencyKey()).isEqualTo(idempotencyKey);
+        assertThat(tested.getRequestContext()).isSameAs(requestContext);
+        assertThat(tested.getOperationMetadata()).isSameAs(operationMetadata);
     }
 
     @Test
-    @DisplayName("UT getOperation() when called should invoke underlying operation and return casted result")
-    void getOperation_whenCalled_shouldInvokeUnderlyingOperationAndReturnCastedResult() throws Throwable {
+    @DisplayName("UT getOperationCallback() when called should return the callback without running it")
+    void getOperationCallback_whenCalled_shouldReturnCallbackWithoutRunningIt() {
         // given
-        String response = "response";
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(resultType, operation, requestContext, null, headerName, ttl, timeUnit, conflictHandleStrategy, conflictHandlerClass, useFingerprint, fingerprintPolicyClass);
-
-        when(operation.call()).thenReturn(response);
+        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+                operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         // when
-        String result = tested.getOperation().call();
+        ExternalOperationCallback<String> result = tested.getOperationCallback();
+
+        // then
+        assertThat(result).isSameAs(operationCallback);
+        verifyNoInteractions(operationCallback);
+    }
+
+    @Test
+    @DisplayName("UT getOperationCallback() when the returned callback is called should invoke the underlying operation")
+    void getOperationCallback_whenReturnedCallbackIsCalled_shouldInvokeUnderlyingOperation() throws Throwable {
+        // given
+        String response = "response";
+        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+                operationResultType, operationCallback, null, requestContext, operationMetadata);
+
+        when(operationCallback.call()).thenReturn(response);
+
+        // when
+        String result = tested.getOperationCallback().call();
 
         // then
         assertThat(result).isEqualTo(response);
-        verify(operation, times(1)).call();
+        verify(operationCallback, times(1)).call();
     }
 }

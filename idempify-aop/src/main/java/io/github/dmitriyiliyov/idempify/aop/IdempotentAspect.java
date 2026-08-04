@@ -1,18 +1,17 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.RequestContextProvider;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.*;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.expression.MethodBasedEvaluationContext;
-import org.springframework.core.DefaultParameterNameDiscoverer;
-import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.EvaluationException;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 
 import java.lang.reflect.Method;
 import java.util.Objects;
@@ -22,77 +21,99 @@ import java.util.UUID;
 public class IdempotentAspect {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotentAspect.class);
-    private final IdempotentInterceptor interceptor;
-    private final ExpressionParser expressionParser;
+    private final IdempotentOperationExpressionEvaluator expressionEvaluator;
     private final RequestContextProvider requestContextProvider;
+    private final OperationMetadataFactory operationMetadataFactory;
+    private final IdempotentInterceptor interceptor;
 
-    public IdempotentAspect(IdempotentInterceptor interceptor, RequestContextProvider requestContextProvider) {
-        this.interceptor = Objects.requireNonNull(interceptor, "interceptor cannot be null");
+    public IdempotentAspect(IdempotentOperationExpressionEvaluator expressionEvaluator,
+                            RequestContextProvider requestContextProvider,
+                            OperationMetadataFactory operationMetadataFactory,
+                            IdempotentInterceptor interceptor) {
+        this.expressionEvaluator = Objects.requireNonNull(expressionEvaluator, "expressionEvaluator cannot be null");
         this.requestContextProvider = Objects.requireNonNull(requestContextProvider, "requestContextProvider cannot be null");
-        this.expressionParser = new SpelExpressionParser();
+        this.operationMetadataFactory = Objects.requireNonNull(operationMetadataFactory, "operationMetadataFactory cannot be null");
+        this.interceptor = Objects.requireNonNull(interceptor, "interceptor cannot be null");
     }
 
-    @Pointcut("@annotation(idempotent) && execution(public * *(..))")
+    @Pointcut("@annotation(idempotent) && execution(public * * (..))")
     public void pointcut(Idempotent idempotent) { }
 
     @Around(
             value = "pointcut(annotation)",
             argNames = "jp,annotation"
     )
-    public Object advice(ProceedingJoinPoint jp, Idempotent annotation) {
+    @SuppressWarnings("unchecked")
+    public Object advice(ProceedingJoinPoint jp, Idempotent annotation) throws Throwable {
         UUID idempotencyKey = parseIdempotencyKey(jp, annotation);
+        OperationMetadata operationMetadata = operationMetadataFactory.generate(annotation, jp);
+        RequestContext requestContext = requestContextProvider.getContext();
         return interceptor.intercept(
-                new DefaultInterceptContext<>(
-                        resolveReturnType(jp),
-                        jp::proceed,
-                        requestContextProvider.getContext(),
+                buildContext(
+                        ((MethodSignature) jp.getSignature()).getReturnType(),
+                        jp,
                         idempotencyKey,
-                        annotation.headerName(),
-                        annotation.ttl(),
-                        annotation.timeUnit(),
-                        annotation.onConflict(),
-                        annotation.conflictHandler(),
-                        annotation.useFingerprint(),
-                        annotation.fingerprintPolicy()
+                        requestContext,
+                        operationMetadata
                 )
         );
     }
 
     @SuppressWarnings("unchecked")
-    Class<Object> resolveReturnType(JoinPoint jp) {
-        return ((MethodSignature) jp.getSignature()).getReturnType();
+    private <T> InterceptContext<T> buildContext(Class<T> operationResultType,
+                                                 ProceedingJoinPoint jp,
+                                                 UUID idempotencyKey,
+                                                 RequestContext requestContext,
+                                                 OperationMetadata operationMetadata) {
+        return new DefaultInterceptContext<>(
+                operationResultType,
+                () -> (T) jp.proceed(),
+                idempotencyKey,
+                requestContext,
+                operationMetadata
+        );
     }
 
-    UUID parseIdempotencyKey(JoinPoint jp, Idempotent annotation) {
-        String spel = annotation.key();
+    private UUID parseIdempotencyKey(JoinPoint jp, Idempotent annotation) {
+        String spel = annotation.idempotencyKey();
 
-        if (spel == null || spel.isBlank()) {
+        if (spel.isBlank()) {
             return null;
         }
 
         Method method = ((MethodSignature) jp.getSignature()).getMethod();
-        Object [] args = jp.getArgs();
-        EvaluationContext context = new MethodBasedEvaluationContext(
-                jp.getTarget(),
-                method,
-                args,
-                new DefaultParameterNameDiscoverer()
-        );
+        Object target = jp.getTarget();
+
+        Object idempotencyKey;
+        try {
+            idempotencyKey = expressionEvaluator.evaluateIdempotencyKey(
+                    spel,
+                    method,
+                    target == null ? null : target.getClass(),
+                    target,
+                    jp.getArgs()
+            );
+        } catch (EvaluationException ee) {
+            log.warn("Cannot evaluate idempotency key expression '{}'", spel, ee);
+            throw ee;
+        }
+
+        if (idempotencyKey == null) {
+            log.warn("Idempotency key expression '{}' evaluated to null", spel);
+            throw new IllegalArgumentException(
+                    "Idempotency key expression '%s' evaluated to null".formatted(spel)
+            );
+        }
+
+        if (idempotencyKey instanceof UUID uuid) {
+            return uuid;
+        }
 
         try {
-            Object idempotencyKey = expressionParser.parseExpression(spel).getValue(context);
-
-            if (idempotencyKey == null) {
-                return null;
-            }
-
-            return UUID.fromString((String) idempotencyKey);
+            return UUID.fromString(idempotencyKey.toString());
         } catch (IllegalArgumentException iae) {
-            log.warn("Idempotency key found but have invalid format", iae);
-            return null;
-        } catch (EvaluationException ee) {
-            log.debug("Cannot evaluate SpEL expression '{}'", spel, ee);
-            return null;
+            log.warn("Idempotency key expression '{}' yielded '{}', which is not a UUID", spel, idempotencyKey);
+            throw iae;
         }
     }
 }

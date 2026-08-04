@@ -1,10 +1,9 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
+import io.github.dmitriyiliyov.idempify.core.DefaultOperationContext;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
-import io.github.dmitriyiliyov.idempify.core.KeyExtractor;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintManager;
+import io.github.dmitriyiliyov.idempify.core.OperationContext;
+import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -12,12 +11,11 @@ import java.util.UUID;
 public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
 
     private final KeyExtractor keyExtractor;
-    private final FingerprintManager fingerprintManager;
     private final IdempotentProcessor processor;
 
-    public DefaultIdempotentInterceptor(KeyExtractor keyExtractor, FingerprintManager fingerprintManager, IdempotentProcessor processor) {
+    public DefaultIdempotentInterceptor(KeyExtractor keyExtractor,
+                                        IdempotentProcessor processor) {
         this.keyExtractor = Objects.requireNonNull(keyExtractor, "keyExtractor cannot be null");
-        this.fingerprintManager = Objects.requireNonNull(fingerprintManager, "fingerprintManager cannot be null");
         this.processor = Objects.requireNonNull(processor, "processor cannot be null");
     }
 
@@ -25,29 +23,27 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
     public <T> T intercept(InterceptContext<T> context) {
 
         UUID idempotencyKey = context.getIdempotencyKey() == null
-                ? keyExtractor.extract(context.getHeaderName(), context.getRequestContext())
+                ? keyExtractor.extract(context.getOperationMetadata().getHeaderName(), context.getRequestContext())
                 : context.getIdempotencyKey();
 
-        OperationMetadata.Builder metadataBuilder = OperationMetadata.builder()
-                .idempotencyKey(idempotencyKey)
-                .ttl(context.getTtl())
-                .timeUnit(context.getTimeUnit())
-                .conflictHandleStrategy(context.getConflictHandleStrategy());
-
-        if (ConflictHandleStrategy.CUSTOM.equals(context.getConflictHandleStrategy())) {
-                metadataBuilder.conflictHandlerClass(context.getConflictHandlerClass());
+        String fingerprint = null;
+        if (context.getOperationMetadata().useFingerprint()) {
+            fingerprint = context.getOperationMetadata()
+                    .getFingerprintPolicy()
+                    .generate(context.getRequestContext());
+            Objects.requireNonNull(fingerprint, "fingerprint cannot be null");
+            if (fingerprint.isBlank()) {
+                throw new IllegalArgumentException("fingerprint cannot be empty or blank");
+            }
         }
 
-        if (context.useFingerprint()) {
-            metadataBuilder
-                    .useFingerprint(true)
-                    .fingerprint(fingerprintManager.generate(
-                            context.getRequestContext(),
-                            context.getFingerprintPolicyClass())
-                    )
-                    .fingerprintPolicyClass(context.getFingerprintPolicyClass());
-        }
+        OperationContext<T> operationContext = new DefaultOperationContext<>(
+                context.getOperationResultType(),
+                context.getOperationCallback(),
+                idempotencyKey,
+                fingerprint
+        );
 
-        return processor.process(metadataBuilder.build(), context.getOperationResultType(), context.getOperation());
+        return processor.process(operationContext, context.getOperationMetadata());
     }
 }
