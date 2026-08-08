@@ -234,6 +234,24 @@ class IdempifyAopComponentTest {
     }
 
     @Test
+    @DisplayName("CT call when the annotated method is not public should not be intercepted")
+    void call_whenAnnotatedMethodIsNotPublic_shouldNotBeIntercepted() {
+        contextRunner.run(context -> {
+            // given
+            PaymentService service = context.getBean(PaymentService.class);
+            RecordingIdempotentProcessor processor = context.getBean(RecordingIdempotentProcessor.class);
+
+            // when
+            String result = service.payInternally("10");
+
+            // then
+            assertThat(result).isEqualTo("paid:10");
+            assertThat(service.payCalls()).isEqualTo(1);
+            assertThat(processor.processCalls).isZero();
+        });
+    }
+
+    @Test
     @DisplayName("CT call when the intercepted method throws should let the exception reach the caller")
     void call_whenInterceptedMethodThrows_shouldLetExceptionReachCaller() {
         contextRunner.run(context -> {
@@ -275,6 +293,15 @@ class IdempifyAopComponentTest {
                 shouldCache5xx = Toggle.DISABLE
         )
         public String pay(String amount) {
+            payCalls++;
+            return "paid:" + amount;
+        }
+
+        /**
+         * Annotated, but the pointcut only matches public methods, so the aspect must leave it alone.
+         */
+        @Idempotent
+        String payInternally(String amount) {
             payCalls++;
             return "paid:" + amount;
         }

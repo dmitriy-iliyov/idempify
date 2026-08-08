@@ -1,6 +1,8 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
+import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.JoinPoint;
@@ -23,16 +25,16 @@ public class IdempotentAspect {
     private static final Logger log = LoggerFactory.getLogger(IdempotentAspect.class);
     private final IdempotentOperationExpressionEvaluator expressionEvaluator;
     private final RequestContextProvider requestContextProvider;
-    private final OperationMetadataFactory operationMetadataFactory;
+    private final OperationMetadataResolver metadataResolver;
     private final IdempotentInterceptor interceptor;
 
     public IdempotentAspect(IdempotentOperationExpressionEvaluator expressionEvaluator,
                             RequestContextProvider requestContextProvider,
-                            OperationMetadataFactory operationMetadataFactory,
+                            OperationMetadataResolver metadataResolver,
                             IdempotentInterceptor interceptor) {
         this.expressionEvaluator = Objects.requireNonNull(expressionEvaluator, "expressionEvaluator cannot be null");
         this.requestContextProvider = Objects.requireNonNull(requestContextProvider, "requestContextProvider cannot be null");
-        this.operationMetadataFactory = Objects.requireNonNull(operationMetadataFactory, "operationMetadataFactory cannot be null");
+        this.metadataResolver = Objects.requireNonNull(metadataResolver, "metadataResolver cannot be null");
         this.interceptor = Objects.requireNonNull(interceptor, "interceptor cannot be null");
     }
 
@@ -46,11 +48,18 @@ public class IdempotentAspect {
     @SuppressWarnings("unchecked")
     public Object advice(ProceedingJoinPoint jp, Idempotent annotation) throws Throwable {
         UUID idempotencyKey = parseIdempotencyKey(jp, annotation);
-        OperationMetadata operationMetadata = operationMetadataFactory.generate(annotation, jp);
+
+        MethodSignature signature = (MethodSignature) jp.getSignature();
+        Object target = jp.getTarget();
+        OperationMetadata operationMetadata = metadataResolver.resolve(
+                signature.getMethod(),
+                target == null ? null : target.getClass()
+        );
+
         RequestContext requestContext = requestContextProvider.getContext();
         return interceptor.intercept(
                 buildContext(
-                        ((MethodSignature) jp.getSignature()).getReturnType(),
+                        signature.getReturnType(),
                         jp,
                         idempotencyKey,
                         requestContext,

@@ -1,7 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadataManager;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -30,9 +29,9 @@ public class IdempifyAopAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OperationMetadataFactory operationMetadataFactory(OperationMetadataCache cache,
-                                                             OperationMetadataManager manager) {
-        return new DefaultOperationMetadataFactory(cache, manager);
+    public OperationMetadataResolver operationMetadataResolver(OperationMetadataCache cache,
+                                                              OperationMetadataManager manager) {
+        return new DefaultOperationMetadataResolver(cache, manager);
     }
 
     @Bean
@@ -45,8 +44,8 @@ public class IdempifyAopAutoConfiguration {
     @ConditionalOnMissingBean
     public IdempotentAspect idempotentAspect(IdempotentOperationExpressionEvaluator expressionEvaluator,
                                              RequestContextProvider requestContextProvider,
-                                             OperationMetadataFactory metadataFactory,
+                                             OperationMetadataResolver metadataResolver,
                                              IdempotentInterceptor interceptor) {
-        return new IdempotentAspect(expressionEvaluator, requestContextProvider, metadataFactory, interceptor);
+        return new IdempotentAspect(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
     }
 }

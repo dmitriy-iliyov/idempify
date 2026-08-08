@@ -1,12 +1,16 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadataManager;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Aspect;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.context.annotation.ImportCandidates;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,8 +35,8 @@ class IdempifyAopAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(OperationMetadataCache.class);
             assertThat(context).hasSingleBean(DefaultOperationMetadataCache.class);
 
-            assertThat(context).hasSingleBean(OperationMetadataFactory.class);
-            assertThat(context).hasSingleBean(DefaultOperationMetadataFactory.class);
+            assertThat(context).hasSingleBean(OperationMetadataResolver.class);
+            assertThat(context).hasSingleBean(DefaultOperationMetadataResolver.class);
 
             assertThat(context).hasSingleBean(IdempotentOperationExpressionEvaluator.class);
             assertThat(context).hasSingleBean(IdempotentAspect.class);
@@ -75,13 +79,13 @@ class IdempifyAopAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when an OperationMetadataFactory is already defined should back off")
-    void context_whenOperationMetadataFactoryIsAlreadyDefined_shouldBackOff() {
+    @DisplayName("IT context when an OperationMetadataResolver is already defined should back off")
+    void context_whenOperationMetadataResolverIsAlreadyDefined_shouldBackOff() {
         contextRunner
-                .withBean(OperationMetadataFactory.class, () -> mock(OperationMetadataFactory.class))
+                .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(OperationMetadataFactory.class);
-                    assertThat(context).doesNotHaveBean(DefaultOperationMetadataFactory.class);
+                    assertThat(context).hasSingleBean(OperationMetadataResolver.class);
+                    assertThat(context).doesNotHaveBean(DefaultOperationMetadataResolver.class);
                 });
     }
 
@@ -91,6 +95,28 @@ class IdempifyAopAutoConfigurationIntegrationTest {
         contextRunner
                 .withBean(IdempotentAspect.class, () -> mock(IdempotentAspect.class))
                 .run(context -> assertThat(context).hasSingleBean(IdempotentAspect.class));
+    }
+
+    @Test
+    @DisplayName("IT context when AspectJ is missing from the classpath should not register anything")
+    void context_whenAspectJIsMissingFromClasspath_shouldNotRegisterAnything() {
+        contextRunner
+                .withClassLoader(new FilteredClassLoader(Aspect.class, ProceedingJoinPoint.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(IdempifyAopAutoConfiguration.class);
+                    assertThat(context).doesNotHaveBean(IdempotentInterceptor.class);
+                    assertThat(context).doesNotHaveBean(OperationMetadataCache.class);
+                    assertThat(context).doesNotHaveBean(OperationMetadataResolver.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT auto-configuration when the module is on the classpath should be listed as an import candidate")
+    void autoConfiguration_whenModuleIsOnClasspath_shouldBeListedAsImportCandidate() {
+        ImportCandidates candidates = ImportCandidates.load(AutoConfiguration.class, getClass().getClassLoader());
+
+        assertThat(candidates.getCandidates()).contains(IdempifyAopAutoConfiguration.class.getName());
     }
 
     @Test

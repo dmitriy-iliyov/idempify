@@ -1,6 +1,8 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
+import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -34,7 +36,7 @@ class IdempotentAspectUnitTest {
     RequestContextProvider requestContextProvider;
 
     @Mock
-    OperationMetadataFactory operationMetadataFactory;
+    OperationMetadataResolver metadataResolver;
 
     @Mock
     IdempotentInterceptor interceptor;
@@ -56,7 +58,7 @@ class IdempotentAspectUnitTest {
     @Test
     @DisplayName("UT constructor when expressionEvaluator is null should throw NullPointerException")
     void constructor_whenExpressionEvaluatorIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(null, requestContextProvider, operationMetadataFactory, interceptor))
+        assertThatThrownBy(() -> new IdempotentAspect(null, requestContextProvider, metadataResolver, interceptor))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("expressionEvaluator cannot be null");
     }
@@ -64,23 +66,23 @@ class IdempotentAspectUnitTest {
     @Test
     @DisplayName("UT constructor when requestContextProvider is null should throw NullPointerException")
     void constructor_whenRequestContextProviderIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, null, operationMetadataFactory, interceptor))
+        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, null, metadataResolver, interceptor))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("requestContextProvider cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when operationMetadataFactory is null should throw NullPointerException")
-    void constructor_whenOperationMetadataFactoryIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor when metadataResolver is null should throw NullPointerException")
+    void constructor_whenMetadataResolverIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, requestContextProvider, null, interceptor))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("operationMetadataFactory cannot be null");
+                .hasMessageContaining("metadataResolver cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when interceptor is null should throw NullPointerException")
     void constructor_whenInterceptorIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, requestContextProvider, operationMetadataFactory, null))
+        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, requestContextProvider, metadataResolver, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("interceptor cannot be null");
     }
@@ -92,7 +94,7 @@ class IdempotentAspectUnitTest {
         tested.pointcut(annotation("action"));
 
         // then
-        verifyNoInteractions(expressionEvaluator, requestContextProvider, operationMetadataFactory, interceptor);
+        verifyNoInteractions(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
     }
 
     @Test
@@ -100,13 +102,12 @@ class IdempotentAspectUnitTest {
     void advice_whenInterceptorReturnsResult_shouldReturnItToCaller() throws Throwable {
         // given
         String interceptResult = "intercept-result";
-        Idempotent annotation = annotation("action");
 
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
         when(interceptor.intercept(any())).thenReturn(interceptResult);
 
         // when
-        Object result = tested.advice(jp, annotation);
+        Object result = tested.advice(jp, annotation("action"));
 
         // then
         assertThat(result).isEqualTo(interceptResult);
@@ -116,12 +117,10 @@ class IdempotentAspectUnitTest {
     @DisplayName("UT advice() when called should build the context from the join point")
     void advice_whenCalled_shouldBuildContextFromJoinPoint() throws Throwable {
         // given
-        Idempotent annotation = annotation("action");
-
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("action"));
 
         // then
         InterceptContext<?> context = capturedContext();
@@ -131,17 +130,46 @@ class IdempotentAspectUnitTest {
     }
 
     @Test
+    @DisplayName("UT advice() when called should resolve the metadata for the intercepted method and its target class")
+    void advice_whenCalled_shouldResolveMetadataForInterceptedMethodAndTargetClass() throws Throwable {
+        // given
+        Method method = method("action");
+
+        stubAdvice(method, new TestTarget());
+
+        // when
+        tested.advice(jp, annotation("action"));
+
+        // then
+        verify(metadataResolver, times(1)).resolve(method, TestTarget.class);
+    }
+
+    @Test
+    @DisplayName("UT advice() when the join point has no target should resolve the metadata with a null target class")
+    void advice_whenJoinPointHasNoTarget_shouldResolveMetadataWithNullTargetClass() throws Throwable {
+        // given
+        Method method = method("action");
+
+        stubAdvice(method, null);
+
+        // when
+        tested.advice(jp, annotation("action"));
+
+        // then
+        verify(metadataResolver, times(1)).resolve(method, null);
+    }
+
+    @Test
     @DisplayName("UT advice() when the built callback is called should proceed the join point")
     void advice_whenBuiltCallbackIsCalled_shouldProceedJoinPoint() throws Throwable {
         // given
         String proceedResult = "proceed-result";
-        Idempotent annotation = annotation("action");
 
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
         when(jp.proceed()).thenReturn(proceedResult);
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("action"));
 
         // then
         verify(jp, never()).proceed();
@@ -153,13 +181,11 @@ class IdempotentAspectUnitTest {
     @DisplayName("UT advice() when the intercepted method throws should let the exception through the callback")
     void advice_whenInterceptedMethodThrows_shouldLetExceptionThroughCallback() throws Throwable {
         // given
-        Idempotent annotation = annotation("action");
-
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
         when(jp.proceed()).thenThrow(new IllegalStateException("boom"));
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("action"));
 
         // then
         assertThatThrownBy(() -> capturedContext().getOperationCallback().call())
@@ -171,12 +197,10 @@ class IdempotentAspectUnitTest {
     @DisplayName("UT advice() when the annotation names no key should not touch the evaluator")
     void advice_whenAnnotationNamesNoKey_shouldNotTouchEvaluator() throws Throwable {
         // given
-        Idempotent annotation = annotation("action");
-
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("action"));
 
         // then
         assertThat(capturedContext().getIdempotencyKey()).isNull();
@@ -193,8 +217,7 @@ class IdempotentAspectUnitTest {
         Object[] args = new Object[]{"value"};
         TestTarget target = new TestTarget();
 
-        stubAdvice(annotation);
-        stubJoinPointCall(method, target, args);
+        stubKeyedAdvice(method, target, args);
         when(expressionEvaluator.evaluateIdempotencyKey(annotation.idempotencyKey(), method, TestTarget.class, target, args))
                 .thenReturn(key);
 
@@ -216,8 +239,7 @@ class IdempotentAspectUnitTest {
         Method method = method("actionWithKey");
         Object[] args = new Object[]{"value"};
 
-        stubAdvice(annotation);
-        stubJoinPointCall(method, null, args);
+        stubKeyedAdvice(method, null, args);
         when(expressionEvaluator.evaluateIdempotencyKey(annotation.idempotencyKey(), method, null, null, args))
                 .thenReturn(key);
 
@@ -233,14 +255,12 @@ class IdempotentAspectUnitTest {
     void advice_whenEvaluatorYieldsTextOfUuid_shouldParseItIntoIdempotencyKey() throws Throwable {
         // given
         UUID key = UUID.fromString("11111111-1111-1111-1111-111111111111");
-        Idempotent annotation = annotation("actionWithKey");
 
-        stubAdvice(annotation);
-        stubJoinPointCall(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        stubKeyedAdvice(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
         when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any())).thenReturn(key.toString());
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("actionWithKey"));
 
         // then
         assertThat(capturedContext().getIdempotencyKey()).isEqualTo(key);
@@ -251,14 +271,12 @@ class IdempotentAspectUnitTest {
     void advice_whenEvaluatorYieldsUuid_shouldTakeItAsIdempotencyKey() throws Throwable {
         // given
         UUID key = UUID.randomUUID();
-        Idempotent annotation = annotation("actionWithKey");
 
-        stubAdvice(annotation);
-        stubJoinPointCall(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        stubKeyedAdvice(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
         when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any())).thenReturn(key);
 
         // when
-        tested.advice(jp, annotation);
+        tested.advice(jp, annotation("actionWithKey"));
 
         // then
         assertThat(capturedContext().getIdempotencyKey()).isEqualTo(key);
@@ -270,15 +288,14 @@ class IdempotentAspectUnitTest {
         // given
         Idempotent annotation = annotation("actionWithKey");
 
-        stubJoinPointSignature();
-        stubJoinPointCall(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        stubKeyEvaluation(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
         when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any())).thenReturn(null);
 
         // when // then
         assertThatThrownBy(() -> tested.advice(jp, annotation))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("evaluated to null");
-        verifyNoInteractions(operationMetadataFactory, requestContextProvider, interceptor);
+        verifyNoInteractions(metadataResolver, requestContextProvider, interceptor);
     }
 
     @Test
@@ -287,14 +304,13 @@ class IdempotentAspectUnitTest {
         // given
         Idempotent annotation = annotation("actionWithKey");
 
-        stubJoinPointSignature();
-        stubJoinPointCall(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        stubKeyEvaluation(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
         when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any())).thenReturn(10);
 
         // when // then
         assertThatThrownBy(() -> tested.advice(jp, annotation))
                 .isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(operationMetadataFactory, requestContextProvider, interceptor);
+        verifyNoInteractions(metadataResolver, requestContextProvider, interceptor);
     }
 
     @Test
@@ -303,15 +319,14 @@ class IdempotentAspectUnitTest {
         // given
         Idempotent annotation = annotation("actionWithKey");
 
-        stubJoinPointSignature();
-        stubJoinPointCall(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        stubKeyEvaluation(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
         when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any()))
                 .thenThrow(new SpelEvaluationException(SpelMessage.PROPERTY_OR_FIELD_NOT_READABLE, "nope", "TestTarget"));
 
         // when // then
         assertThatThrownBy(() -> tested.advice(jp, annotation))
                 .isInstanceOf(EvaluationException.class);
-        verifyNoInteractions(operationMetadataFactory, requestContextProvider, interceptor);
+        verifyNoInteractions(metadataResolver, requestContextProvider, interceptor);
     }
 
     @Test
@@ -320,7 +335,7 @@ class IdempotentAspectUnitTest {
         // given
         Idempotent annotation = annotation("action");
 
-        stubAdvice(annotation);
+        stubAdvice(method("action"), new TestTarget());
         when(interceptor.intercept(any())).thenThrow(new IllegalStateException("boom"));
 
         // when // then
@@ -329,18 +344,23 @@ class IdempotentAspectUnitTest {
                 .hasMessage("boom");
     }
 
-    private void stubJoinPointSignature() {
+    private void stubAdvice(Method method, Object target) {
         when(jp.getSignature()).thenReturn(signature);
-    }
-
-    private void stubAdvice(Idempotent annotation) {
-        stubJoinPointSignature();
         when(signature.getReturnType()).thenReturn(String.class);
-        when(operationMetadataFactory.generate(annotation, jp)).thenReturn(operationMetadata);
+        when(signature.getMethod()).thenReturn(method);
+        when(jp.getTarget()).thenReturn(target);
+        when(metadataResolver.resolve(method, target == null ? null : target.getClass()))
+                .thenReturn(operationMetadata);
         when(requestContextProvider.getContext()).thenReturn(requestContext);
     }
 
-    private void stubJoinPointCall(Method method, Object target, Object[] args) {
+    private void stubKeyedAdvice(Method method, Object target, Object[] args) {
+        stubAdvice(method, target);
+        when(jp.getArgs()).thenReturn(args);
+    }
+
+    private void stubKeyEvaluation(Method method, Object target, Object[] args) {
+        when(jp.getSignature()).thenReturn(signature);
         when(signature.getMethod()).thenReturn(method);
         when(jp.getTarget()).thenReturn(target);
         when(jp.getArgs()).thenReturn(args);
