@@ -1,6 +1,10 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
+import io.github.dmitriyiliyov.idempify.core.UuidUtils;
+import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 
 import java.util.UUID;
 
@@ -11,14 +15,17 @@ public class HttpKeyExtractor implements KeyExtractor {
         String rawIdempotencyKey = context.getHeader(headerName);
 
         if (rawIdempotencyKey == null || rawIdempotencyKey.isBlank()) {
-            throw new EmptyIdempotencyKeyException("HTTP header %s is empty or null".formatted(headerName));
+            throw new IdempotencyKeyException("HTTP header %s is null or empty".formatted(headerName));
         }
 
-        try {
-            return UUID.fromString(rawIdempotencyKey);
-        } catch (RuntimeException re) {
-            throw new InvalidIdempotencyKeyException(re);
+        UUID idempotencyKey = UuidUtils.parseCanonical(rawIdempotencyKey);
+        if (idempotencyKey == null) {
+            throw new IdempotencyKeyException(
+                    "HTTP header %s value '%s' is not a valid UUID".formatted(headerName, rawIdempotencyKey)
+            );
         }
+
+        return idempotencyKey;
     }
 
     @Override

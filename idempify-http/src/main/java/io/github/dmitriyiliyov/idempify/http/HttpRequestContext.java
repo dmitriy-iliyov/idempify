@@ -1,13 +1,12 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.RequestContext;
-import io.github.dmitriyiliyov.idempify.core.RequestType;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 public class HttpRequestContext implements RequestContext {
 
@@ -39,12 +38,19 @@ public class HttpRequestContext implements RequestContext {
     }
 
     @Override
-    public String getBody() {
+    public byte [] getBodyBytes() {
         try {
-            return new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            return request.getInputStream().readAllBytes();
         } catch (IOException e) {
             log.error("Error when reading request body", e);
-            throw new RuntimeException(e);
+            throw new RuntimeException("Error when reading request body", e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return "HttpRequestContext{" +
+                "request=" + request +
+                '}';
     }
 }

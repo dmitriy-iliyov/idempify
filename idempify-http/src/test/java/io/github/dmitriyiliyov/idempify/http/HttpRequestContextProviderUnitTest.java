@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +45,25 @@ class HttpRequestContextProviderUnitTest {
     }
 
     @Test
+    @DisplayName("UT getContext() when another request is bound should follow it instead of the previous one")
+    void getContext_whenAnotherRequestIsBound_shouldFollowItInsteadOfPreviousOne() {
+        // given
+        HttpServletRequest first = mock(HttpServletRequest.class);
+        HttpServletRequest second = mock(HttpServletRequest.class);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(first));
+
+        when(second.getRequestURI()).thenReturn("/orders");
+
+        // when
+        tested.getContext();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(second));
+        RequestContext result = tested.getContext();
+
+        // then
+        assertThat(result.getPath()).isEqualTo("/orders");
+    }
+
+    @Test
     @DisplayName("UT getContext() when no request attributes are bound should throw IllegalStateException")
     void getContext_whenNoRequestAttributesAreBound_shouldThrowIllegalStateException() {
         // given
@@ -53,6 +72,6 @@ class HttpRequestContextProviderUnitTest {
         // when / then
         assertThatThrownBy(() -> tested.getContext())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("requestAttributes is null");
+                .hasMessageContaining("No active HTTP request bound to the current thread");
     }
 }
