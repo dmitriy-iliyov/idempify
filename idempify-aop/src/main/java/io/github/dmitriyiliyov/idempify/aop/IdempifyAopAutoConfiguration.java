@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -23,29 +24,16 @@ public class IdempifyAopAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OperationMetadataCache operationMetadataCache() {
-        return new DefaultOperationMetadataCache();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public OperationMetadataResolver operationMetadataResolver(OperationMetadataCache cache,
-                                                              OperationMetadataManager manager) {
-        return new DefaultOperationMetadataResolver(cache, manager);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
     public IdempotentOperationExpressionEvaluator idempotentOperationExpressionEvaluator() {
         return new IdempotentOperationExpressionEvaluator();
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentAspect idempotentAspect(IdempotentOperationExpressionEvaluator expressionEvaluator,
-                                             RequestContextProvider requestContextProvider,
-                                             OperationMetadataResolver metadataResolver,
-                                             IdempotentInterceptor interceptor) {
-        return new IdempotentAspect(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
+    public IdempotentAdvisor idempotentAdvisor(IdempotentOperationExpressionEvaluator expressionEvaluator,
+                                               RequestContextProvider requestContextProvider,
+                                               OperationMetadataResolver metadataResolver,
+                                               IdempotentInterceptor interceptor) {
+        return new IdempotentAdvisor(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
     }
 }

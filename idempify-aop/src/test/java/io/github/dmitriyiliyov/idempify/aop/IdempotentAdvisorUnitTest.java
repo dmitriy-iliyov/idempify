@@ -27,7 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class IdempotentAspectUnitTest {
+class IdempotentAdvisorUnitTest {
 
     @Mock
     IdempotentOperationExpressionEvaluator expressionEvaluator;
@@ -51,14 +51,14 @@ class IdempotentAspectUnitTest {
     RequestContext requestContext;
 
     @InjectMocks
-    IdempotentAspect tested;
+    IdempotentAdvisor tested;
 
     OperationMetadata operationMetadata = TestOperationMetadata.builder().build();
 
     @Test
     @DisplayName("UT constructor when expressionEvaluator is null should throw NullPointerException")
     void constructor_whenExpressionEvaluatorIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(null, requestContextProvider, metadataResolver, interceptor))
+        assertThatThrownBy(() -> new IdempotentAdvisor(null, requestContextProvider, metadataResolver, interceptor))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("expressionEvaluator cannot be null");
     }
@@ -66,7 +66,7 @@ class IdempotentAspectUnitTest {
     @Test
     @DisplayName("UT constructor when requestContextProvider is null should throw NullPointerException")
     void constructor_whenRequestContextProviderIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, null, metadataResolver, interceptor))
+        assertThatThrownBy(() -> new IdempotentAdvisor(expressionEvaluator, null, metadataResolver, interceptor))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("requestContextProvider cannot be null");
     }
@@ -74,7 +74,7 @@ class IdempotentAspectUnitTest {
     @Test
     @DisplayName("UT constructor when metadataResolver is null should throw NullPointerException")
     void constructor_whenMetadataResolverIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, requestContextProvider, null, interceptor))
+        assertThatThrownBy(() -> new IdempotentAdvisor(expressionEvaluator, requestContextProvider, null, interceptor))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("metadataResolver cannot be null");
     }
@@ -82,7 +82,7 @@ class IdempotentAspectUnitTest {
     @Test
     @DisplayName("UT constructor when interceptor is null should throw NullPointerException")
     void constructor_whenInterceptorIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new IdempotentAspect(expressionEvaluator, requestContextProvider, metadataResolver, null))
+        assertThatThrownBy(() -> new IdempotentAdvisor(expressionEvaluator, requestContextProvider, metadataResolver, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("interceptor cannot be null");
     }

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
@@ -30,7 +31,7 @@ class IdempifyAopComponentTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
-            .withUserConfiguration(AopProxyConfiguration.class)
+            .withUserConfiguration(AopProxyConfiguration.class, MetadataResolutionConfiguration.class)
             .withBean(RecordingIdempotentProcessor.class, RecordingIdempotentProcessor::new)
             .withBean(RecordingOperationMetadataManager.class, RecordingOperationMetadataManager::new)
             .withBean(KeyExtractor.class, HeaderKeyExtractor::new)
@@ -269,6 +270,26 @@ class IdempifyAopComponentTest {
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     static class AopProxyConfiguration { }
 
+    /**
+     * Resolution of annotation attributes into metadata lives in core and nothing auto-configures it yet, so
+     * the test wires core's own resolver over the recording manager: the aspect must get the metadata through
+     * the same caching path a real application would.
+     */
+    @Configuration(proxyBeanMethods = false)
+    static class MetadataResolutionConfiguration {
+
+        @Bean
+        OperationMetadataCache operationMetadataCache() {
+            return new DefaultOperationMetadataCache();
+        }
+
+        @Bean
+        OperationMetadataResolver operationMetadataResolver(OperationMetadataCache cache,
+                                                            RecordingOperationMetadataManager manager) {
+            return new DefaultOperationMetadataResolver(cache, manager);
+        }
+    }
+
     public static class PaymentService {
 
         private int payCalls;
@@ -408,7 +429,7 @@ class IdempifyAopComponentTest {
         }
 
         @Override
-        public boolean compare(String previous, String current) {
+        public boolean match(String previous, String current) {
             return previous.equals(current);
         }
 

@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
@@ -11,6 +12,7 @@ final class TestOperationMetadata implements OperationMetadata {
 
     private final String headerName;
     private final Duration ttl;
+    private final ProcessorType processorType;
     private final ConflictHandler conflictHandler;
     private final boolean useFingerprint;
     private final FingerprintPolicy fingerprintPolicy;
@@ -19,6 +21,7 @@ final class TestOperationMetadata implements OperationMetadata {
     private TestOperationMetadata(Builder builder) {
         this.headerName = builder.headerName;
         this.ttl = builder.ttl;
+        this.processorType = builder.processorType;
         this.conflictHandler = builder.conflictHandler;
         this.useFingerprint = builder.useFingerprint;
         this.fingerprintPolicy = builder.fingerprintPolicy;
@@ -33,6 +36,11 @@ final class TestOperationMetadata implements OperationMetadata {
     @Override
     public Duration getTtl() {
         return ttl;
+    }
+
+    @Override
+    public ProcessorType getProcessorType() {
+        return processorType;
     }
 
     @Override
@@ -63,6 +71,7 @@ final class TestOperationMetadata implements OperationMetadata {
 
         private String headerName = "Idempotency-Key";
         private Duration ttl = Duration.ofHours(24);
+        private ProcessorType processorType = ProcessorType.TRANSACTIONAL;
         private ConflictHandler conflictHandler;
         private boolean useFingerprint;
         private FingerprintPolicy fingerprintPolicy;
@@ -77,6 +86,11 @@ final class TestOperationMetadata implements OperationMetadata {
 
         Builder ttl(Duration ttl) {
             this.ttl = ttl;
+            return this;
+        }
+
+        Builder processorType(ProcessorType processorType) {
+            this.processorType = processorType;
             return this;
         }
 

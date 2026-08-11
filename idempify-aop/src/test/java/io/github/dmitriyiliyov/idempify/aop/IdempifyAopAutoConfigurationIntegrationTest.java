@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -22,7 +23,7 @@ class IdempifyAopAutoConfigurationIntegrationTest {
             .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
             .withBean(KeyExtractor.class, () -> mock(KeyExtractor.class))
             .withBean(IdempotentProcessor.class, () -> mock(IdempotentProcessor.class))
-            .withBean(OperationMetadataManager.class, () -> mock(OperationMetadataManager.class))
+            .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
             .withBean(RequestContextProvider.class, () -> mock(RequestContextProvider.class));
 
     @Test
@@ -32,14 +33,8 @@ class IdempifyAopAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(IdempotentInterceptor.class);
             assertThat(context).hasSingleBean(DefaultIdempotentInterceptor.class);
 
-            assertThat(context).hasSingleBean(OperationMetadataCache.class);
-            assertThat(context).hasSingleBean(DefaultOperationMetadataCache.class);
-
-            assertThat(context).hasSingleBean(OperationMetadataResolver.class);
-            assertThat(context).hasSingleBean(DefaultOperationMetadataResolver.class);
-
             assertThat(context).hasSingleBean(IdempotentOperationExpressionEvaluator.class);
-            assertThat(context).hasSingleBean(IdempotentAspect.class);
+            assertThat(context).hasSingleBean(IdempotentAdvisor.class);
         });
     }
 
@@ -68,33 +63,11 @@ class IdempifyAopAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when an OperationMetadataCache is already defined should back off")
-    void context_whenOperationMetadataCacheIsAlreadyDefined_shouldBackOff() {
+    @DisplayName("IT context when an IdempotentAdvisor is already defined should back off")
+    void context_whenIdempotentAdvisorIsAlreadyDefined_shouldBackOff() {
         contextRunner
-                .withBean(OperationMetadataCache.class, () -> mock(OperationMetadataCache.class))
-                .run(context -> {
-                    assertThat(context).hasSingleBean(OperationMetadataCache.class);
-                    assertThat(context).doesNotHaveBean(DefaultOperationMetadataCache.class);
-                });
-    }
-
-    @Test
-    @DisplayName("IT context when an OperationMetadataResolver is already defined should back off")
-    void context_whenOperationMetadataResolverIsAlreadyDefined_shouldBackOff() {
-        contextRunner
-                .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .run(context -> {
-                    assertThat(context).hasSingleBean(OperationMetadataResolver.class);
-                    assertThat(context).doesNotHaveBean(DefaultOperationMetadataResolver.class);
-                });
-    }
-
-    @Test
-    @DisplayName("IT context when an IdempotentAspect is already defined should back off")
-    void context_whenIdempotentAspectIsAlreadyDefined_shouldBackOff() {
-        contextRunner
-                .withBean(IdempotentAspect.class, () -> mock(IdempotentAspect.class))
-                .run(context -> assertThat(context).hasSingleBean(IdempotentAspect.class));
+                .withBean(IdempotentAdvisor.class, () -> mock(IdempotentAdvisor.class))
+                .run(context -> assertThat(context).hasSingleBean(IdempotentAdvisor.class));
     }
 
     @Test
@@ -106,8 +79,7 @@ class IdempifyAopAutoConfigurationIntegrationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(IdempifyAopAutoConfiguration.class);
                     assertThat(context).doesNotHaveBean(IdempotentInterceptor.class);
-                    assertThat(context).doesNotHaveBean(OperationMetadataCache.class);
-                    assertThat(context).doesNotHaveBean(OperationMetadataResolver.class);
+                    assertThat(context).doesNotHaveBean(IdempotentOperationExpressionEvaluator.class);
                 });
     }
 
@@ -125,7 +97,7 @@ class IdempifyAopAutoConfigurationIntegrationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
                 .withBean(IdempotentProcessor.class, () -> mock(IdempotentProcessor.class))
-                .withBean(OperationMetadataManager.class, () -> mock(OperationMetadataManager.class))
+                .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .withBean(RequestContextProvider.class, () -> mock(RequestContextProvider.class))
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -136,14 +108,14 @@ class IdempifyAopAutoConfigurationIntegrationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
                 .withBean(KeyExtractor.class, () -> mock(KeyExtractor.class))
-                .withBean(OperationMetadataManager.class, () -> mock(OperationMetadataManager.class))
+                .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .withBean(RequestContextProvider.class, () -> mock(RequestContextProvider.class))
                 .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
-    @DisplayName("IT context when no OperationMetadataManager exists should fail to start")
-    void context_whenNoOperationMetadataManagerExists_shouldFailToStart() {
+    @DisplayName("IT context when no OperationMetadataResolver exists should fail to start")
+    void context_whenNoOperationMetadataResolverExists_shouldFailToStart() {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
                 .withBean(KeyExtractor.class, () -> mock(KeyExtractor.class))
@@ -159,7 +131,7 @@ class IdempifyAopAutoConfigurationIntegrationTest {
                 .withConfiguration(AutoConfigurations.of(IdempifyAopAutoConfiguration.class))
                 .withBean(KeyExtractor.class, () -> mock(KeyExtractor.class))
                 .withBean(IdempotentProcessor.class, () -> mock(IdempotentProcessor.class))
-                .withBean(OperationMetadataManager.class, () -> mock(OperationMetadataManager.class))
+                .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .run(context -> assertThat(context).hasFailed());
     }
 }

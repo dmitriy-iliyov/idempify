@@ -20,18 +20,18 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Aspect
-public class IdempotentAspect {
+public class IdempotentAdvisor {
 
-    private static final Logger log = LoggerFactory.getLogger(IdempotentAspect.class);
+    private static final Logger log = LoggerFactory.getLogger(IdempotentAdvisor.class);
     private final IdempotentOperationExpressionEvaluator expressionEvaluator;
     private final RequestContextProvider requestContextProvider;
     private final OperationMetadataResolver metadataResolver;
     private final IdempotentInterceptor interceptor;
 
-    public IdempotentAspect(IdempotentOperationExpressionEvaluator expressionEvaluator,
-                            RequestContextProvider requestContextProvider,
-                            OperationMetadataResolver metadataResolver,
-                            IdempotentInterceptor interceptor) {
+    public IdempotentAdvisor(IdempotentOperationExpressionEvaluator expressionEvaluator,
+                             RequestContextProvider requestContextProvider,
+                             OperationMetadataResolver metadataResolver,
+                             IdempotentInterceptor interceptor) {
         this.expressionEvaluator = Objects.requireNonNull(expressionEvaluator, "expressionEvaluator cannot be null");
         this.requestContextProvider = Objects.requireNonNull(requestContextProvider, "requestContextProvider cannot be null");
         this.metadataResolver = Objects.requireNonNull(metadataResolver, "metadataResolver cannot be null");
