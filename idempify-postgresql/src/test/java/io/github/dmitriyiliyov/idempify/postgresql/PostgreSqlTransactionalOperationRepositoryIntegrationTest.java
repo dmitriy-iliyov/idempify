@@ -1,7 +1,8 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.Operation;
-import io.github.dmitriyiliyov.idempify.core.OperationState;
+import io.github.dmitriyiliyov.idempify.core.OperationStatus;
+import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,16 +22,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertEquals;
 
 @Testcontainers
-class PostgreSqlOperationRepositoryIntegrationTest {
+class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private static JdbcClient jdbcClient;
-    private PostgreSqlOperationRepository tested;
+    private PostgreSqlTransactionalOperationRepository tested;
 
     @BeforeAll
     static void setUpDatabase() {
@@ -49,7 +51,7 @@ class PostgreSqlOperationRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        tested = new PostgreSqlOperationRepository(jdbcClient);
+        tested = new PostgreSqlTransactionalOperationRepository(jdbcClient);
         jdbcClient.sql("DELETE FROM idempotent_operations").update();
     }
 
@@ -65,7 +67,7 @@ class PostgreSqlOperationRepositoryIntegrationTest {
 
         // then
         assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getState()).isEqualTo(OperationState.IN_PROCESS);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(result.isFirstAttempt()).isTrue();
         assertThat(result.getResult()).isNull();
         assertEquals("fingerprint", result.getFingerprint());
@@ -87,32 +89,32 @@ class PostgreSqlOperationRepositoryIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT saveIfAbsent() when key already exists should not overwrite existing state and result")
-    void saveIfAbsent_whenKeyAlreadyExists_shouldNotOverwriteExistingStateAndResult() {
+    @DisplayName("IT saveIfAbsent() when key already exists should not overwrite existing status and result")
+    void saveIfAbsent_whenKeyAlreadyExists_shouldNotOverwriteExistingStatusAndResult() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
-        tested.saveResultAndUpdateState("original-result", OperationState.PROCESSED, key, OperationState.IN_PROCESS);
+        tested.saveResultAndUpdateStatus("original-result", OperationStatus.PROCESSED, key, OperationStatus.IN_PROCESS);
 
         // when
         Operation result = tested.saveIfAbsent(buildOperation(key));
 
         // then
-        assertThat(result.getState()).isEqualTo(OperationState.PROCESSED);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
         assertThat(result.getResult()).isEqualTo("original-result");
         assertThat(result.isFirstAttempt()).isFalse();
     }
 
     @Test
-    @DisplayName("IT update() when state matches onState should update all fields and return updated operation")
-    void update_whenStateMatchesOnState_shouldUpdateAndReturnUpdatedOperation() {
+    @DisplayName("IT update() when status matches onStatus should update all fields and return updated operation")
+    void update_whenStatusMatchesOnStatus_shouldUpdateAndReturnUpdatedOperation() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
 
         Operation toUpdate = new Operation(
                 key,
-                OperationState.PROCESSED,
+                OperationStatus.PROCESSED,
                 true,
                 "result-payload",
                 "fp-hash",
@@ -121,25 +123,25 @@ class PostgreSqlOperationRepositoryIntegrationTest {
         );
 
         // when
-        Operation result = tested.update(toUpdate, OperationState.IN_PROCESS);
+        Operation result = tested.update(toUpdate, OperationStatus.IN_PROCESS);
 
         // then
         assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getState()).isEqualTo(OperationState.PROCESSED);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
         assertThat(result.getResult()).isEqualTo("result-payload");
         assertThat(result.getFingerprint()).isEqualTo("fp-hash");
     }
 
     @Test
-    @DisplayName("IT update() when state does not match onState should not update and return current operation")
-    void update_whenStateDoesNotMatchOnState_shouldNotUpdateAndReturnCurrentOperation() {
+    @DisplayName("IT update() when status does not match onStatus should not update and return current operation")
+    void update_whenStatusDoesNotMatchOnStatus_shouldNotUpdateAndReturnCurrentOperation() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
 
         Operation toUpdate = new Operation(
                 key,
-                OperationState.PROCESSED,
+                OperationStatus.PROCESSED,
                 true,
                 "new-result",
                 "new-fp",
@@ -148,47 +150,50 @@ class PostgreSqlOperationRepositoryIntegrationTest {
         );
 
         // when
-        Operation result = tested.update(toUpdate, OperationState.PROCESSED);
+        Operation result = tested.update(toUpdate, OperationStatus.PROCESSED);
 
         // then
         assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getState()).isEqualTo(OperationState.IN_PROCESS);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(result.getResult()).isNull();
         assertEquals("fingerprint", result.getFingerprint());
     }
 
     @Test
-    @DisplayName("IT saveResultAndUpdateState() when state matches onState should update result and state")
-    void saveResultAndUpdateState_whenStateMatchesOnState_shouldUpdateResultAndState() {
+    @DisplayName("IT saveResultAndUpdateStatus() when status matches onStatus should update result and status")
+    void saveResultAndUpdateStatus_whenStatusMatchesOnStatus_shouldUpdateResultAndStatus() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
         String result = "serialized-result";
 
         // when
-        tested.saveResultAndUpdateState(result, OperationState.PROCESSED, key, OperationState.IN_PROCESS);
+        tested.saveResultAndUpdateStatus(result, OperationStatus.PROCESSED, key, OperationStatus.IN_PROCESS);
 
         // then
         Optional<Operation> updated = tested.findByIdempotencyKey(key);
         assertThat(updated).isPresent();
         assertThat(updated.get().getResult()).isEqualTo(result);
-        assertThat(updated.get().getState()).isEqualTo(OperationState.PROCESSED);
+        assertThat(updated.get().getStatus()).isEqualTo(OperationStatus.PROCESSED);
     }
 
     @Test
-    @DisplayName("IT saveResultAndUpdateState() when state does not match onState should not update")
-    void saveResultAndUpdateState_whenStateDoesNotMatchOnState_shouldNotUpdate() {
+    @DisplayName("IT saveResultAndUpdateStatus() when status does not match onStatus should throw and leave the operation untouched")
+    void saveResultAndUpdateStatus_whenStatusDoesNotMatchOnStatus_shouldThrowAndLeaveOperationUntouched() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
 
         // when
-        tested.saveResultAndUpdateState("new-result", OperationState.PROCESSED, key, OperationState.PROCESSED);
+        assertThatThrownBy(() -> tested.saveResultAndUpdateStatus("new-result", OperationStatus.PROCESSED, key, OperationStatus.PROCESSED))
+                .isInstanceOf(OperationStatusMismatchException.class)
+                .hasMessageContaining(key.toString())
+                .hasMessageContaining(OperationStatus.PROCESSED.name());
 
         // then
         Optional<Operation> notUpdated = tested.findByIdempotencyKey(key);
         assertThat(notUpdated).isPresent();
-        assertThat(notUpdated.get().getState()).isEqualTo(OperationState.IN_PROCESS);
+        assertThat(notUpdated.get().getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(notUpdated.get().getResult()).isNull();
     }
 
@@ -205,7 +210,7 @@ class PostgreSqlOperationRepositoryIntegrationTest {
         // then
         assertThat(result).isPresent();
         assertThat(result.get().getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.get().getState()).isEqualTo(OperationState.IN_PROCESS);
+        assertThat(result.get().getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
     }
 
     @Test
@@ -224,7 +229,7 @@ class PostgreSqlOperationRepositoryIntegrationTest {
     private Operation buildOperation(UUID key) {
         return new Operation(
                 key,
-                OperationState.IN_PROCESS,
+                OperationStatus.IN_PROCESS,
                 true,
                 null,
                 "fingerprint",

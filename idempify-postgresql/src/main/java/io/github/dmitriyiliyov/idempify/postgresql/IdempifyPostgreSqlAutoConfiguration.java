@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 public class IdempifyPostgreSqlAutoConfiguration {
 
     @Bean
-    public PostgreSqlOperationRepository idempifyPostgreSqlOperationRepository(JdbcClient jdbcClient) {
-        return new PostgreSqlOperationRepository(jdbcClient);
+    public PostgreSqlTransactionalOperationRepository idempifyPostgreSqlOperationRepository(JdbcClient jdbcClient) {
+        return new PostgreSqlTransactionalOperationRepository(jdbcClient);
     }
 }

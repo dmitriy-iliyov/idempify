@@ -1,8 +1,9 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.Operation;
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.OperationState;
+import io.github.dmitriyiliyov.idempify.core.OperationStatus;
+import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
+import io.github.dmitriyiliyov.idempify.core.TransactionalOperationRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.sql.ResultSet;
@@ -12,11 +13,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public class PostgreSqlOperationRepository implements OperationRepository {
+public class PostgreSqlTransactionalOperationRepository implements TransactionalOperationRepository {
 
     private final JdbcClient jdbcClient;
 
-    public PostgreSqlOperationRepository(JdbcClient jdbcClient) {
+    public PostgreSqlTransactionalOperationRepository(JdbcClient jdbcClient) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient cannot be null");
     }
 
@@ -24,7 +25,7 @@ public class PostgreSqlOperationRepository implements OperationRepository {
     public Operation saveIfAbsent(Operation operation) {
         return jdbcClient
                 .sql("""
-                    INSERT INTO idempotent_operations (idempotency_key, state, is_first_attempt, result, fingerprint, expires_at, created_at)
+                    INSERT INTO idempotent_operations (idempotency_key, status, is_first_attempt, result, fingerprint, expires_at, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(idempotency_key) 
                     DO UPDATE 
@@ -33,7 +34,7 @@ public class PostgreSqlOperationRepository implements OperationRepository {
                 """)
                 .params(
                         operation.getIdempotencyKey(),
-                        operation.getState().name(),
+                        operation.getStatus().name(),
                         operation.isFirstAttempt(),
                         operation.getResult(),
                         operation.getFingerprint(),
@@ -45,18 +46,18 @@ public class PostgreSqlOperationRepository implements OperationRepository {
     }
 
     @Override
-    public Operation update(Operation operation, OperationState onState) {
+    public Operation update(Operation operation, OperationStatus onStatus) {
         return jdbcClient
                 .sql("""
                     WITH updated AS (
                         UPDATE idempotent_operations
-                        SET state = ?,
+                        SET status = ?,
                             is_first_attempt = ?,
                             result = ?,
                             fingerprint = ?,
                             expires_at = ?,
                             created_at = ?
-                        WHERE idempotency_key = ? AND state = ?
+                        WHERE idempotency_key = ? AND status = ?
                         RETURNING *
                     )
                     SELECT * FROM updated
@@ -66,14 +67,14 @@ public class PostgreSqlOperationRepository implements OperationRepository {
                       AND NOT EXISTS (SELECT 1 FROM updated)
                 """)
                 .params(
-                        operation.getState().name(),
+                        operation.getStatus().name(),
                         operation.isFirstAttempt(),
                         operation.getResult(),
                         operation.getFingerprint(),
                         Timestamp.from(operation.getExpiresAt()),
                         Timestamp.from(operation.getCreatedAt()),
                         operation.getIdempotencyKey(),
-                        onState.name(),
+                        onStatus.name(),
                         operation.getIdempotencyKey()
                 )
                 .query((rs, rowNum) -> toOperation(rs))
@@ -81,15 +82,18 @@ public class PostgreSqlOperationRepository implements OperationRepository {
     }
 
     @Override
-    public void saveResultAndUpdateState(String result, OperationState state, UUID idempotencyKey, OperationState onState) {
-        jdbcClient
+    public Operation saveResultAndUpdateStatus(String result, OperationStatus status, UUID idempotencyKey, OperationStatus onStatus) {
+        return jdbcClient
                 .sql("""
                     UPDATE idempotent_operations
-                        SET result = ?, state = ?
-                        WHERE idempotency_key = ? AND state = ?
+                        SET result = ?, status = ?
+                        WHERE idempotency_key = ? AND status = ?
+                    RETURNING *
                 """)
-                .params(result, state.name(), idempotencyKey, onState.name())
-                .update();
+                .params(result, status.name(), idempotencyKey, onStatus.name())
+                .query((rs, rowNum) -> toOperation(rs))
+                .optional()
+                .orElseThrow(() -> new OperationStatusMismatchException(idempotencyKey, onStatus));
     }
 
     @Override
@@ -107,7 +111,7 @@ public class PostgreSqlOperationRepository implements OperationRepository {
     private Operation toOperation(ResultSet rs) throws SQLException {
         return new Operation(
                 rs.getObject("idempotency_key", UUID.class),
-                OperationState.valueOf(rs.getString("state")),
+                OperationStatus.valueOf(rs.getString("status")),
                 rs.getBoolean("is_first_attempt"),
                 rs.getString("result"),
                 rs.getString("fingerprint"),
