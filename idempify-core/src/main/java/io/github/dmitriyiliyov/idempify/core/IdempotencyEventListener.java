@@ -1,35 +1,43 @@
 package io.github.dmitriyiliyov.idempify.core;
 
 /**
- * Defines the contract for listening to events related to idempotent operations.
+ * The hook for metrics, logging and audit: one method per outcome an idempotent call can reach.
+ * <p>
+ * A method per outcome rather than one method taking an event type, so that an implementation counts what it
+ * cares about without a {@code switch}, and a new outcome can be added with a {@code default} body instead of
+ * breaking everyone. Implementations run on the request thread and must not throw or block.
  */
 public interface IdempotencyEventListener {
 
     /**
-     * Called when a duplicate request is detected.
+     * A call was answered from an earlier one's stored result - the work the library exists to avoid.
      */
     void onDuplicate();
 
     /**
-     * Called when a conflict is detected.
+     * A call arrived while another was still processing the same key, and was routed to a conflict handler.
      */
     void onConflict();
 
     /**
-     * Called when a fingerprint mismatch is detected.
+     * A key was reused with a request that fingerprints differently.
      */
     void onFingerprintMismatch();
 
     /**
-     * Called when an exception occurs during the processing of an idempotent operation.
+     * Processing ended in an exception.
      */
     void onException();
 
     /**
-     * Called when an idempotent operation is successfully processed.
+     * The business operation ran and its result was stored - a first attempt, not a replay.
      */
     void onSuccess();
 
+    /**
+     * The listener installed when the application declares none, so that the processors can call the hook
+     * unconditionally.
+     */
     IdempotencyEventListener NOOP = new IdempotencyEventListener() {
 
         @Override

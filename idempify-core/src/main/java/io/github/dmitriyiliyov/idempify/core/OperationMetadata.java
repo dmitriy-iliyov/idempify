@@ -1,139 +1,69 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 
-import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
-public final class OperationMetadata {
+/**
+ * The fully resolved settings of one call site - what {@link OperationMetadataManager} produces after
+ * layering the call site, its named config and the global properties.
+ * <p>
+ * Unlike the partial configs it is built from, every getter here has an answer: by the time a processor sees
+ * it, nothing is left to decide.
+ */
+public interface OperationMetadata {
 
-    private final UUID idempotencyKey;
-    private final long ttl;
-    private final TimeUnit timeUnit;
-    private final ConflictHandleStrategy conflictHandleStrategy;
-    private final Class<? extends ConflictHandler> conflictHandlerClass;
-    private final boolean useFingerprint;
-    private final String fingerprint;
-    private final Class<? extends FingerprintPolicy> fingerprintPolicyClass;
+    /**
+     * Returns the name of the header the idempotency key is read from.
+     */
+    String getHeaderName();
 
-    private OperationMetadata(Builder builder) {
-        this.idempotencyKey = builder.idempotencyKey;
-        this.ttl = builder.ttl;
-        this.timeUnit = builder.timeUnit;
+    /**
+     * Returns how long a completed operation's result stays replayable.
+     */
+    Duration getTtl();
 
-        this.conflictHandleStrategy = builder.conflictHandleStrategy;
-        this.conflictHandlerClass = builder.conflictHandlerClass;
-        if (ConflictHandleStrategy.CUSTOM.equals(this.conflictHandleStrategy)) {
-            Objects.requireNonNull(conflictHandlerClass, "conflictHandlerClass cannot be null when conflictHandleStrategy is CUSTOM");
-        }
+    /**
+     * Returns which {@code IdempotentProcessor} runs this operation - {@code TRANSACTIONAL} keeps the
+     * operation record in the business transaction, {@code LOCK_BASED} keeps it outside so a failed result
+     * survives the rollback. {@code DelegatingIdempotentProcessor} dispatches on this value and fails when no
+     * processor serves it.
+     */
+    ProcessorType getProcessorType();
 
-        this.useFingerprint = builder.useFingerprint;
-        this.fingerprint = builder.fingerprint;
-        this.fingerprintPolicyClass = builder.fingerprintPolicyClass;
-        if (this.useFingerprint) {
-            Objects.requireNonNull(fingerprint, "fingerprint cannot be null when useFingerprint is true");
-            Objects.requireNonNull(fingerprintPolicyClass, "fingerprintPolicyClass cannot be null when useFingerprint is true");
-        }
+
+    default boolean shouldHandleConflict() {
+        return getConflictHandler() != null;
     }
 
-    public UUID getIdempotencyKey() {
-        return idempotencyKey;
+    /**
+     * Returns the handler to invoke when another request is already processing the same key.
+     */
+    ConflictHandler getConflictHandler();
+
+    /**
+     * Returns whether a duplicate call must match the original request's fingerprint before its result is
+     * replayed - which is to say whether a policy was resolved at all. The two cannot disagree: there is one
+     * field behind them, so a call site either has a policy and fingerprints, or has neither.
+     */
+    default boolean useFingerprint() {
+        return getFingerprintPolicy() != null;
     }
 
-    public long getTtl() {
-        return ttl;
-    }
+    /**
+     * Returns the policy that computes and compares fingerprints, or {@code null} when this call site does not
+     * fingerprint at all.
+     * <p>
+     * Callers guard on {@link #useFingerprint()} first; the {@code null} is deliberate rather than replaced by
+     * a do-nothing policy, so that a missing guard fails at once instead of quietly reporting every duplicate
+     * as a mismatch and carrying on.
+     */
+    FingerprintPolicy getFingerprintPolicy();
 
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
-    }
-
-    public ConflictHandleStrategy getConflictHandleStrategy() {
-        return conflictHandleStrategy;
-    }
-
-    public Class<? extends ConflictHandler> getConflictHandlerClass() {
-        return conflictHandlerClass;
-    }
-
-    public boolean useFingerprint() {
-        return useFingerprint;
-    }
-
-    public String getFingerprint() {
-        return fingerprint;
-    }
-
-    public Class<? extends FingerprintPolicy> getFingerprintPolicyClass() {
-        return fingerprintPolicyClass;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static final class Builder {
-
-        private UUID idempotencyKey;
-        private long ttl;
-        private TimeUnit timeUnit;
-        private ConflictHandleStrategy conflictHandleStrategy;
-        private Class<? extends ConflictHandler> conflictHandlerClass;
-        private boolean useFingerprint;
-        private String fingerprint;
-        private Class<? extends FingerprintPolicy> fingerprintPolicyClass;
-
-        private Builder() {}
-
-        public Builder idempotencyKey(UUID idempotencyKey) {
-            this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey cannot be null");
-            return this;
-        }
-
-        public Builder ttl(Long ttl) {
-            Objects.requireNonNull(ttl, "ttl cannot be null");
-            if (ttl < 0) {
-                throw new IllegalArgumentException("ttl cannot be negative");
-            }
-            this.ttl = ttl;
-            return this;
-        }
-
-        public Builder timeUnit(TimeUnit timeUnit) {
-            this.timeUnit = Objects.requireNonNull(timeUnit, "timeUnit cannot be null");
-            return this;
-        }
-
-        public Builder conflictHandleStrategy(ConflictHandleStrategy conflictHandleStrategy) {
-            this.conflictHandleStrategy = Objects.requireNonNull(conflictHandleStrategy, "conflictHandleStrategy cannot be null");
-            return this;
-        }
-
-        public Builder conflictHandlerClass(Class<? extends ConflictHandler> conflictHandlerClass) {
-            this.conflictHandlerClass = conflictHandlerClass;
-            return this;
-        }
-
-        public Builder useFingerprint(boolean useFingerprint) {
-            this.useFingerprint = useFingerprint;
-            return this;
-        }
-
-        public Builder fingerprint(String fingerprint) {
-            this.fingerprint = fingerprint;
-            return this;
-        }
-
-        public Builder fingerprintPolicyClass(Class<? extends FingerprintPolicy> fingerprintPolicyClass) {
-            this.fingerprintPolicyClass = fingerprintPolicyClass;
-            return this;
-        }
-
-        public OperationMetadata build() {
-            return new OperationMetadata(this);
-        }
-    }
+    /**
+     * Returns which results are worth an entry in the cache in front of the repository.
+     */
+    ResponseCacheConfig getResponseCacheConfig();
 }

@@ -2,50 +2,56 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
-public class DefaultOperationMapperUnitTest {
+class DefaultOperationMapperUnitTest {
+
+    private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final Instant NOW = TestClock.EPOCH;
 
     private final DefaultOperationMapper tested = new DefaultOperationMapper();
 
     @Test
-    @DisplayName("UT toOperation() when valid metadata should correctly map to Operation")
-    void toOperation_whenValidMetadata_shouldMapCorrectly() {
-        // given
-        OperationMetadata metadata = mock(OperationMetadata.class);
-        UUID idempotencyKey = UUID.randomUUID();
-        String fingerprint = "test-fingerprint";
-        Instant now = Instant.now();
-        long ttl = 30L;
-        TimeUnit timeUnit = TimeUnit.MINUTES;
-
-        when(metadata.getIdempotencyKey()).thenReturn(idempotencyKey);
-        when(metadata.getTtl()).thenReturn(ttl);
-        when(metadata.getTimeUnit()).thenReturn(timeUnit);
-        when(metadata.getFingerprint()).thenReturn(fingerprint);
-
-        Instant expectedExpiresAt = now.plusSeconds(1800);
-
+    @DisplayName("UT toOperation() should start the operation in process on its first attempt with no result yet")
+    void toOperation_shouldStartOperationInProcessOnFirstAttemptWithNoResultYet() {
         // when
-        Operation result = tested.toOperation(metadata, now);
+        Operation result = tested.toOperation(KEY, "fingerprint", metadata(Duration.ofHours(24)), NOW);
 
         // then
-        assertThat(result).isNotNull();
-        assertThat(result.getIdempotencyKey()).isEqualTo(idempotencyKey);
-        assertThat(result.getState()).isEqualTo(OperationState.IN_PROCESS);
+        assertThat(result.getIdempotencyKey()).isEqualTo(KEY);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(result.isFirstAttempt()).isTrue();
         assertThat(result.getResult()).isNull();
-        assertThat(result.getFingerprint()).isEqualTo(fingerprint);
-        assertThat(result.getExpiresAt()).isEqualTo(expectedExpiresAt);
-        assertThat(result.getCreatedAt()).isEqualTo(now);
+        assertThat(result.getFingerprint()).isEqualTo("fingerprint");
+        assertThat(result.getCreatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    @DisplayName("UT toOperation() should set the expiry a ttl away from the given timestamp")
+    void toOperation_shouldSetExpiryTtlAwayFromGivenTimestamp() {
+        // when
+        Operation result = tested.toOperation(KEY, "fingerprint", metadata(Duration.ofMinutes(30)), NOW);
+
+        // then
+        assertThat(result.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+    }
+
+    @Test
+    @DisplayName("UT toOperation() when there is no fingerprint should leave it unset")
+    void toOperation_whenThereIsNoFingerprint_shouldLeaveItUnset() {
+        // when
+        Operation result = tested.toOperation(KEY, null, metadata(Duration.ofHours(24)), NOW);
+
+        // then
+        assertThat(result.getFingerprint()).isNull();
+    }
+
+    private OperationMetadata metadata(Duration ttl) {
+        return TestOperationMetadata.builder().ttl(ttl).build();
     }
 }

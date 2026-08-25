@@ -1,5 +1,9 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.request.DelegatingKeyExtractor;
+import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +25,32 @@ public class DelegatingKeyExtractorUnitTest {
         assertThatThrownBy(() -> new DelegatingKeyExtractor(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("extractors cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor when extractors is empty should throw IllegalStateException naming the missing type")
+    void constructor_whenExtractorsIsEmpty_shouldThrowIllegalStateExceptionNamingMissingType() {
+        assertThatThrownBy(() -> new DelegatingKeyExtractor(List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("KeyExtractor")
+                .hasMessageContaining("none was found");
+    }
+
+    @Test
+    @DisplayName("UT constructor when two extractors serve the same request type should throw IllegalStateException naming both")
+    void constructor_whenTwoExtractorsServeSameRequestType_shouldThrowIllegalStateExceptionNamingBoth() {
+        // given
+        KeyExtractor first = mock(KeyExtractor.class);
+        KeyExtractor second = mock(KeyExtractor.class);
+
+        when(first.getRequestType()).thenReturn(RequestType.HTTP);
+        when(second.getRequestType()).thenReturn(RequestType.HTTP);
+
+        // when / then
+        assertThatThrownBy(() -> new DelegatingKeyExtractor(List.of(first, second)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(RequestType.HTTP.name())
+                .hasMessageContaining(first.getClass().getName());
     }
 
     @Test
@@ -187,6 +217,6 @@ public class DelegatingKeyExtractorUnitTest {
         // when / then
         assertThatThrownBy(tested::getRequestType)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Should not be called");
+                .hasMessageContaining("has no single RequestType and must not be queried directly");
     }
 }

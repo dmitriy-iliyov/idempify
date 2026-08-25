@@ -1,17 +1,21 @@
 package io.github.dmitriyiliyov.idempify.core;
 
 /**
- * Defines the contract for processing an idempotent operation.
+ * Runs one intercepted call under its idempotency guarantee: claims the key, and from there either runs the
+ * caller's business operation exactly once or replays what an earlier call under the same key produced.
+ * <p>
+ * Implementations differ in where the operation's record lives relative to the business transaction, which is
+ * what {@link ProcessorType} names.
  */
 public interface IdempotentProcessor {
+
     /**
-     * Processes an idempotent operation.
+     * Returns the value the caller should receive, having run the business operation only if this call turned
+     * out to be the first attempt for its key.
      *
-     * @param metadata   the metadata of the operation.
-     * @param resultType the type of the result.
-     * @param call       a supplier that provides the result of the operation.
-     * @param <T>        the type of the result.
-     * @return the result of the operation.
+     * @param context  what identifies this call and how to run it.
+     * @param metadata the settings resolved for its call site.
+     * @param <T>      the type of the result.
      */
-    <T> T process(OperationMetadata metadata, Class<T> resultType, IdempotentOperation<T> call);
+    <T> T process(OperationContext<T> context, OperationMetadata metadata);
 }

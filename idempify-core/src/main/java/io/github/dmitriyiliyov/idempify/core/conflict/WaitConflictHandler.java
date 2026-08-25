@@ -1,6 +1,9 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.Operation;
+import io.github.dmitriyiliyov.idempify.core.OperationRepository;
+import io.github.dmitriyiliyov.idempify.core.OperationStatus;
+import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

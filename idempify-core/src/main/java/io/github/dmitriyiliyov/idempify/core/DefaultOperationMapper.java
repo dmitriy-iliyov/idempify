@@ -1,22 +1,21 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 
 public class DefaultOperationMapper implements OperationMapper {
 
     @Override
-    public Operation toOperation(OperationMetadata metadata, Instant instant) {
-        Duration ttl = Duration.of(metadata.getTtl(), metadata.getTimeUnit().toChronoUnit());
-        Instant expiresAt = instant.plusSeconds(ttl.toSeconds());
+    public Operation toOperation(UUID idempotencyKey, String fingerprint, OperationMetadata metadata, Instant timestamp) {
+        Instant expiresAt = timestamp.plus(metadata.getTtl());
         return new Operation(
-                metadata.getIdempotencyKey(),
-                OperationState.IN_PROCESS,
+                idempotencyKey,
+                OperationStatus.IN_PROCESS,
                 true,
                 null,
-                metadata.getFingerprint(),
+                fingerprint,
                 expiresAt,
-                instant
+                timestamp
         );
     }
 }

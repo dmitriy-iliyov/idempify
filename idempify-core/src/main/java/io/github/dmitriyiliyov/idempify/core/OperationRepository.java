@@ -4,46 +4,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Defines the contract for storing and retrieving idempotent operations.
- * This repository provides an abstraction over the underlying storage mechanism for operations.
+ * Read side of the operation store, shared by every concurrency strategy.
+ * <p>
+ * Write access lives in the sub-interfaces because the guarantees differ:
+ * {@link TransactionalOperationRepository} needs an atomic insert-or-fetch and compare-and-swap updates,
+ * while a lock-based store gets mutual exclusion from an external lock instead.
  */
 public interface OperationRepository {
-    /**
-     * Saves the given operation if an operation with the same idempotency key is not already present.
-     *
-     * @param operation the operation to save.
-     * @return the saved operation, or the existing operation if one was already present.
-     */
-    Operation saveIfAbsent(Operation operation);
-
 
     /**
-     * Updates an existing operation, transitioning it to a new state.
-     * The update is performed conditionally based on the operation's current state.
-     *
-     * @param operation the operation to update.
-     * @param onState   the expected current state of the operation for the update to proceed.
-     * @return the updated operation.
-     */
-    Operation update(Operation operation, OperationState onState);
-
-    /**
-     * Finds an operation by its idempotency key.
-     *
-     * @param idempotencyKey the idempotency key of the operation.
-     * @return an {@link Optional} containing the operation if found, or an empty {@link Optional} otherwise.
+     * Returns the operation recorded under this key, or {@link Optional#empty()} if the key was never claimed
+     * or its record has since been removed. Absence is an ordinary answer here, not a failure.
      */
     Optional<Operation> findByIdempotencyKey(UUID idempotencyKey);
-
-
-    /**
-     * Saves the result of an operation and updates its state.
-     * The update is performed conditionally based on the operation's current state.
-     *
-     * @param result         the serialized result to save.
-     * @param state          the new state of the operation.
-     * @param idempotencyKey the idempotency key of the operation to update.
-     * @param onState        the expected current state of the operation for the update to proceed.
-     */
-    void saveResultAndUpdateState(String result, OperationState state, UUID idempotencyKey, OperationState onState);
 }
