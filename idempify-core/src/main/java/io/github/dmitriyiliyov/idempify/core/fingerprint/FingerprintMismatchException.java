@@ -10,6 +10,8 @@ public class FingerprintMismatchException extends RuntimeException {
     }
 
     public FingerprintMismatchException(FingerprintMismatchContext context) {
+        super("Operation (idempotencyKey=%s) was retried with a different request fingerprint"
+                .formatted(context.getIdempotencyKey()));
         this.context = context;
     }
 
