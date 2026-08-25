@@ -1,0 +1,171 @@
+package io.github.dmitriyiliyov.idempify.starter;
+
+import io.github.dmitriyiliyov.idempify.core.ProcessorType;
+import io.github.dmitriyiliyov.idempify.core.StringUtils;
+import io.github.dmitriyiliyov.idempify.core.config.*;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+import java.time.Duration;
+import java.util.Objects;
+
+/**
+ * Holds the {@code idempify.*} properties - the least specific configuration source, applying to every
+ * intercepted call that does not decide the setting for itself.
+ * <p>
+ * {@code idempify.enabled} comes before all of them: switched off, the library describes nothing, so every
+ * block is dropped rather than kept for a call site that will never run - and nothing below is checked
+ * either, since an application that turned idempotency off owes no answer for a ttl nobody reads.
+ */
+@ConfigurationProperties(prefix = "idempify")
+public final class IdempifyProperties implements IdempotencyConfigProvider {
+
+    private final Boolean enabled;
+    private final String headerName;
+    private final Duration ttl;
+    private final ProcessorType processorType;
+    @NestedConfigurationProperty
+    private final ConflictProperties conflict;
+    @NestedConfigurationProperty
+    private final FingerprintProperties fingerprint;
+    @NestedConfigurationProperty
+    private final CacheProperties cache;
+
+    public IdempifyProperties(@DefaultValue("true") Boolean enabled,
+                              @DefaultValue("Idempotency-Key") String headerName,
+                              @DefaultValue("24h") Duration ttl,
+                              @DefaultValue("LOCK_BASED") ProcessorType processorType,
+                              @DefaultValue ConflictProperties conflict,
+                              @DefaultValue FingerprintProperties fingerprint,
+                              @DefaultValue CacheProperties cache) {
+        this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
+
+        if (enabled) {
+            if (StringUtils.isBlank(headerName)) {
+                throw new IllegalArgumentException("headerName cannot be null, empty or blank");
+            }
+            this.headerName = headerName.strip();
+
+            Objects.requireNonNull(ttl, "ttl cannot be null");
+            if (!ttl.isPositive()) {
+                throw new IllegalArgumentException("ttl must be positive");
+            }
+            this.ttl = ttl;
+
+            this.processorType = Objects.requireNonNull(processorType, "processorType cannot be null");
+            this.conflict = Objects.requireNonNull(conflict, "conflict cannot be null");
+            this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint cannot be null");
+            this.cache = Objects.requireNonNull(cache, "cache cannot be null");
+            rejectSectionsTheTransactionalProcessorCannotUse();
+        } else {
+            this.headerName = null;
+            this.ttl = null;
+            this.processorType = null;
+            this.conflict = null;
+            this.fingerprint = null;
+            this.cache = null;
+        }
+    }
+
+    private void rejectSectionsTheTransactionalProcessorCannotUse() {
+        if (!ProcessorType.TRANSACTIONAL.equals(processorType)) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(conflict.isEnabled())) {
+            throw new IllegalStateException("""
+                idempify.conflict.enabled must be false when idempify.processor-type is TRANSACTIONAL: the transactional 
+                processor settles a duplicate on the store's own insert, so there is no conflict left for a handler to see
+            """);
+        }
+
+        if (Boolean.TRUE.equals(cache.isEnabled())) {
+            throw new IllegalStateException("""
+                idempify.cache.enabled must be false when idempify.processor-type is TRANSACTIONAL: the response is 
+                written in the same transaction as the operation, so a cache in front of it would serve answers 
+                a rollback has already taken back
+            """);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalStateException if {@code idempify.enabled} is false - a switched-off library holds no
+     * settings to hand over, and whoever is asking got past a condition that should have kept them out.
+     */
+    @Override
+    public IdempotencyConfig provide() {
+        if (!enabled) {
+            throw new IllegalStateException(
+                    "idempify.enabled is false, so there is no configuration to provide: set it to true to configure idempotency"
+            );
+        }
+
+        IdempotencyConfig.Builder builder = IdempotencyConfig.builder()
+                .headerName(headerName)
+                .ttl(ttl)
+                .processorType(processorType);
+
+        builder.conflict(conflict.isEnabled()
+                ? conflict.toConflictConfig()
+                : ConflictConfig.disabled()
+        );
+
+        builder.fingerprint(fingerprint.isEnabled()
+                ? fingerprint.toFingerprintConfig()
+                : FingerprintConfig.disabled()
+        );
+
+        builder.responseCache(cache.isEnabled()
+                ? cache.toResponseCacheConfig()
+                : ResponseCacheConfig.disabled()
+        );
+
+        IdempotencyConfig config = builder.build();
+        config.validate();
+        return config;
+    }
+
+    public Boolean isEnabled() {
+        return enabled;
+    }
+
+    public String getHeaderName() {
+        return headerName;
+    }
+
+    public Duration getTtl() {
+        return ttl;
+    }
+
+    public ProcessorType getProcessorType() {
+        return processorType;
+    }
+
+    public ConflictProperties getConflict() {
+        return conflict;
+    }
+
+    public FingerprintProperties getFingerprint() {
+        return fingerprint;
+    }
+
+    public CacheProperties getCache() {
+        return cache;
+    }
+
+    @Override
+    public String toString() {
+        return "IdempifyProperties{" +
+                "enabled=" + enabled +
+                ", headerName='" + headerName + '\'' +
+                ", ttl=" + ttl +
+                ", processorType=" + processorType +
+                ", conflict=" + conflict +
+                ", fingerprint=" + fingerprint +
+                ", cache=" + cache +
+                '}';
+    }
+}
