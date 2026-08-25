@@ -1,25 +1,25 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import java.util.Optional;
-import java.util.UUID;
+import io.github.dmitriyiliyov.idempify.core.TransactionAffinity;
 
 /**
- * Defines the contract for handling concurrent conflicts in idempotent operations.
- * A conflict occurs when an operation with the same idempotency key is already in progress.
+ * Decides what a request gets when it arrives for a key another request is still processing - the one case
+ * where the library can neither run the operation nor replay a result, because there is no result yet.
+ * <p>
+ * Reachable only where the operation's record is kept outside the business transaction. In the transactional
+ * branch a duplicate never reaches a handler: it blocks on the insert until the first request commits and
+ * then replays what it stored.
+ *
+ * @see ConflictHandleStrategy
  */
-public interface ConflictHandler {
-    /**
-     * Handles a conflict for the given idempotency key.
-     *
-     * @param idempotencyKey the idempotency key that caused the conflict.
-     * @param c              the expected type of the response.
-     * @param <T>            the type of the response.
-     * @return an optional containing the response from the original operation, or an empty optional if the response is not available.
-     */
-    <T> Optional<T> handle(UUID idempotencyKey, Class<T> c);
+public interface ConflictHandler extends TransactionAffinity {
 
     /**
-     * Returns the strategy that this handler implements.
+     * Returns what the conflicting call should receive, or throws to refuse it - both are legitimate
+     * outcomes, and which one applies is the handler's whole decision.
+     *
+     * @param context the contended key and the type a replayed result would have.
+     * @param <T>     the type of the result.
      */
-    ConflictHandleStrategy getStrategy();
+    <T> T handle(ConflictContext<T> context);
 }

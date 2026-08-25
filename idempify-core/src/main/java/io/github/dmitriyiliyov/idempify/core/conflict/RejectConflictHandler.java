@@ -1,17 +1,19 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import java.util.Optional;
 import java.util.UUID;
 
 public class RejectConflictHandler implements ConflictHandler {
 
     @Override
-    public <T> Optional<T> handle(UUID idempotencyKey, Class<T> c) {
-        throw new IdempotencyConflictException("Operation in process by another request");
+    public <T> T handle(ConflictContext<T> context) {
+        UUID idempotencyKey = context.getIdempotencyKey();
+        throw new IdempotencyConflictException(
+                "Operation (idempotencyKey=%s) is already in progress for another request".formatted(idempotencyKey)
+        );
     }
 
     @Override
-    public ConflictHandleStrategy getStrategy() {
-        return ConflictHandleStrategy.REJECT;
+    public boolean requiresTransaction() {
+        return true;
     }
 }
