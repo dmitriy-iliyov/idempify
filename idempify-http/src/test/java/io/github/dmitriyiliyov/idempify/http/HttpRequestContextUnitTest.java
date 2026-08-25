@@ -3,10 +3,12 @@ package io.github.dmitriyiliyov.idempify.http;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import jakarta.servlet.http.HttpServletRequest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.server.RequestPath;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.util.ServletRequestPathUtils;
+import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -77,23 +79,18 @@ class HttpRequestContextUnitTest {
     }
 
     @Test
-    @DisplayName("UT getPath() should return the request pattern together with the context path")
-    void getPath_shouldReturnRequestUriTogetherWithContextPath() {
+    @DisplayName("UT getPath() should return the uri of the request")
+    void getPath_shouldReturnUriOfRequest() {
         // given
-        MockHttpServletRequest request = request();
-        request.setContextPath("/app");
-        request.setRequestURI("/app/payments");
-        HttpRequestContext tested = new HttpRequestContext(request);
+        HttpRequestContext tested = new HttpRequestContext(request());
 
         // when
         String result = tested.getPath();
 
         // then
-        assertThat(result).isEqualTo("/app/payments");
+        assertThat(result).isEqualTo("/payments");
     }
 
-    // the path comes straight from getRequestURI(), so it carries whatever the deployment puts in front of it
-    @Disabled("the fingerprint path is not application-relative")
     @Test
     @DisplayName("UT getPath() when the application sits under a context path should return the path without it")
     void getPath_whenApplicationSitsUnderContextPath_shouldReturnPathWithoutIt() {
@@ -110,14 +107,60 @@ class HttpRequestContextUnitTest {
         assertThat(result).isEqualTo("/payments");
     }
 
-    // path parameters belong to the session, not to what the client asked for
-    @Disabled("the fingerprint path keeps the path parameters the container appends")
     @Test
     @DisplayName("UT getPath() when the uri carries path parameters should return the path without them")
     void getPath_whenUriCarriesPathParameters_shouldReturnPathWithoutThem() {
         // given
         MockHttpServletRequest request = request();
         request.setRequestURI("/payments;jsessionid=ABC123");
+        HttpRequestContext tested = new HttpRequestContext(request);
+
+        // when
+        String result = tested.getPath();
+
+        // then
+        assertThat(result).isEqualTo("/payments");
+    }
+
+    @Test
+    @DisplayName("UT getPath() when the uri is percent encoded should return the decoded path")
+    void getPath_whenUriIsPercentEncoded_shouldReturnDecodedPath() {
+        // given
+        MockHttpServletRequest request = request();
+        request.setRequestURI("/payments/%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0");
+        HttpRequestContext tested = new HttpRequestContext(request);
+
+        // when
+        String result = tested.getPath();
+
+        // then
+        assertThat(result).isEqualTo("/payments/оплата");
+    }
+
+    @Test
+    @DisplayName("UT getPath() when the path is already parsed should return it without parsing the uri again")
+    void getPath_whenPathIsAlreadyParsed_shouldReturnItWithoutParsingUriAgain() {
+        // given
+        MockHttpServletRequest request = request();
+        request.setRequestURI("/payments");
+        ServletRequestPathUtils.setParsedRequestPath(RequestPath.parse("/shop/refunds", "/shop"), request);
+        HttpRequestContext tested = new HttpRequestContext(request);
+
+        // when
+        String result = tested.getPath();
+
+        // then
+        assertThat(result).isEqualTo("/refunds");
+    }
+
+    @Test
+    @DisplayName("UT getPath() when only the lookup path is cached should parse the uri itself")
+    void getPath_whenOnlyLookupPathIsCached_shouldParseUriItself() {
+        // given
+        MockHttpServletRequest request = request();
+        request.setContextPath("/app");
+        request.setRequestURI("/app/payments");
+        UrlPathHelper.defaultInstance.resolveAndCacheLookupPath(request);
         HttpRequestContext tested = new HttpRequestContext(request);
 
         // when

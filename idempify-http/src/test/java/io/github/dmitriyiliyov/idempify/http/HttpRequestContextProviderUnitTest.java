@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -48,11 +49,9 @@ class HttpRequestContextProviderUnitTest {
     @DisplayName("UT getContext() when another request is bound should follow it instead of the previous one")
     void getContext_whenAnotherRequestIsBound_shouldFollowItInsteadOfPreviousOne() {
         // given
-        HttpServletRequest first = mock(HttpServletRequest.class);
-        HttpServletRequest second = mock(HttpServletRequest.class);
+        HttpServletRequest first = new MockHttpServletRequest("POST", "/payments");
+        HttpServletRequest second = new MockHttpServletRequest("POST", "/orders");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(first));
-
-        when(second.getRequestURI()).thenReturn("/orders");
 
         // when
         tested.getContext();

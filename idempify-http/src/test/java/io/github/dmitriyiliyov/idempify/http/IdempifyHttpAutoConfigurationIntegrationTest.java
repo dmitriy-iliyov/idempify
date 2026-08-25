@@ -3,19 +3,19 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
-import jakarta.servlet.Filter;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
-import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
+import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import jakarta.servlet.Filter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -91,15 +91,19 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when no ResponseCache exists should fail to start")
-    void context_whenNoResponseCacheExists_shouldFailToStart() {
+    @DisplayName("IT context when no ResponseCache exists should start without the caching filter")
+    void context_whenNoResponseCacheExists_shouldStartWithoutCachingFilter() {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
-                .run(context -> assertThat(context).hasFailed());
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("idempifyOperationResponseCachingFilterRegistrationBean");
+                    assertThat(context).hasSingleBean(IdempotentRequestMatcher.class);
+                });
     }
 
     @Test

@@ -9,7 +9,9 @@ import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +23,12 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.time.Clock;
 
 @AutoConfiguration
+@ConditionalOnProperty(
+        prefix = "idempify",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+)
 @ConditionalOnWebApplication
 public class IdempifyHttpAutoConfiguration {
 
@@ -32,26 +40,27 @@ public class IdempifyHttpAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OperationStateChannel httpAttributesOperationStateChannel() {
+    public OperationStateChannel idempifyHttpAttributesOperationStateChannel() {
         return new HttpAttributesOperationStateChannel();
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentHandlerRegistry idempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping) {
+    public IdempotentHandlerRegistry idempifyIdempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping) {
         return new DefaultIdempotentHandlerRegistry(handlerMapping);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentRequestMatcher idempotentRequestMatcher(IdempotentHandlerRegistry handlerRegistry,
-                                                             OperationMetadataResolver metadataResolver) {
+    public IdempotentRequestMatcher idempifyIdempotentRequestMatcher(IdempotentHandlerRegistry handlerRegistry,
+                                                                     OperationMetadataResolver metadataResolver) {
         return new DefaultIdempotentRequestMatcher(handlerRegistry, metadataResolver);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public FilterRegistrationBean<OperationResponseCachingFilter> operationResponseCachingFilterRegistrationBean(
+    @ConditionalOnBean(ResponseCache.class)
+    public FilterRegistrationBean<OperationResponseCachingFilter> idempifyOperationResponseCachingFilterRegistrationBean(
             IdempotentRequestMatcher matcher,
             OperationStateChannel channel,
             FingerprintMatcher fingerprintMatcher,

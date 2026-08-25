@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.json.ProblemDetailJacksonMixin;
+import org.springframework.lang.NonNull;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
@@ -62,9 +63,9 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain) throws ServletException, IOException {
         OperationMetadata metadata = matcher.match(request);
         if (metadata == null) {
             filterChain.doFilter(request, response);
@@ -229,6 +230,10 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
     }
 
     private boolean shouldCache(ResponseCacheConfig cacheConfig, int status) {
+        if (cacheConfig == null) {
+            return false;
+        }
+
         boolean shouldCache = cacheConfig.isEnabled();
 
         if (is4xx(status) && !cacheConfig.shouldCache4xx()) {

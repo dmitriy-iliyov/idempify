@@ -483,14 +483,14 @@ class IdempifyHttpComponentTest {
             return "paid:" + id;
         }
 
-        @Idempotent(headerName = HEADER_NAME, shouldCache4xx = Toggle.DISABLE)
+        @Idempotent(headerName = HEADER_NAME, cache4xx = Toggle.DISABLE)
         @PostMapping("/payments/rejected")
         public ResponseEntity<String> rejected() {
             rejectedCalls++;
             return ResponseEntity.badRequest().body("rejected");
         }
 
-        @Idempotent(headerName = HEADER_NAME, shouldCache = Toggle.DISABLE)
+        @Idempotent(headerName = HEADER_NAME, useCache = Toggle.DISABLE)
         @PostMapping("/payments/uncached")
         public String uncached() {
             uncachedCalls++;
@@ -554,7 +554,7 @@ class IdempifyHttpComponentTest {
                     .useFingerprint(metadata.getFingerprintToggle() == Toggle.ENABLE)
                     .fingerprintPolicy(new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback()))
                     .responseCacheConfig(ResponseCacheConfig.builder()
-                            .shouldCache(metadata.getCacheToggle() != Toggle.DISABLE)
+                            .enabled(metadata.getCacheToggle() != Toggle.DISABLE)
                             .shouldCache4xx(metadata.getCache4xxToggle() != Toggle.DISABLE)
                             .shouldCache5xx(metadata.getCache5xxToggle() == Toggle.ENABLE)
                             .build())

@@ -803,7 +803,7 @@ class OperationResponseCachingFilterUnitTest {
     @DisplayName("UT doFilter() when caching is disabled should not store the response")
     void doFilter_whenCachingIsDisabled_shouldNotStoreResponse() throws Exception {
         // given
-        givenIdempotentUri(metadata().responseCacheConfig(ResponseCacheConfig.none()).build());
+        givenIdempotentUri(metadata().responseCacheConfig(ResponseCacheConfig.disabled()).build());
         givenExtractedKey();
         givenRecordedOperation();
         RecordingFilterChain chain = respondingChain(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
@@ -992,7 +992,7 @@ class OperationResponseCachingFilterUnitTest {
 
     private static ResponseCacheConfig cacheConfig(boolean shouldCache4xx, boolean shouldCache5xx) {
         return ResponseCacheConfig.builder()
-                .shouldCache(true)
+                .enabled(true)
                 .shouldCache4xx(shouldCache4xx)
                 .shouldCache5xx(shouldCache5xx)
                 .build();
