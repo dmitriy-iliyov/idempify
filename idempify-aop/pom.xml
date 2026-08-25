@@ -11,14 +11,8 @@
     </parent>
 
     <artifactId>idempify-aop</artifactId>
-    <packaging>jar</packaging>
     <name>idempify-aop</name>
-
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>

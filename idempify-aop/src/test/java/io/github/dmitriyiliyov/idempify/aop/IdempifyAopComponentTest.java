@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.*;
-import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
+import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategyToggle;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
@@ -157,7 +157,7 @@ class IdempifyAopComponentTest {
             assertThat(manager.capturedConfigName).isEqualTo("payments");
             assertThat(raw.getHeaderName()).isEqualTo(HEADER_NAME);
             assertThat(raw.getTtl()).isEqualTo(Duration.ofHours(48));
-            assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategy.WAIT);
+            assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
             assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
             assertThat(raw.getCacheToggle()).isEqualTo(Toggle.ENABLE);
             assertThat(raw.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
@@ -307,11 +307,11 @@ class IdempifyAopComponentTest {
                 headerName = HEADER_NAME,
                 ttl = 48,
                 timeUnit = TimeUnit.HOURS,
-                onConflict = ConflictHandleStrategy.WAIT,
+                onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                shouldCache = Toggle.ENABLE,
-                shouldCache4xx = Toggle.DISABLE,
-                shouldCache5xx = Toggle.DISABLE
+                useCache = Toggle.ENABLE,
+                cache4xx = Toggle.DISABLE,
+                cache5xx = Toggle.DISABLE
         )
         public String pay(String amount) {
             payCalls++;
