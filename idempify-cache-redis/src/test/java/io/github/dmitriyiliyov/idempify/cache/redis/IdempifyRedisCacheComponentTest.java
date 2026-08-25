@@ -43,8 +43,9 @@ class IdempifyRedisCacheComponentTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+            .withPropertyValues("idempify.cache.enabled=true")
             .withBean(RedisConnectionFactory.class, IdempifyRedisCacheComponentTest::connectionFactory)
-            .withBean(CachePropertiesHolder.class, () -> () -> CACHE_NAME);
+            .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(CACHE_NAME));
 
     @BeforeEach
     void setUp() throws Exception {

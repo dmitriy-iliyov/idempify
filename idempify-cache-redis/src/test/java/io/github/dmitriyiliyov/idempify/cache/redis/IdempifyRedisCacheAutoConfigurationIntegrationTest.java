@@ -28,8 +28,9 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+            .withPropertyValues("idempify.cache.enabled=true")
             .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
-            .withBean(CachePropertiesHolder.class, () -> () -> "idempify");
+            .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"));
 
     @Test
     @DisplayName("IT context when all required beans exist should register template and response cache")
@@ -102,6 +103,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         // when / then
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+                .withPropertyValues("idempify.cache.enabled=true")
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -112,7 +114,8 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         // when / then
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-                .withBean(CachePropertiesHolder.class, () -> () -> "idempify")
+                .withPropertyValues("idempify.cache.enabled=true")
+                .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -122,9 +125,29 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         // when / then
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+                .withPropertyValues("idempify.cache.enabled=true")
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
-                .withBean(CachePropertiesHolder.class, () -> () -> null)
+                .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(null))
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("IT context when the cache switch is missing should register nothing")
+    void context_whenCacheSwitchIsMissing_shouldRegisterNothing() {
+        // when / then
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+                .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+                .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
+    }
+
+    @Test
+    @DisplayName("IT context when the cache is switched off should register nothing")
+    void context_whenCacheIsSwitchedOff_shouldRegisterNothing() {
+        // when / then
+        runner.withPropertyValues("idempify.cache.enabled=false")
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
     }
 
     @Test
