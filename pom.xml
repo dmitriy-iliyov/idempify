@@ -17,6 +17,8 @@
         <module>idempify-jackson</module>
         <module>idempify-aop</module>
         <module>idempify-core</module>
+        <module>idempify-starter</module>
+        <module>idempify-cache-redis</module>
     </modules>
 
     <url/>
