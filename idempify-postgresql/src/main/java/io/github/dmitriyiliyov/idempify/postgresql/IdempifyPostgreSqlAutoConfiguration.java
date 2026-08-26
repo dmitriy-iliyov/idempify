@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
+import io.github.dmitriyiliyov.idempify.core.TransactionalOperationRepository;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,7 +18,7 @@ public class IdempifyPostgreSqlAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PostgreSqlTransactionalOperationRepository idempifyPostgreSqlOperationRepository(JdbcClient jdbcClient) {
+    public TransactionalOperationRepository idempifyPostgreSqlOperationRepository(JdbcClient jdbcClient) {
         return new PostgreSqlTransactionalOperationRepository(jdbcClient);
     }
 }

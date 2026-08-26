@@ -30,6 +30,18 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when the application brings a store of its own should not register the postgres one")
+    void context_whenApplicationBringsStoreOfItsOwn_shouldNotRegisterPostgresOne() {
+        contextRunner
+                .withBean("applicationOperationRepository", TransactionalOperationRepository.class,
+                        () -> mock(TransactionalOperationRepository.class))
+                .run(context -> {
+                    assertThat(context).hasSingleBean(TransactionalOperationRepository.class);
+                    assertThat(context).doesNotHaveBean(PostgreSqlTransactionalOperationRepository.class);
+                });
+    }
+
+    @Test
     @DisplayName("IT context when no JdbcClient is present should fail to start")
     void context_whenNoJdbcClientIsPresent_shouldFailToStart() {
         new ApplicationContextRunner()
