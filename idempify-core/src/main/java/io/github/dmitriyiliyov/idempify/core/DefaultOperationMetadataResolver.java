@@ -30,6 +30,7 @@ public class DefaultOperationMetadataResolver implements OperationMetadataResolv
         }
 
         Idempotent annotation = findAnnotation(key);
+        validateParams(annotation);
         RawOperationMetadata rawMetadata = buildRawMetadata(annotation);
 
         synchronized (lock) {
@@ -59,10 +60,28 @@ public class DefaultOperationMetadataResolver implements OperationMetadataResolv
         return annotation;
     }
 
+    private void validateParams(Idempotent annotation) {
+        if (!StringUtils.isBlank(annotation.idempotencyKey()) && !StringUtils.isBlank(annotation.headerName())) {
+            throw new IllegalStateException(
+                    """
+                        idempotencyKey and headerName name two different sources of the key and cannot be combined,
+                        but idempotencyKey=%s and headerName=%s were both given
+                    """.formatted(annotation.idempotencyKey(), annotation.headerName())
+            );
+        }
+    }
+
     private RawOperationMetadata buildRawMetadata(Idempotent annotation) {
-        return DefaultRawOperationMetadata.builder()
-                .headerName(annotation.headerName())
-                .ttl(annotation.ttl())
+        DefaultRawOperationMetadata.Builder builder = DefaultRawOperationMetadata.builder();
+
+        if (!StringUtils.isBlank(annotation.idempotencyKey())) {
+            builder.useHeaderName(false);
+        } else {
+            builder.useHeaderName(true)
+                    .headerName(annotation.headerName());
+        }
+
+        return builder.ttl(annotation.ttl())
                 .timeUnit(annotation.timeUnit())
                 .processorType(annotation.processorType())
                 .conflictHandleStrategy(annotation.onConflict())

@@ -156,6 +156,22 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
+    @DisplayName("CT request when the call site takes its key from an expression should reach the handler however often the same header comes")
+    void request_whenCallSiteTakesKeyFromExpression_shouldReachHandlerHoweverOftenSameHeaderComes() throws Exception {
+        // when
+        mockMvc.perform(post("/payments/1/by-expression").header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/payments/2/by-expression").header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isOk());
+
+        // then
+        assertThat(controller.expressionKeyedCalls)
+                .describedAs("the key of the operation is the path variable, so one header must not replay another call")
+                .isEqualTo(2);
+        assertThat(cache.storage).isEmpty();
+    }
+
+    @Test
     @DisplayName("CT request when the idempotency key header is missing should be left to the aspect and not cached")
     void request_whenIdempotencyKeyHeaderIsMissing_shouldBeLeftToAspectAndNotCached() throws Exception {
         // when
@@ -456,6 +472,7 @@ class IdempifyHttpComponentTest {
         int rejectedCalls;
         int uncachedCalls;
         int conflictingCalls;
+        int expressionKeyedCalls;
         String lastPayBody;
         RequestContext lastRefundContext;
 
@@ -480,6 +497,13 @@ class IdempifyHttpComponentTest {
         @PostMapping("/orders/{id}/pay")
         public String payOrder(@PathVariable String id) {
             orderPayCalls++;
+            return "paid:" + id;
+        }
+
+        @Idempotent(idempotencyKey = "#id")
+        @PostMapping("/payments/{id}/by-expression")
+        public String payByExpression(@PathVariable String id) {
+            expressionKeyedCalls++;
             return "paid:" + id;
         }
 
@@ -549,7 +573,7 @@ class IdempifyHttpComponentTest {
         @Override
         public OperationMetadata merge(RawOperationMetadata metadata, String configName) {
             return TestOperationMetadata.builder()
-                    .headerName(metadata.getHeaderName() == null ? HEADER_NAME : metadata.getHeaderName())
+                    .headerName(headerNameOf(metadata))
                     .ttl(metadata.getTtl() == null ? OPERATION_TTL : metadata.getTtl())
                     .useFingerprint(metadata.getFingerprintToggle() == Toggle.ENABLE)
                     .fingerprintPolicy(new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback()))
@@ -559,6 +583,18 @@ class IdempifyHttpComponentTest {
                             .shouldCache5xx(metadata.getCache5xxToggle() == Toggle.ENABLE)
                             .build())
                     .build();
+        }
+
+        /**
+         * A call site taking its key from an expression resolves to metadata without a header name, exactly as
+         * the real manager leaves it - that is what keeps the filter from reading a key the operation is not
+         * recorded under.
+         */
+        private String headerNameOf(RawOperationMetadata metadata) {
+            if (!metadata.useHeaderName()) {
+                return null;
+            }
+            return metadata.getHeaderName() == null ? HEADER_NAME : metadata.getHeaderName();
         }
     }
 

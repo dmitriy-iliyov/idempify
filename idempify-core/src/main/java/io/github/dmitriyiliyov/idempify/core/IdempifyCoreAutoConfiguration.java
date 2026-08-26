@@ -96,7 +96,7 @@ public class IdempifyCoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public OperationMetadataManager idempifyOperationMetadataManager(
-            @Qualifier("idempifyDefaultIdempotencyConfig") IdempotencyConfig config,
+            @Qualifier(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME) IdempotencyConfig config,
             IdempotencyConfigRegistry configRegistry,
             ConflictHandlerProvider conflictHandlerProvider,
             FingerprintPolicyProvider fingerprintPolicyProvider

@@ -101,6 +101,36 @@ class DefaultIdempotentInterceptorUnitTest {
     }
 
     @Test
+    @DisplayName("UT intercept() when the key comes from an expression should not look for it in the request")
+    void intercept_whenKeyComesFromExpression_shouldNotLookForItInRequest() {
+        // given
+        UUID idempotencyKey = UUID.randomUUID();
+        InterceptContext<String> context = interceptContext(idempotencyKey, expressionKeyedMetadata());
+        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+
+        // when
+        tested.intercept(context);
+
+        // then
+        verifyNoInteractions(keyExtractor);
+        verify(processor, times(1)).process(captor.capture(), any(OperationMetadata.class));
+        assertThat(captor.getValue().getIdempotencyKey()).isEqualTo(idempotencyKey);
+    }
+
+    @Test
+    @DisplayName("UT intercept() when the expression supplied no key should refuse rather than fall back to the request")
+    void intercept_whenExpressionSuppliedNoKey_shouldRefuseRatherThanFallBackToRequest() {
+        // given
+        InterceptContext<String> context = interceptContext(null, expressionKeyedMetadata());
+
+        // when / then
+        assertThatThrownBy(() -> tested.intercept(context))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Operation has no idempotency key");
+        verifyNoInteractions(keyExtractor, processor);
+    }
+
+    @Test
     @DisplayName("UT intercept() when metadata uses fingerprint should generate it with the metadata policy")
     void intercept_whenMetadataUsesFingerprint_shouldGenerateItWithMetadataPolicy() {
         // given
@@ -243,6 +273,13 @@ class DefaultIdempotentInterceptorUnitTest {
 
     private OperationMetadata plainMetadata() {
         return TestOperationMetadata.builder()
+                .useFingerprint(false)
+                .build();
+    }
+
+    private OperationMetadata expressionKeyedMetadata() {
+        return TestOperationMetadata.builder()
+                .headerName(null)
                 .useFingerprint(false)
                 .build();
     }

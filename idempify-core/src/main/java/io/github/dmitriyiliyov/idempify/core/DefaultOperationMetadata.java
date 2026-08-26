@@ -100,7 +100,16 @@ public final class DefaultOperationMetadata implements OperationMetadata {
 
         private Builder() {}
 
+        /**
+         * A {@code null} name is the answer of a call site that takes its key from an expression, so it is
+         * accepted and read back through {@link OperationMetadata#useHeaderName()}. A blank one names nothing
+         * and is refused.
+         */
         public Builder headerName(String headerName) {
+            if (headerName == null) {
+                this.headerName = null;
+                return this;
+            }
             if (StringUtils.isBlank(headerName)) {
                 throw new IllegalArgumentException("headerName cannot be blank");
             }
@@ -138,17 +147,15 @@ public final class DefaultOperationMetadata implements OperationMetadata {
         }
 
         public DefaultOperationMetadata build() {
-            Objects.requireNonNull(headerName, "headerName cannot be null");
             Objects.requireNonNull(ttl, "ttl cannot be null");
             Objects.requireNonNull(processorType, "processorType cannot be null");
             Objects.requireNonNull(responseCacheConfig, "responseCacheConfig cannot be null");
 
             if (ProcessorType.TRANSACTIONAL.equals(processorType) && responseCacheConfig.isEnabled()) {
-                throw new IllegalStateException(
-                        "responseCacheConfig cannot be enabled if processorType is %s: the operation record is "
-                                .formatted(processorType)
-                                + "rolled back together with the business logic, so a cached result would outlive it"
-                );
+                throw new IllegalStateException("""
+                        responseCacheConfig cannot be enabled if processorType is %s: the operation record is rolled back 
+                        together with the business logic, so a cached result would outlive it
+                """.formatted(processorType));
             }
 
             return new DefaultOperationMetadata(this);

@@ -16,6 +16,8 @@ import java.time.Duration;
  */
 public interface RawOperationMetadata {
 
+    boolean useHeaderName();
+
     /**
      * Returns the name of the header the idempotency key is read from.
      */

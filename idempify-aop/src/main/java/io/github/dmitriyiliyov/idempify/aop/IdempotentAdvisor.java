@@ -38,7 +38,7 @@ public class IdempotentAdvisor {
         this.interceptor = Objects.requireNonNull(interceptor, "interceptor cannot be null");
     }
 
-    @Pointcut("@annotation(idempotent) && execution(public * * (..))")
+    @Pointcut("@annotation(idempotent) && execution( public * * (..) )")
     public void pointcut(Idempotent idempotent) { }
 
     @Around(
@@ -65,21 +65,6 @@ public class IdempotentAdvisor {
                         requestContext,
                         operationMetadata
                 )
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> InterceptContext<T> buildContext(Class<T> operationResultType,
-                                                 ProceedingJoinPoint jp,
-                                                 UUID idempotencyKey,
-                                                 RequestContext requestContext,
-                                                 OperationMetadata operationMetadata) {
-        return new DefaultInterceptContext<>(
-                operationResultType,
-                () -> (T) jp.proceed(),
-                idempotencyKey,
-                requestContext,
-                operationMetadata
         );
     }
 
@@ -124,5 +109,20 @@ public class IdempotentAdvisor {
             log.warn("Idempotency key expression '{}' yielded '{}', which is not a UUID", spel, idempotencyKey);
             throw iae;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> InterceptContext<T> buildContext(Class<T> operationResultType,
+                                                 ProceedingJoinPoint jp,
+                                                 UUID idempotencyKey,
+                                                 RequestContext requestContext,
+                                                 OperationMetadata operationMetadata) {
+        return new DefaultInterceptContext<>(
+                operationResultType,
+                () -> (T) jp.proceed(),
+                idempotencyKey,
+                requestContext,
+                operationMetadata
+        );
     }
 }

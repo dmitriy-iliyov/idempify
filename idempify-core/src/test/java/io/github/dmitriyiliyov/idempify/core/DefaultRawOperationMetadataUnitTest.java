@@ -56,6 +56,39 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
+    @DisplayName("UT useHeaderName() when the key source was never named should read the key from a header")
+    void useHeaderName_whenKeySourceWasNeverNamed_shouldReadKeyFromHeader() {
+        // when
+        RawOperationMetadata result = DefaultRawOperationMetadata.builder().build();
+
+        // then
+        assertThat(result.useHeaderName()).isTrue();
+    }
+
+    @Test
+    @DisplayName("UT useHeaderName() when the call site takes the key from an expression should say so")
+    void useHeaderName_whenCallSiteTakesKeyFromExpression_shouldSaySo() {
+        // when
+        RawOperationMetadata result = DefaultRawOperationMetadata.builder()
+                .useHeaderName(false)
+                .build();
+
+        // then
+        assertThat(result.useHeaderName()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT equals() when the key source differs should treat the metadata as different")
+    void equals_whenKeySourceDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().useHeaderName(true).build();
+        RawOperationMetadata other = fullyConfigured().useHeaderName(false).build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
     @DisplayName("UT headerName() when the name is padded should strip it")
     void headerName_whenNameIsPadded_shouldStripIt() {
         // when

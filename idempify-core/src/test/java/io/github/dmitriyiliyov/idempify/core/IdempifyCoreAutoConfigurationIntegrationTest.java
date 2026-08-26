@@ -39,7 +39,7 @@ import static org.mockito.Mockito.mock;
  */
 class IdempifyCoreAutoConfigurationIntegrationTest {
 
-    private static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
+    private static final String DEFAULT_CONFIG_BEAN_NAME = IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME;
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID OTHER_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 

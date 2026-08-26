@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigProvider;
@@ -39,7 +40,7 @@ class IdempifyAutoConfigurationIntegrationTest {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(IdempotencyConfig.class);
-            assertThat(context).hasBean("idempifyDefaultIdempotencyConfig");
+            assertThat(context).hasBean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME);
             assertThat(context).hasSingleBean(CachePropertiesHolder.class);
             assertThat(context).hasSingleBean(IdempifyProperties.class);
         });
@@ -144,8 +145,8 @@ class IdempifyAutoConfigurationIntegrationTest {
                     assertThat(context)
                             .describedAs("an application may declare as many named configs as it has call sites")
                             .hasNotFailed();
-                    assertThat(context).hasBean("idempifyDefaultIdempotencyConfig");
-                    assertThat(context.getBean("idempifyDefaultIdempotencyConfig", IdempotencyConfig.class)
+                    assertThat(context).hasBean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME);
+                    assertThat(context.getBean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME, IdempotencyConfig.class)
                             .getHeaderName()).isEqualTo("X-From-Properties");
                 });
     }
@@ -224,7 +225,7 @@ class IdempifyAutoConfigurationIntegrationTest {
     @Configuration(proxyBeanMethods = false)
     static class ExistingConfigConfiguration {
 
-        @Bean("idempifyDefaultIdempotencyConfig")
+        @Bean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME)
         IdempotencyConfig globalConfig() {
             return handWrittenConfig();
         }

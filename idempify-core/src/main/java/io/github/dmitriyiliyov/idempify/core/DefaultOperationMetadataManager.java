@@ -90,8 +90,12 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
 
     private void mergeHeaderName(IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
         String headerName = rawMetadata.getHeaderName();
-        if (!StringUtils.isBlank(headerName)) {
+        if (!StringUtils.isBlank(headerName) && rawMetadata.useHeaderName()) {
             builder.headerName(headerName);
+        }
+
+        if (!rawMetadata.useHeaderName()) {
+            builder.headerName(null);
         }
     }
 

@@ -16,9 +16,20 @@ import java.time.Duration;
 public interface OperationMetadata {
 
     /**
-     * Returns the name of the header the idempotency key is read from.
+     * Returns the name of the header the idempotency key is read from, or {@code null} when the call site
+     * takes the key from an expression instead - the one setting a broader layer may not answer, since a
+     * header nobody reads would send the transport looking for a key the call site computes itself.
      */
     String getHeaderName();
+
+    /**
+     * Whether the key arrives with the request rather than being computed from the call's own arguments. A
+     * transport that reads the key before the method runs - the response cache filter above all - can only
+     * work when this holds.
+     */
+    default boolean useHeaderName() {
+        return !StringUtils.isBlank(getHeaderName());
+    }
 
     /**
      * Returns how long a completed operation's result stays replayable.

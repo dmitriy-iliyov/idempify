@@ -180,6 +180,53 @@ class DefaultOperationMetadataResolverUnitTest {
     }
 
     @Test
+    @DisplayName("UT resolve() when the annotation names an expression should say the key is not read from a header")
+    void resolve_Metadata_whenAnnotationNamesExpression_shouldSayKeyIsNotReadFromHeader() throws NoSuchMethodException {
+        // given
+        ArgumentCaptor<RawOperationMetadata> captor = ArgumentCaptor.forClass(RawOperationMetadata.class);
+
+        when(manager.merge(any(RawOperationMetadata.class))).thenReturn(mock(OperationMetadata.class));
+
+        // when
+        tested.resolve(method("actionWithKeyExpression"), TestTarget.class);
+
+        // then
+        verify(manager, times(1)).merge(captor.capture());
+        RawOperationMetadata raw = captor.getValue();
+        assertThat(raw.useHeaderName()).isFalse();
+        assertThat(raw.getHeaderName()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT resolve() when the annotation names both key sources should refuse instead of picking one")
+    void resolve_Metadata_whenAnnotationNamesBothKeySources_shouldRefuseInsteadOfPickingOne() throws NoSuchMethodException {
+        // given
+        Method method = method("actionWithBothKeySources");
+
+        // when / then
+        assertThatThrownBy(() -> tested.resolve(method, TestTarget.class))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be combined");
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    @DisplayName("UT resolve() when the annotation names no expression should keep reading the key from a header")
+    void resolve_Metadata_whenAnnotationNamesNoExpression_shouldKeepReadingKeyFromHeader() throws NoSuchMethodException {
+        // given
+        ArgumentCaptor<RawOperationMetadata> captor = ArgumentCaptor.forClass(RawOperationMetadata.class);
+
+        when(manager.merge(any(RawOperationMetadata.class))).thenReturn(mock(OperationMetadata.class));
+
+        // when
+        tested.resolve(method("action"), TestTarget.class);
+
+        // then
+        verify(manager, times(1)).merge(captor.capture());
+        assertThat(captor.getValue().useHeaderName()).isTrue();
+    }
+
+    @Test
     @DisplayName("UT resolve() when the annotation specifies a ttl should convert it with its time unit")
     void resolve_Metadata_whenAnnotationSpecifiesTtl_shouldConvertItWithItsTimeUnit() throws NoSuchMethodException {
         // given
@@ -308,6 +355,16 @@ class DefaultOperationMetadataResolverUnitTest {
         @Idempotent(ttl = 30, timeUnit = TimeUnit.MINUTES)
         public String actionWithMinutesTtl() {
             return "actionWithMinutesTtl";
+        }
+
+        @Idempotent(idempotencyKey = "#dto.id")
+        public String actionWithKeyExpression() {
+            return "actionWithKeyExpression";
+        }
+
+        @Idempotent(idempotencyKey = "#dto.id", headerName = "X-Payment-Key")
+        public String actionWithBothKeySources() {
+            return "actionWithBothKeySources";
         }
 
         @Idempotent(

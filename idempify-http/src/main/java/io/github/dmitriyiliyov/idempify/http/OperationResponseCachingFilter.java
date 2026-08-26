@@ -104,11 +104,12 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
     }
 
     private UUID extractIdempotencyKey(OperationMetadata metadata, HttpServletRequest request) {
-        String headerName = metadata.getHeaderName();
-        if (headerName == null || headerName.isBlank()) {
-            log.info("Operation metadata found, but headerName is null or blank, probably the idempotency key is taken from a SpEL expression");
+        if (!metadata.useHeaderName()) {
+            log.info("Idempotency key of {} comes from an expression, so the response cache cannot be reached here", request.getRequestURI());
             return null;
         }
+
+        String headerName = metadata.getHeaderName();
 
         try {
             return keyExtractor.extract(headerName, new HttpRequestContext(request));
@@ -127,12 +128,24 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                 fingerprint = policy.generate(new HttpRequestContext(request));
             } catch (Exception e) {
                 log.error("Error when generating fingerprint", e);
-                FingerprintExceptionFilterUtils.ofExceptionallyGenerate(request, response, idempotencyKey, problemDetailMapper, clock.instant());
+                FingerprintExceptionFilterUtils.ofExceptionallyGenerate(
+                        request,
+                        response,
+                        idempotencyKey,
+                        problemDetailMapper,
+                        clock.instant()
+                );
                 return "";
             }
 
             if (fingerprint == null || fingerprint.isBlank()) {
-                FingerprintExceptionFilterUtils.ofInvalid(request, response, idempotencyKey, problemDetailMapper, clock.instant());
+                FingerprintExceptionFilterUtils.ofInvalid(
+                        request,
+                        response,
+                        idempotencyKey,
+                        problemDetailMapper,
+                        clock.instant()
+                );
                 return "";
             }
 
@@ -158,7 +171,13 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                     );
                 } catch (Exception e) {
                     log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking cache", idempotencyKey);
-                    FingerprintExceptionFilterUtils.ofMismatch(request, response, idempotencyKey, problemDetailMapper, clock.instant());
+                    FingerprintExceptionFilterUtils.ofMismatch(
+                            request,
+                            response,
+                            idempotencyKey,
+                            problemDetailMapper,
+                            clock.instant()
+                    );
                     return true;
                 }
             }

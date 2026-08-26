@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
+    private final boolean useHeaderName;
     private final String headerName;
     private final Duration ttl;
     private final ProcessorTypeToggle processorType;
@@ -18,6 +19,7 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     private final Toggle cache5xxToggle;
 
     private DefaultRawOperationMetadata(Builder builder) {
+        this.useHeaderName = builder.useHeaderName;
         this.headerName = builder.headerName;
         this.ttl = builder.ttl < 0 ? null : Duration.of(builder.ttl, builder.timeUnit.toChronoUnit());
         this.processorType = builder.processorType;
@@ -26,6 +28,11 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         this.cacheToggle = builder.cacheToggle;
         this.cache4xxToggle = builder.cache4xxToggle;
         this.cache5xxToggle = builder.cache5xxToggle;
+    }
+
+    @Override
+    public boolean useHeaderName() {
+        return useHeaderName;
     }
 
     @Override
@@ -70,13 +77,10 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof DefaultRawOperationMetadata that)) {
-            return false;
-        }
-        return Objects.equals(headerName, that.headerName)
+        if (o == null || getClass() != o.getClass()) return false;
+        DefaultRawOperationMetadata that = (DefaultRawOperationMetadata) o;
+        return useHeaderName == that.useHeaderName
+                && Objects.equals(headerName, that.headerName)
                 && Objects.equals(ttl, that.ttl)
                 && processorType == that.processorType
                 && conflictHandleStrategy == that.conflictHandleStrategy
@@ -88,14 +92,15 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
     @Override
     public int hashCode() {
-        return Objects.hash(headerName, ttl, processorType, conflictHandleStrategy, fingerprintToggle, cacheToggle,
-                cache4xxToggle, cache5xxToggle);
+        return Objects.hash(useHeaderName, headerName, ttl, processorType, conflictHandleStrategy, fingerprintToggle,
+                cacheToggle, cache4xxToggle, cache5xxToggle);
     }
 
     @Override
     public String toString() {
         return "DefaultRawOperationMetadata{" +
-                "headerName='" + headerName + '\'' +
+                "useHeaderName=" + useHeaderName +
+                ", headerName='" + headerName + '\'' +
                 ", ttl=" + ttl +
                 ", processorType=" + processorType +
                 ", conflictHandleStrategy=" + conflictHandleStrategy +
@@ -112,6 +117,7 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
     public static final class Builder {
 
+        private Boolean useHeaderName = true;
         private String headerName;
         private long ttl = -1;
         private ProcessorTypeToggle processorType = ProcessorTypeToggle.UNSELECTED;
@@ -123,6 +129,11 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         private Toggle cache5xxToggle = Toggle.UNSELECTED;
 
         private Builder() {}
+
+        public Builder useHeaderName(boolean useHeaderName) {
+            this.useHeaderName = useHeaderName;
+            return this;
+        }
 
         public Builder headerName(String headerName) {
             this.headerName = headerName == null || headerName.isBlank() ? null : headerName.strip();

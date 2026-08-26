@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -18,8 +19,8 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(IdempifyProperties.class)
 public class IdempifyAutoConfiguration {
 
-    @Bean
-    @ConditionalOnMissingBean(name = "idempifyDefaultIdempotencyConfig")
+    @Bean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME)
+    @ConditionalOnMissingBean(name = IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME)
     public IdempotencyConfig idempifyDefaultIdempotencyConfig(IdempifyProperties properties) {
         return properties.provide();
     }

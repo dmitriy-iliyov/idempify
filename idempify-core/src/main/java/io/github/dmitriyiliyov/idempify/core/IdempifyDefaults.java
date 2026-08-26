@@ -18,6 +18,8 @@ import java.time.Duration;
  */
 public final class IdempifyDefaults {
 
+    public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
+
     public static final String ENABLED_VALUE = "true";
 
     public static final String HEADER_NAME = "Idempotency-Key";

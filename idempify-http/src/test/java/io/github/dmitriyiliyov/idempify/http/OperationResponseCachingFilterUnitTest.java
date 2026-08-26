@@ -189,6 +189,22 @@ class OperationResponseCachingFilterUnitTest {
     }
 
     @Test
+    @DisplayName("UT doFilter() when the key comes from an expression should ignore the header the request carries")
+    void doFilter_whenKeyComesFromExpression_shouldIgnoreHeaderRequestCarries() throws Exception {
+        // given
+        request.addHeader(HEADER_NAME, KEY.toString());
+        givenIdempotentUri(metadata().headerName(null).build());
+        RecordingFilterChain chain = new RecordingFilterChain();
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(chain.calls).isEqualTo(1);
+        verifyNoInteractions(keyExtractor, cache);
+    }
+
+    @Test
     @DisplayName("UT doFilter() when the metadata header name is blank should pass the request down the chain untouched")
     void doFilter_whenMetadataHeaderNameIsBlank_shouldPassRequestDownChainUntouched() throws Exception {
         // given

@@ -21,10 +21,20 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
 
     @Override
     public <T> T intercept(InterceptContext<T> context) {
+        UUID idempotencyKey = context.getIdempotencyKey();
 
-        UUID idempotencyKey = context.getIdempotencyKey() == null
-                ? keyExtractor.extract(context.getOperationMetadata().getHeaderName(), context.getRequestContext())
-                : context.getIdempotencyKey();
+        if (idempotencyKey == null) {
+            if (!context.getOperationMetadata().useHeaderName()) {
+                throw new IllegalStateException("""
+                        Operation has no idempotency key: the call site takes it from an expression rather than 
+                        from a request attribute, nothing else can supply it
+                """);
+            }
+            idempotencyKey = keyExtractor.extract(
+                    context.getOperationMetadata().getHeaderName(),
+                    context.getRequestContext()
+            );
+        }
 
         String fingerprint = null;
         if (context.getOperationMetadata().useFingerprint()) {

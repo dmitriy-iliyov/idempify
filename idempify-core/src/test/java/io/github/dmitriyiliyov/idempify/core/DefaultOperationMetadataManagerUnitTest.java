@@ -102,6 +102,36 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
+    @DisplayName("UT merge() when the call site takes its key from an expression should resolve metadata that reads no header")
+    void merge_whenCallSiteTakesKeyFromExpression_shouldResolveMetadataThatReadsNoHeader() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when
+        OperationMetadata result = tested.merge(raw().useHeaderName(false).build());
+
+        // then
+        assertThat(result.getHeaderName())
+                .describedAs("the global header name must not fill in for a key that comes from an expression")
+                .isNull();
+        assertThat(result.useHeaderName()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site says nothing about the key source should keep reading the global header")
+    void merge_whenCallSiteSaysNothingAboutKeySource_shouldKeepReadingGlobalHeader() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when
+        OperationMetadata result = tested.merge(raw().build());
+
+        // then
+        assertThat(result.useHeaderName()).isTrue();
+        assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
+    }
+
+    @Test
     @DisplayName("UT merge() when the call site names a ttl should let it win over the global one")
     void merge_whenCallSiteNamesTtl_shouldLetItWinOverGlobalOne() {
         // given
@@ -654,6 +684,11 @@ class DefaultOperationMetadataManagerUnitTest {
         private UnspecifiedRawOperationMetadata(String headerName, Duration ttl) {
             this.headerName = headerName;
             this.ttl = ttl;
+        }
+
+        @Override
+        public boolean useHeaderName() {
+            return true;
         }
 
         @Override

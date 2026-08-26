@@ -46,15 +46,20 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT build() when the header name was never decided should refuse to build")
-    void build_whenHeaderNameWasNeverDecided_shouldRefuseToBuild() {
-        assertThatThrownBy(() -> DefaultOperationMetadata.builder()
+    @DisplayName("UT build() when the header name was never decided should report that no header is read")
+    void build_whenHeaderNameWasNeverDecided_shouldReportThatNoHeaderIsRead() {
+        // when
+        OperationMetadata result = DefaultOperationMetadata.builder()
                 .ttl(Duration.ofHours(1))
                 .processorType(ProcessorType.LOCK_BASED)
                 .responseCacheConfig(ResponseCacheConfig.disabled())
-                .build())
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("headerName cannot be null");
+                .build();
+
+        // then
+        assertThat(result.getHeaderName()).isNull();
+        assertThat(result.useHeaderName())
+                .describedAs("a call site taking its key from an expression resolves to metadata without a header")
+                .isFalse();
     }
 
     @Test
@@ -161,7 +166,7 @@ class DefaultOperationMetadataUnitTest {
                 .responseCacheConfig(ResponseCacheConfig.all())
                 .build())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("rolled back together with the business logic");
+                .hasMessageContaining("responseCacheConfig cannot be enabled if processorType is TRANSACTIONAL");
     }
 
     @Test
