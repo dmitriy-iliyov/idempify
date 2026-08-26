@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
@@ -70,7 +70,7 @@ final class TestOperationMetadata implements OperationMetadata {
 
     static final class Builder {
 
-        private String headerName = IdempotencyConstants.HEADER_NAME;
+        private String headerName = IdempifyDefaults.HEADER_NAME;
         private Duration ttl = Duration.ofHours(24);
         private ConflictHandler conflictHandler;
         private boolean useFingerprint;

@@ -3,7 +3,7 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
@@ -356,7 +356,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
      */
     private static OperationMetadata brokenFingerprintMetadata() {
         return TestOperationMetadata.builder()
-                .headerName(IdempotencyConstants.HEADER_NAME)
+                .headerName(IdempifyDefaults.HEADER_NAME)
                 .useFingerprint(true)
                 .fingerprintPolicy(new BlankFingerprintPolicy())
                 .build();
@@ -380,7 +380,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
 
     private static MockHttpServletRequest keyedRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/payments");
-        request.addHeader(IdempotencyConstants.HEADER_NAME, UUID.randomUUID().toString());
+        request.addHeader(IdempifyDefaults.HEADER_NAME, UUID.randomUUID().toString());
         return request;
     }
 

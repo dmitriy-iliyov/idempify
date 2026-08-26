@@ -3,7 +3,7 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
@@ -49,7 +49,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class OperationResponseCachingFilterUnitTest {
 
-    private static final String HEADER_NAME = IdempotencyConstants.HEADER_NAME;
+    private static final String HEADER_NAME = IdempifyDefaults.HEADER_NAME;
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final String METHOD = "POST";
     private static final String URI = "/payments";

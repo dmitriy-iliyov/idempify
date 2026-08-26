@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,9 +27,9 @@ import java.util.Objects;
 public final class ResponseCacheConfig {
 
     public static final Logger log = LoggerFactory.getLogger(ResponseCacheConfig.class);
-    public static final boolean DEFAULT_SHOULD_CACHE = true;
-    public static final boolean DEFAULT_SHOULD_CACHE_4XX = true;
-    public static final boolean DEFAULT_SHOULD_CACHE_5XX = false;
+    public static final boolean DEFAULT_SHOULD_CACHE = Boolean.parseBoolean(IdempifyDefaults.CACHE_ENABLED_VALUE);
+    public static final boolean DEFAULT_SHOULD_CACHE_4XX = Boolean.parseBoolean(IdempifyDefaults.CACHE_4XX_VALUE);
+    public static final boolean DEFAULT_SHOULD_CACHE_5XX = Boolean.parseBoolean(IdempifyDefaults.CACHE_5XX_VALUE);
 
     private final Boolean enabled;
     private final Boolean shouldCache4xx;

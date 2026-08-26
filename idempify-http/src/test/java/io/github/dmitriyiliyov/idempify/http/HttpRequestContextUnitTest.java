@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -42,11 +42,11 @@ class HttpRequestContextUnitTest {
         // given
         UUID key = UUID.randomUUID();
         MockHttpServletRequest request = request();
-        request.addHeader(IdempotencyConstants.HEADER_NAME, key.toString());
+        request.addHeader(IdempifyDefaults.HEADER_NAME, key.toString());
         HttpRequestContext tested = new HttpRequestContext(request);
 
         // when
-        String result = tested.getHeader(IdempotencyConstants.HEADER_NAME);
+        String result = tested.getHeader(IdempifyDefaults.HEADER_NAME);
 
         // then
         assertThat(result).isEqualTo(key.toString());
@@ -59,7 +59,7 @@ class HttpRequestContextUnitTest {
         HttpRequestContext tested = new HttpRequestContext(request());
 
         // when
-        String result = tested.getHeader(IdempotencyConstants.HEADER_NAME);
+        String result = tested.getHeader(IdempifyDefaults.HEADER_NAME);
 
         // then
         assertThat(result).isNull();

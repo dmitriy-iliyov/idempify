@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
 
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ import java.util.function.Consumer;
  */
 public final class FingerprintConfig {
 
-    public static final BodyHandleStrategy DEFAULT_BODY_HANDLE_STRATEGY = BodyHandleStrategy.CANONICALIZED_BODY_HASH;
+    public static final BodyHandleStrategy DEFAULT_BODY_HANDLE_STRATEGY = BodyHandleStrategy.valueOf(IdempifyDefaults.BODY_HANDLE_STRATEGY_VALUE);
     public static final EmptyBodyFallback DEFAULT_EMPTY_BODY_FALLBACK = new ThrowingEmptyBodyFallback();
     public static final BodyCanonicalizerConfig DEFAULT_BODY_CANONICALIZER_CONFIG = BodyCanonicalizerConfig.defaults();
 

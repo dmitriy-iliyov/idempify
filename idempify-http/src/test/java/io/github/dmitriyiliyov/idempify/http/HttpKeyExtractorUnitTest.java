@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotencyConstants;
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
@@ -27,7 +27,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is null should throw IdempotencyKeyException")
     void extract_whenHeaderIsNull_shouldThrowIdempotencyKeyException() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn(null);
@@ -42,7 +42,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is blank should throw IdempotencyKeyException")
     void extract_whenHeaderIsBlank_shouldThrowIdempotencyKeyException() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn("   ");
@@ -57,7 +57,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is valid UUID should return UUID")
     void extract_whenHeaderIsValidUuid_shouldReturnUuid() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         UUID expected = UUID.randomUUID();
         RequestContext context = mock(RequestContext.class);
 
@@ -74,7 +74,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is invalid UUID should throw InvalidIdempotencyKeyException")
     void extract_whenHeaderIsInvalidUuid_shouldThrowInvalidIdempotencyKeyException() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn("not-a-uuid");
@@ -88,7 +88,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is an uppercase UUID should return the same key as its lowercase form")
     void extract_whenHeaderIsUppercaseUuid_shouldReturnSameKeyAsLowercaseForm() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         UUID expected = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         RequestContext context = mock(RequestContext.class);
 
@@ -105,7 +105,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when header is an invalid UUID should name the rejected value")
     void extract_whenHeaderIsInvalidUuid_shouldNameRejectedValue() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn("not-a-uuid");
@@ -121,7 +121,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when the header value is padded with spaces should be rejected")
     void extract_whenHeaderValueIsPaddedWithSpaces_shouldBeRejected() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn(" aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee ");
@@ -135,7 +135,7 @@ class HttpKeyExtractorUnitTest {
     @DisplayName("UT extract() when the header value is a non-canonical UUID should be rejected")
     void extract_whenHeaderValueIsNonCanonicalUuid_shouldBeRejected() {
         // given
-        String headerName = IdempotencyConstants.HEADER_NAME;
+        String headerName = IdempifyDefaults.HEADER_NAME;
         RequestContext context = mock(RequestContext.class);
 
         when(context.getHeader(headerName)).thenReturn("1-2-3-4-5");

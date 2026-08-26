@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 
@@ -19,6 +20,9 @@ import java.util.Objects;
  */
 public final class ConflictConfig {
 
+    private static final Boolean DEFAULT_ENABLED = Boolean.parseBoolean(IdempifyDefaults.CONFLICT_ENABLED_VALUE);
+    public static final ConflictHandleStrategy DEFAULT_CONFLICT_HANDLE_STRATEGY =
+            ConflictHandleStrategy.valueOf(IdempifyDefaults.CONFLICT_HANDLE_STRATEGY_VALUE);
     public static final Map<ConflictHandleStrategy, ConflictHandlerConfig> DEFAULT_HANDLER_CONFIGS = Map.of(
             ConflictHandleStrategy.REJECT, ConflictHandlerConfig.NOOP,
             ConflictHandleStrategy.WAIT, WaitConflictHandlerConfig.defaults()
@@ -126,9 +130,9 @@ public final class ConflictConfig {
 
     public static ConflictConfig defaults() {
         return builder()
-                .enabled(true)
-                .strategy(ConflictHandleStrategy.REJECT)
-                .handlerConfig(ConflictHandlerConfig.NOOP)
+                .enabled(DEFAULT_ENABLED)
+                .strategy(DEFAULT_CONFLICT_HANDLE_STRATEGY)
+                .handlerConfig(getDefaultHandlerConfig(DEFAULT_CONFLICT_HANDLE_STRATEGY))
                 .build();
     }
 

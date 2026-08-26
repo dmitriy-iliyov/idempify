@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 
 import java.time.Duration;
@@ -20,10 +21,11 @@ import java.util.Objects;
  */
 public final class WaitConflictHandlerConfig implements ConflictHandlerConfig {
 
-    public static final long DEFAULT_DELAY_MILLIS = 5_000L;
-    public static final double DEFAULT_MULTIPLIER = 1.5;
-    public static final int DEFAULT_MAX_ATTEMPTS = 5;
-    public static final long DEFAULT_MAX_DURATION_MILLIS = 60_000L;
+    public static final long DEFAULT_DELAY_MILLIS = Duration.parse(IdempifyDefaults.WAIT_DELAY_VALUE).toMillis();
+    public static final double DEFAULT_MULTIPLIER = Double.parseDouble(IdempifyDefaults.WAIT_MULTIPLIER_VALUE);
+    public static final int DEFAULT_MAX_ATTEMPTS = Integer.parseInt(IdempifyDefaults.WAIT_MAX_ATTEMPTS_VALUE);
+    public static final long DEFAULT_MAX_DURATION_MILLIS =
+            Duration.parse(IdempifyDefaults.WAIT_MAX_DURATION_VALUE).toMillis();
 
     private final Long delay;
     private final Double multiplier;

@@ -98,6 +98,17 @@ class ConflictConfigUnitTest {
     }
 
     @Test
+    @DisplayName("UT merge() when the reference handles no conflict should let the target switch handling on")
+    void merge_whenReferenceHandlesNoConflict_shouldLetTargetSwitchHandlingOn() {
+        // when
+        ConflictConfig result = ConflictConfig.merge(ConflictConfig.disabled(), ConflictConfig.reject());
+
+        // then
+        assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getStrategy()).isEqualTo(ConflictHandleStrategy.REJECT);
+    }
+
+    @Test
     @DisplayName("UT merge() when the target hands over a handler should keep nothing but that handler")
     void merge_whenTargetHandsOverHandler_shouldKeepNothingButThatHandler() {
         // given
@@ -274,6 +285,21 @@ class ConflictConfigUnitTest {
         assertThatThrownBy(config::validate)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("WAIT");
+    }
+
+    @Test
+    @DisplayName("UT validate() when the waiting strategy carries no backoff should say so itself")
+    void validate_whenWaitingStrategyCarriesNoBackoff_shouldSaySoItself() {
+        // given
+        ConflictConfig config = ConflictConfig.builder()
+                .enabled(true)
+                .strategy(ConflictHandleStrategy.WAIT)
+                .build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ConflictHandlerConfig must be specified when ConflictHandleStrategy is WAIT");
     }
 
     @Test

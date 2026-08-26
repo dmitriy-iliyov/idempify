@@ -64,8 +64,8 @@ public final class TestOperationMetadata implements OperationMetadata {
 
     public static final class Builder {
 
-        private String headerName = IdempotencyConstants.HEADER_NAME;
-        private Duration ttl = IdempotencyConstants.TTL;
+        private String headerName = IdempifyDefaults.HEADER_NAME;
+        private Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
         private ConflictHandler conflictHandler;
         private FingerprintPolicy fingerprintPolicy;
         private ResponseCacheConfig responseCacheConfig = ResponseCacheConfig.defaults();

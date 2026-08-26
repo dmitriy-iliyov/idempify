@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
@@ -22,8 +23,10 @@ public final class ConflictProperties {
     @NestedConfigurationProperty
     private final WaitConflictProperties wait;
 
-    public ConflictProperties(@DefaultValue("true") Boolean enabled,
-                              @DefaultValue("REJECT") ConflictHandleStrategy strategy,
+    public ConflictProperties(@DefaultValue(IdempifyDefaults.CONFLICT_ENABLED_VALUE)
+                              Boolean enabled,
+                              @DefaultValue(IdempifyDefaults.CONFLICT_HANDLE_STRATEGY_VALUE)
+                              ConflictHandleStrategy strategy,
                               WaitConflictProperties wait) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
         this.strategy = Objects.requireNonNull(strategy, "strategy cannot be null");
@@ -93,10 +96,10 @@ public final class ConflictProperties {
         private final Duration maxDuration;
         private final WaitConflictHandlerConfig config;
 
-        public WaitConflictProperties(@DefaultValue("5s") Duration delay,
-                                      @DefaultValue("1.5") Double multiplier,
-                                      @DefaultValue("5") Integer maxAttempts,
-                                      @DefaultValue("60s") Duration maxDuration) {
+        public WaitConflictProperties(@DefaultValue(IdempifyDefaults.WAIT_DELAY_VALUE) Duration delay,
+                                      @DefaultValue(IdempifyDefaults.WAIT_MULTIPLIER_VALUE) Double multiplier,
+                                      @DefaultValue(IdempifyDefaults.WAIT_MAX_ATTEMPTS_VALUE) Integer maxAttempts,
+                                      @DefaultValue(IdempifyDefaults.WAIT_MAX_DURATION_VALUE) Duration maxDuration) {
             this.delay = Objects.requireNonNull(delay, "delay cannot be null");
             this.multiplier = Objects.requireNonNull(multiplier, "multiplier cannot be null");
             this.maxAttempts = Objects.requireNonNull(maxAttempts, "maxAttempts cannot be null");

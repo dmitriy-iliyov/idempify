@@ -65,7 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class IdempifyHttpComponentTest {
 
-    private static final String HEADER_NAME = IdempotencyConstants.HEADER_NAME;
+    private static final String HEADER_NAME = IdempifyDefaults.HEADER_NAME;
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final String BODY = "{\"amount\":10}";
     private static final String OTHER_BODY = "{\"amount\":9000}";

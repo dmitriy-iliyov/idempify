@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizer;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.CanonicalizeStrategy;
@@ -19,8 +20,9 @@ import java.util.stream.Collectors;
  */
 public final class BodyCanonicalizerConfig {
 
-    public static final BodyFormat DEFAULT_FORMAT = BodyFormat.JSON;
-    public static final CanonicalizeStrategy DEFAULT_CANONICALIZE_STRATEGY = CanonicalizeStrategy.LEXICOGRAPHICAL;
+    public static final BodyFormat DEFAULT_FORMAT = BodyFormat.valueOf(IdempifyDefaults.BODY_FORMAT_VALUE);
+    public static final CanonicalizeStrategy DEFAULT_CANONICALIZE_STRATEGY =
+            CanonicalizeStrategy.valueOf(IdempifyDefaults.CANONICALIZE_STRATEGY_VALUE);
     public static final Set<String> DEFAULT_INCLUDED_FIELDS = Set.of();
     public static final Set<String> DEFAULT_EXCLUDED_FIELDS = Set.of();
 

@@ -381,7 +381,7 @@ class IdempotencyConfigUnitTest {
     @DisplayName("UT validate() when a transactional config caches responses should throw IllegalStateException")
     void validate_whenTransactionalConfigCachesResponses_shouldThrowIllegalStateException() {
         // given
-        IdempotencyConfig config = transactional().responseCache(ResponseCacheConfig.defaults()).build();
+        IdempotencyConfig config = transactional().responseCache(ResponseCacheConfig.all()).build();
 
         // when / then
         assertThatThrownBy(config::validate)

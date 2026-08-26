@@ -192,7 +192,8 @@ class IdempifyCoreComponentTest {
         // then
         assertThat(firstRun.replayed()).isFalse();
         assertThat(replay.replayed()).isTrue();
-        assertThat(replay.getExpiresAt()).isEqualTo(TestClock.EPOCH.plus(IdempotencyConstants.TTL));
+        assertThat(replay.getExpiresAt())
+                .isEqualTo(TestClock.EPOCH.plus(Duration.parse(IdempifyDefaults.TTL_VALUE)));
     }
 
     @Test

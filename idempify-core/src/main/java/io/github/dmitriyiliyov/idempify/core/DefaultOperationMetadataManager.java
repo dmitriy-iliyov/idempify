@@ -61,7 +61,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         return config;
     }
 
-    public IdempotencyConfig merge(IdempotencyConfig config, RawOperationMetadata rawMetadata) {
+    private IdempotencyConfig merge(IdempotencyConfig config, RawOperationMetadata rawMetadata) {
         IdempotencyConfig.Builder configBuilder = IdempotencyConfig.builder(config);
 
         mergeHeaderName(configBuilder, rawMetadata);

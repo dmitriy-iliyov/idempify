@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
 import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
@@ -25,9 +26,12 @@ public final class FingerprintProperties {
     @NestedConfigurationProperty
     private final BodyCanonicalizerProperties canonicalizer;
 
-    public FingerprintProperties(@DefaultValue("true") Boolean enabled,
-                                 @DefaultValue("CANONICALIZED_BODY_HASH") BodyHandleStrategy strategy,
-                                 @DefaultValue("THROWING") EmptyBodyFallbackStrategy emptyBodyFallback,
+    public FingerprintProperties(@DefaultValue(IdempifyDefaults.FINGERPRINT_ENABLED_VALUE)
+                                 Boolean enabled,
+                                 @DefaultValue(IdempifyDefaults.BODY_HANDLE_STRATEGY_VALUE)
+                                 BodyHandleStrategy strategy,
+                                 @DefaultValue(IdempifyDefaults.EMPTY_BODY_FALLBACK_VALUE)
+                                 EmptyBodyFallbackStrategy emptyBodyFallback,
                                  BodyCanonicalizerProperties canonicalizer) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
         this.strategy = Objects.requireNonNull(strategy, "strategy cannot be null");
@@ -106,8 +110,8 @@ public final class FingerprintProperties {
         private final Set<String> excludedFields;
         private final BodyCanonicalizerConfig config;
 
-        public BodyCanonicalizerProperties(@DefaultValue("JSON") BodyFormat format,
-                                           @DefaultValue("LEXICOGRAPHICAL") CanonicalizeStrategy strategy,
+        public BodyCanonicalizerProperties(@DefaultValue(IdempifyDefaults.BODY_FORMAT_VALUE) BodyFormat format,
+                                           @DefaultValue(IdempifyDefaults.CANONICALIZE_STRATEGY_VALUE) CanonicalizeStrategy strategy,
                                            @DefaultValue Set<String> includedFields,
                                            @DefaultValue Set<String> excludedFields) {
             this.format = Objects.requireNonNull(format, "format cannot be null");

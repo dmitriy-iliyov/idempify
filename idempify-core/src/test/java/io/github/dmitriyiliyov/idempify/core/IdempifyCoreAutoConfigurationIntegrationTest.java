@@ -12,7 +12,9 @@ import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import io.github.dmitriyiliyov.idempify.core.response.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.context.annotation.ImportCandidates;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -42,6 +44,16 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     private static final UUID OTHER_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
     private final ApplicationContextRunner contextRunner = contextRunnerWithEverything();
+
+    @Test
+    @DisplayName("IT autoConfiguration should be registered so that an application only adds the dependency")
+    void autoConfiguration_shouldBeRegisteredSoThatApplicationOnlyAddsDependency() {
+        // when
+        Iterable<String> candidates = ImportCandidates.load(AutoConfiguration.class, getClass().getClassLoader());
+
+        // then
+        assertThat(candidates).contains(IdempifyCoreAutoConfiguration.class.getName());
+    }
 
     @Test
     @DisplayName("IT context when required beans exist should register every default bean of the module")
@@ -102,8 +114,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
             OperationMetadata metadata = resolver.resolve(paymentMethod(), PaymentService.class);
 
-            assertThat(metadata.getHeaderName()).isEqualTo(IdempotencyConstants.HEADER_NAME);
-            assertThat(metadata.getTtl()).isEqualTo(IdempotencyConstants.TTL);
+            assertThat(metadata.getHeaderName()).isEqualTo(IdempifyDefaults.HEADER_NAME);
+            assertThat(metadata.getTtl()).isEqualTo(Duration.parse(IdempifyDefaults.TTL_VALUE));
             assertThat(metadata.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
             assertThat(metadata.getConflictHandler()).isInstanceOf(RejectConflictHandler.class);
             assertThat(metadata.useFingerprint()).isTrue();
@@ -133,7 +145,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                     OperationMetadata metadata = context.getBean(OperationMetadataResolver.class)
                             .resolve(paymentMethod(), PaymentService.class);
 
-                    assertThat(metadata.getHeaderName()).isEqualTo(IdempotencyConstants.HEADER_NAME);
+                    assertThat(metadata.getHeaderName()).isEqualTo(IdempifyDefaults.HEADER_NAME);
                 });
     }
 
@@ -363,7 +375,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         contextRunner.run(context -> {
             KeyExtractor keyExtractor = context.getBean(KeyExtractor.class);
 
-            UUID extracted = keyExtractor.extract(IdempotencyConstants.HEADER_NAME, request());
+            UUID extracted = keyExtractor.extract(IdempifyDefaults.HEADER_NAME, request());
 
             assertThat(extracted).isEqualTo(KEY);
         });
@@ -531,9 +543,9 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
      */
     private static IdempotencyConfig globalConfig() {
         return IdempotencyConfig.builder()
-                .headerName(IdempotencyConstants.HEADER_NAME)
-                .ttl(IdempotencyConstants.TTL)
-                .processorType(IdempotencyConstants.PROCESSOR_TYPE)
+                .headerName(IdempifyDefaults.HEADER_NAME)
+                .ttl(Duration.parse(IdempifyDefaults.TTL_VALUE))
+                .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
                 .responseCache(ResponseCacheConfig.disabled())

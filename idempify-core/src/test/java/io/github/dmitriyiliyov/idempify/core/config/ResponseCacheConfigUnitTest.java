@@ -9,14 +9,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ResponseCacheConfigUnitTest {
 
     @Test
-    @DisplayName("UT defaults() should cache, keeping 4xx and dropping 5xx")
-    void defaults_shouldCacheKeeping4xxAndDropping5xx() {
+    @DisplayName("UT defaults() should cache nothing until an application asks for it")
+    void defaults_shouldCacheNothingUntilApplicationAsksForIt() {
         // when
         ResponseCacheConfig result = ResponseCacheConfig.defaults();
 
         // then
-        assertThat(result.isEnabled()).isTrue();
-        assertThat(result.shouldCache4xx()).isTrue();
+        assertThat(result.isEnabled()).isFalse();
+        assertThat(result.shouldCache4xx()).isFalse();
         assertThat(result.shouldCache5xx()).isFalse();
     }
 
@@ -126,10 +126,15 @@ class ResponseCacheConfigUnitTest {
     @DisplayName("UT merge() when the target keeps 5xx should take it over the reference")
     void merge_whenTargetKeeps5xx_shouldTakeItOverReference() {
         // given
+        ResponseCacheConfig reference = ResponseCacheConfig.builder()
+                .enabled(true)
+                .shouldCache4xx(true)
+                .shouldCache5xx(false)
+                .build();
         ResponseCacheConfig target = ResponseCacheConfig.builder().shouldCache5xx(true).build();
 
         // when
-        ResponseCacheConfig result = ResponseCacheConfig.merge(ResponseCacheConfig.defaults(), target);
+        ResponseCacheConfig result = ResponseCacheConfig.merge(reference, target);
 
         // then
         assertThat(result).isEqualTo(ResponseCacheConfig.all());

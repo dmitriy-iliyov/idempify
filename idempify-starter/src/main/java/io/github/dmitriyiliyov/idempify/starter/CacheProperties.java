@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
 import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
@@ -37,10 +38,10 @@ public final class CacheProperties implements CachePropertiesHolder {
     private final Boolean shouldCache5xx;
     private final InMemoryCacheProperties inMemory;
 
-    public CacheProperties(@DefaultValue("false") Boolean enabled,
+    public CacheProperties(@DefaultValue(IdempifyDefaults.CACHE_ENABLED_VALUE) Boolean enabled,
                            String cacheName,
-                           @DefaultValue("false") Boolean shouldCache4xx,
-                           @DefaultValue("false") Boolean shouldCache5xx,
+                           @DefaultValue(IdempifyDefaults.CACHE_4XX_VALUE) Boolean shouldCache4xx,
+                           @DefaultValue(IdempifyDefaults.CACHE_5XX_VALUE) Boolean shouldCache5xx,
                            @DefaultValue InMemoryCacheProperties inMemory) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
         if (enabled && StringUtils.isBlank(cacheName)) {
@@ -105,7 +106,9 @@ public final class CacheProperties implements CachePropertiesHolder {
 
         private final Integer capacity;
 
-        public InMemoryCacheProperties(@DefaultValue("100") Integer capacity) {
+        public InMemoryCacheProperties(
+                @DefaultValue(IdempifyDefaults.IN_MEMORY_CACHE_CAPACITY_VALUE) Integer capacity
+        ) {
             Objects.requireNonNull(capacity, "capacity cannot be null");
             if (capacity <= 0) {
                 throw new IllegalArgumentException(

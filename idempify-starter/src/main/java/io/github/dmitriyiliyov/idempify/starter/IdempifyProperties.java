@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
 import io.github.dmitriyiliyov.idempify.core.config.*;
@@ -32,10 +33,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
     @NestedConfigurationProperty
     private final CacheProperties cache;
 
-    public IdempifyProperties(@DefaultValue("true") Boolean enabled,
-                              @DefaultValue("Idempotency-Key") String headerName,
-                              @DefaultValue("24h") Duration ttl,
-                              @DefaultValue("LOCK_BASED") ProcessorType processorType,
+    public IdempifyProperties(@DefaultValue(IdempifyDefaults.ENABLED_VALUE) Boolean enabled,
+                              @DefaultValue(IdempifyDefaults.HEADER_NAME) String headerName,
+                              @DefaultValue(IdempifyDefaults.TTL_VALUE) Duration ttl,
+                              @DefaultValue(IdempifyDefaults.PROCESSOR_TYPE_NAME) ProcessorType processorType,
                               @DefaultValue ConflictProperties conflict,
                               @DefaultValue FingerprintProperties fingerprint,
                               @DefaultValue CacheProperties cache) {
