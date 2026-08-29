@@ -1,22 +1,17 @@
 package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.ResultSerializer;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizerCreator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 @ConditionalOnClass(ObjectMapper.class)
 public class IdempifyJacksonAutoConfiguration {
 

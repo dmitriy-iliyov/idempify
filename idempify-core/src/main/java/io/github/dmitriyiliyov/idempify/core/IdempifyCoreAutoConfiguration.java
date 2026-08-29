@@ -8,10 +8,7 @@ import io.github.dmitriyiliyov.idempify.core.conflict.DefaultConflictHandlerProv
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
 import io.github.dmitriyiliyov.idempify.core.request.DelegatingKeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.response.InMemoryResponseCache;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.response.*;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -22,14 +19,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Set;
 
 @AutoConfiguration
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 public class IdempifyCoreAutoConfiguration {
 
     @Bean
@@ -41,8 +34,8 @@ public class IdempifyCoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ConflictHandlerProvider idempifyConflictHandlerProvider(OperationRepository repository,
-                                                           ResultDeserializer deserializer,
-                                                           Clock clock) {
+                                                                   ResultDeserializer deserializer,
+                                                                   Clock clock) {
         return new DefaultConflictHandlerProvider(repository, deserializer, clock);
     }
 
@@ -72,13 +65,30 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnProperty(
+            prefix = "idempify.metrics",
+            name = "enabled",
+            havingValue = "false",
+            matchIfMissing = true
+    )
+    @ConditionalOnMissingBean
+    public IdempotencyEventListener idempifyIdempotencyEventListener() {
+        return IdempotencyEventListener.NOOP;
+    }
+
+    @Bean
+    @ConditionalOnProperty(
             prefix = "idempify.cache",
             name = "enabled",
             havingValue = "true"
     )
     @ConditionalOnMissingBean
-    public ResponseCache idempifyInMemoryResponseCache(CachePropertiesHolder cachePropertiesHolder, Clock clock) {
-        return new InMemoryResponseCache(cachePropertiesHolder.getInMemoryCacheCapacity(), clock);
+    public ResponseCache idempifyInMemoryResponseCache(CachePropertiesHolder cachePropertiesHolder,
+                                                       Clock clock,
+                                                       Set<ResponseCacheWrapper> wrappers) {
+        return ResponseCacheWrapperUtils.wrapWithPriority(
+                new InMemoryResponseCache(cachePropertiesHolder.getInMemoryCacheCapacity(), clock),
+                wrappers
+        );
     }
 
     @Bean
@@ -112,7 +122,7 @@ public class IdempifyCoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public OperationMetadataResolver idempifyOperationMetadataResolver(OperationMetadataCache cache,
-                                                               OperationMetadataManager manager) {
+                                                                       OperationMetadataManager manager) {
         return new DefaultOperationMetadataResolver(cache, manager);
     }
 

@@ -134,4 +134,28 @@ class IdempifyAopAutoConfigurationIntegrationTest {
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .run(context -> assertThat(context).hasFailed());
     }
+
+    @Test
+    @DisplayName("IT context when idempify is switched off should register nothing at all")
+    void context_whenIdempifyIsSwitchedOff_shouldRegisterNothingAtAll() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(IdempotentInterceptor.class);
+                    assertThat(context).doesNotHaveBean(IdempotentAdvisor.class);
+                    assertThat(context).doesNotHaveBean(IdempotentOperationExpressionEvaluator.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when idempify is switched on by hand should register the module all the same")
+    void context_whenIdempifyIsSwitchedOnByHand_shouldRegisterModuleAllTheSame() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempotentInterceptor.class);
+                    assertThat(context).hasSingleBean(IdempotentAdvisor.class);
+                });
+    }
 }

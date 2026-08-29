@@ -44,8 +44,13 @@ public interface OperationMetadata {
      */
     ProcessorType getProcessorType();
 
-
-    default boolean shouldHandleConflict() {
+    /**
+     * Returns whether a concurrent duplicate of this call site is handled by a handler rather than left to the
+     * processor - which is to say whether a handler was resolved at all. Always {@code false} under
+     * {@code TRANSACTIONAL}: there the insert lock already settles the race, and a conflict config is
+     * rejected outright.
+     */
+    default boolean useConflictHandler() {
         return getConflictHandler() != null;
     }
 

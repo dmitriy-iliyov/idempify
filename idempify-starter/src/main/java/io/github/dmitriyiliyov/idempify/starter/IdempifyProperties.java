@@ -32,6 +32,8 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
     private final FingerprintProperties fingerprint;
     @NestedConfigurationProperty
     private final CacheProperties cache;
+    @NestedConfigurationProperty
+    private final MetricsProperties metrics;
 
     public IdempifyProperties(@DefaultValue(IdempifyDefaults.ENABLED_VALUE) Boolean enabled,
                               @DefaultValue(IdempifyDefaults.HEADER_NAME) String headerName,
@@ -39,7 +41,8 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                               @DefaultValue(IdempifyDefaults.PROCESSOR_TYPE_NAME) ProcessorType processorType,
                               @DefaultValue ConflictProperties conflict,
                               @DefaultValue FingerprintProperties fingerprint,
-                              @DefaultValue CacheProperties cache) {
+                              @DefaultValue CacheProperties cache,
+                              @DefaultValue MetricsProperties metrics) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
 
         if (enabled) {
@@ -58,6 +61,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
             this.conflict = Objects.requireNonNull(conflict, "conflict cannot be null");
             this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint cannot be null");
             this.cache = Objects.requireNonNull(cache, "cache cannot be null");
+            this.metrics = Objects.requireNonNull(metrics, "metrics cannot be null");
             rejectSectionsTheTransactionalProcessorCannotUse();
         } else {
             this.headerName = null;
@@ -66,6 +70,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
             this.conflict = null;
             this.fingerprint = null;
             this.cache = null;
+            this.metrics = null;
         }
     }
 
@@ -157,6 +162,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
         return cache;
     }
 
+    public MetricsProperties getMetrics() {
+        return metrics;
+    }
+
     @Override
     public String toString() {
         return "IdempifyProperties{" +
@@ -167,6 +176,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                 ", conflict=" + conflict +
                 ", fingerprint=" + fingerprint +
                 ", cache=" + cache +
+                ", metrics=" + metrics +
                 '}';
     }
 }

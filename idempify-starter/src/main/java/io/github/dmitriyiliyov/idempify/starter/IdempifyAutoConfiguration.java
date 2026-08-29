@@ -1,21 +1,16 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 @EnableConfigurationProperties(IdempifyProperties.class)
 public class IdempifyAutoConfiguration {
 

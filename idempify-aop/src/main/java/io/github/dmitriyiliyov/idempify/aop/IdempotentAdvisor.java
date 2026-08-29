@@ -38,7 +38,7 @@ public class IdempotentAdvisor {
         this.interceptor = Objects.requireNonNull(interceptor, "interceptor cannot be null");
     }
 
-    @Pointcut("@annotation(idempotent) && execution( public * * (..) )")
+    @Pointcut("@annotation(idempotent) && execution(public * * (..))")
     public void pointcut(Idempotent idempotent) { }
 
     @Around(

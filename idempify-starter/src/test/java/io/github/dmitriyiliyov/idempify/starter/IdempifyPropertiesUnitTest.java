@@ -42,6 +42,7 @@ class IdempifyPropertiesUnitTest {
         assertThat(tested.getConflict()).isNull();
         assertThat(tested.getFingerprint()).isNull();
         assertThat(tested.getCache()).isNull();
+        assertThat(tested.getMetrics()).isNull();
     }
 
     @Test
@@ -56,6 +57,7 @@ class IdempifyPropertiesUnitTest {
                 .conflict(null)
                 .fingerprint(null)
                 .cache(null)
+                .metrics(null)
                 .build();
 
         // then
@@ -365,18 +367,29 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
+    @DisplayName("UT constructor() when the metrics block is null should throw NullPointerException")
+    void constructor_whenMetricsBlockIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> properties().metrics(null).build())
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("metrics cannot be null");
+    }
+
+    @Test
     @DisplayName("UT getters() should answer what was configured")
     void getters_shouldAnswerWhatWasConfigured() {
         // given
         ConflictProperties conflict = conflictProperties(true);
         FingerprintProperties fingerprint = fingerprintProperties(true);
         CacheProperties cache = new CacheProperties(false, null, false, false, inMemory());
+        MetricsProperties metrics = new MetricsProperties(false);
 
         // when
         IdempifyProperties tested = properties()
                 .conflict(conflict)
                 .fingerprint(fingerprint)
                 .cache(cache)
+                .metrics(metrics)
                 .build();
 
         // then
@@ -385,6 +398,7 @@ class IdempifyPropertiesUnitTest {
         assertThat(tested.getConflict()).isSameAs(conflict);
         assertThat(tested.getFingerprint()).isSameAs(fingerprint);
         assertThat(tested.getCache()).isSameAs(cache);
+        assertThat(tested.getMetrics()).isSameAs(metrics);
     }
 
     @Test
@@ -404,7 +418,8 @@ class IdempifyPropertiesUnitTest {
                 "processorType=LOCK_BASED",
                 "conflict=ConflictProperties{",
                 "fingerprint=FingerprintProperties{",
-                "cache=CacheProperties{"
+                "cache=CacheProperties{",
+                "metrics=MetricsProperties{"
         );
     }
 
@@ -440,6 +455,7 @@ class IdempifyPropertiesUnitTest {
         private ConflictProperties conflict = conflictProperties(true);
         private FingerprintProperties fingerprint = fingerprintProperties(true);
         private CacheProperties cache = new CacheProperties(false, null, false, false, inMemory());
+        private MetricsProperties metrics = new MetricsProperties(true);
 
         private PropertiesBuilder enabled(Boolean enabled) {
             this.enabled = enabled;
@@ -476,8 +492,22 @@ class IdempifyPropertiesUnitTest {
             return this;
         }
 
+        private PropertiesBuilder metrics(MetricsProperties metrics) {
+            this.metrics = metrics;
+            return this;
+        }
+
         private IdempifyProperties build() {
-            return new IdempifyProperties(enabled, headerName, ttl, processorType, conflict, fingerprint, cache);
+            return new IdempifyProperties(
+                    enabled,
+                    headerName,
+                    ttl,
+                    processorType,
+                    conflict,
+                    fingerprint,
+                    cache,
+                    metrics
+            );
         }
     }
 

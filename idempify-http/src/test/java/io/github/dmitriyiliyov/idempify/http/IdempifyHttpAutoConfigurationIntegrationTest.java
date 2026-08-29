@@ -331,6 +331,33 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
                 });
     }
 
+    @Test
+    @DisplayName("IT context when idempify is switched off should register nothing at all")
+    void context_whenIdempifyIsSwitchedOff_shouldRegisterNothingAtAll() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(HttpKeyExtractor.class);
+                    assertThat(context).doesNotHaveBean(IdempotentHandlerRegistry.class);
+                    assertThat(context).doesNotHaveBean(IdempotentRequestMatcher.class);
+                    assertThat(context).doesNotHaveBean(RequestContextProvider.class);
+                    assertThat(context).doesNotHaveBean(OperationStateChannel.class);
+                    assertThat(context).doesNotHaveBean(FilterRegistrationBean.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when idempify is switched on by hand should register the module all the same")
+    void context_whenIdempifyIsSwitchedOnByHand_shouldRegisterModuleAllTheSame() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(HttpKeyExtractor.class);
+                    assertThat(context).hasSingleBean(IdempotentRequestMatcher.class);
+                });
+    }
+
     private static WebApplicationContextRunner contextRunnerWithout() {
         return new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyHttpAutoConfiguration.class));

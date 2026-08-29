@@ -56,4 +56,27 @@ class IdempifyJacksonAutoConfigurationIntegrationTest {
                     assertThat(context).hasSingleBean(JacksonResultSerializer.class);
                 });
     }
+
+    @Test
+    @DisplayName("IT context when idempify is switched off should register nothing at all")
+    void context_whenIdempifyIsSwitchedOff_shouldRegisterNothingAtAll() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(ResultSerializer.class);
+                    assertThat(context).doesNotHaveBean(ResultDeserializer.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when idempify is switched on by hand should register the module all the same")
+    void context_whenIdempifyIsSwitchedOnByHand_shouldRegisterModuleAllTheSame() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(JacksonResultSerializer.class);
+                    assertThat(context).hasSingleBean(JacksonResultDeserializer.class);
+                });
+    }
 }

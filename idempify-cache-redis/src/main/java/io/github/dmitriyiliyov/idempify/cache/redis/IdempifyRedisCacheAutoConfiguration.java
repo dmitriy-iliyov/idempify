@@ -2,10 +2,9 @@ package io.github.dmitriyiliyov.idempify.cache.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
+import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.IdempifyCoreAutoConfiguration;
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.response.CachedResponse;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.response.*;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -18,14 +17,10 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.util.Objects;
+import java.util.Set;
 
 @AutoConfiguration(after = RedisAutoConfiguration.class, before = IdempifyCoreAutoConfiguration.class)
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 @ConditionalOnClass({RedisTemplate.class, ObjectMapper.class})
 @ConditionalOnProperty(
         prefix = "idempify.cache",
@@ -50,10 +45,14 @@ public class IdempifyRedisCacheAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ResponseCache idempifyRedisResponseCache(RedisTemplate<String, CachedResponse> redisTemplate,
-                                                    CachePropertiesHolder holder) {
-        return new RedisResponseCache(
-                redisTemplate,
-                Objects.requireNonNull(holder.getCacheName(), "cacheName cannot be null")
+                                                    CachePropertiesHolder holder,
+                                                    Set<ResponseCacheWrapper> wrappers) {
+        return ResponseCacheWrapperUtils.wrapWithPriority(
+                new RedisResponseCache(
+                        redisTemplate,
+                        Objects.requireNonNull(holder.getCacheName(), "cacheName cannot be null")
+                ),
+                wrappers
         );
     }
 }

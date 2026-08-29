@@ -47,5 +47,7 @@ public final class IdempifyDefaults {
     public static final String CACHE_5XX_VALUE = "false";
     public static final String IN_MEMORY_CACHE_CAPACITY_VALUE = "100";
 
+    public static final String METRICS_ENABLED_VALUE = "false";
+
     private IdempifyDefaults() {}
 }

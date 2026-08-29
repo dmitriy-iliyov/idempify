@@ -178,13 +178,6 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when no IdempotencyEventListener exists should fail to start")
-    void context_whenNoIdempotencyEventListenerExists_shouldFailToStart() {
-        contextRunnerWithout(Dependency.EVENT_LISTENER)
-                .run(context -> assertThat(context).hasFailed());
-    }
-
-    @Test
     @DisplayName("IT context when no OperationStateChannel exists should fail to start")
     void context_whenNoOperationStateChannelExists_shouldFailToStart() {
         contextRunnerWithout(Dependency.STATE_CHANNEL)
@@ -433,6 +426,33 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when caching is switched on and a wrapper is registered should hand out the wrapped cache")
+    void context_whenCachingIsSwitchedOnAndWrapperIsRegistered_shouldHandOutWrappedCache() {
+        contextRunner
+                .withPropertyValues("idempify.cache.enabled=true")
+                .withBean(ResponseCacheWrapper.class, CountingWrapper::new)
+                .run(context -> {
+                    ResponseCache cache = context.getBean(ResponseCache.class);
+
+                    cache.save(KEY, response(), Duration.ofMinutes(1));
+                    cache.findByIdempotencyKey(KEY);
+
+                    assertThat(cache).isInstanceOf(CountingCache.class);
+                    assertThat(((CountingCache) cache).lookups).isEqualTo(1);
+                    assertThat(((CountingCache) cache).next).isInstanceOf(InMemoryResponseCache.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when nobody wraps the cache should hand out the in-memory one unwrapped")
+    void context_whenNobodyWrapsCache_shouldHandOutInMemoryOneUnwrapped() {
+        contextRunner
+                .withPropertyValues("idempify.cache.enabled=true")
+                .run(context -> assertThat(context.getBean(ResponseCache.class))
+                        .isInstanceOf(InMemoryResponseCache.class));
+    }
+
+    @Test
     @DisplayName("IT context when caching is switched off should register no response cache")
     void context_whenCachingIsSwitchedOff_shouldRegisterNoResponseCache() {
         contextRunner
@@ -461,6 +481,62 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         contextRunnerWithout(Dependency.CACHE_PROPERTIES)
                 .withPropertyValues("idempify.cache.enabled=true")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("IT context when nothing else answers the hook should register the no-op listener")
+    void context_whenNothingElseAnswersHook_shouldRegisterNoOpListener() {
+        contextRunner
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(IdempotencyEventListener.class);
+                    assertThat(context.getBean(IdempotencyEventListener.class))
+                            .isSameAs(IdempotencyEventListener.NOOP);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when metrics are switched off should answer the hook with the no-op listener")
+    void context_whenMetricsAreSwitchedOff_shouldAnswerHookWithNoOpListener() {
+        contextRunner
+                .withPropertyValues("idempify.metrics.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(IdempotencyEventListener.class);
+                    assertThat(context.getBean(IdempotencyEventListener.class))
+                            .isSameAs(IdempotencyEventListener.NOOP);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when metrics are switched off and the application brings a listener should keep that one")
+    void context_whenMetricsAreSwitchedOffAndApplicationBringsListener_shouldKeepThatOne() {
+        // given
+        IdempotencyEventListener own = new RecordingEventListener();
+
+        // when / then
+        contextRunner
+                .withPropertyValues("idempify.metrics.enabled=false")
+                .withBean(IdempotencyEventListener.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempotencyEventListener.class);
+                    assertThat(context.getBean(IdempotencyEventListener.class)).isSameAs(own);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when the application brings a listener of its own should not register the no-op one")
+    void context_whenApplicationBringsListenerOfItsOwn_shouldNotRegisterNoOpOne() {
+        // given
+        IdempotencyEventListener own = new RecordingEventListener();
+
+        // when / then
+        contextRunner
+                .withBean(IdempotencyEventListener.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempotencyEventListener.class);
+                    assertThat(context.getBean(IdempotencyEventListener.class)).isSameAs(own);
+                });
     }
 
     @Test
@@ -504,6 +580,62 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     /**
+     * Stands in for an application's own listener - a class rather than a mock, so that the assertion reads
+     * "this very bean" instead of "some listener".
+     */
+    private static final class RecordingEventListener implements IdempotencyEventListener {
+
+        @Override
+        public void onDuplicate() { }
+
+        @Override
+        public void onConflict() { }
+
+        @Override
+        public void onFingerprintMismatch() { }
+
+        @Override
+        public void onException() { }
+
+        @Override
+        public void onSuccess() { }
+    }
+
+    /**
+     * Keeps the cache it wraps within reach and counts the lookups it saw, so a test reads both the nesting
+     * and the fact that the wrapper is really in the path.
+     */
+    private static final class CountingCache extends AbstractResponseCacheDecorator {
+
+        private final ResponseCache next;
+        private int lookups;
+
+        private CountingCache(ResponseCache delegate) {
+            super(delegate);
+            this.next = delegate;
+        }
+
+        @Override
+        public CachedResponse findByIdempotencyKey(UUID idempotencyKey) {
+            lookups++;
+            return super.findByIdempotencyKey(idempotencyKey);
+        }
+    }
+
+    private static final class CountingWrapper implements ResponseCacheWrapper {
+
+        @Override
+        public ResponseCache wrap(ResponseCache responseCache) {
+            return new CountingCache(responseCache);
+        }
+
+        @Override
+        public int getPriority() {
+            return 0;
+        }
+    }
+
+    /**
      * What core expects to find in the context but never declares itself. Naming them one by one is what lets
      * a test say "everything but this one" without restating the other ten.
      */
@@ -516,7 +648,6 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 TransactionalOperationRepository.class, () -> mock(TransactionalOperationRepository.class))),
         RESULT_SERIALIZER(runner -> runner.withBean(ResultSerializer.class, () -> mock(ResultSerializer.class))),
         RESULT_DESERIALIZER(runner -> runner.withBean(ResultDeserializer.class, () -> mock(ResultDeserializer.class))),
-        EVENT_LISTENER(runner -> runner.withBean(IdempotencyEventListener.class, () -> IdempotencyEventListener.NOOP)),
         STATE_CHANNEL(runner -> runner.withBean(OperationStateChannel.class, () -> mock(OperationStateChannel.class))),
         TRANSACTION_TEMPLATE(runner -> runner.withBean(
                 TransactionTemplate.class, () -> new TransactionTemplate(mock(PlatformTransactionManager.class)))),

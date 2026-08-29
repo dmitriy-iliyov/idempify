@@ -8,32 +8,44 @@
     <version>0.0.1-SNAPSHOT</version>
 
     <name>idempify</name>
-    <description>idempify</description>
+    <description>API idempotency for Spring Boot</description>
     <packaging>pom</packaging>
 
+    <url>https://github.com/dmitriy-iliyov/idempify</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>dmitriy-iliyov</id>
+            <name>Dmitriy Iliyov</name>
+            <url>https://github.com/dmitriy-iliyov</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/dmitriy-iliyov/idempify.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com:dmitriy-iliyov/idempify.git</developerConnection>
+        <url>https://github.com/dmitriy-iliyov/idempify</url>
+        <tag>v1.0.0</tag>
+    </scm>
+
     <modules>
+        <module>idempify-core</module>
+        <module>idempify-aop</module>
+        <module>idempify-metrics</module>
         <module>idempify-postgresql</module>
         <module>idempify-http</module>
         <module>idempify-jackson</module>
-        <module>idempify-aop</module>
-        <module>idempify-core</module>
-        <module>idempify-starter</module>
         <module>idempify-cache-redis</module>
+        <module>idempify-starter</module>
     </modules>
-
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
 
     <properties>
         <java.version>21</java.version>

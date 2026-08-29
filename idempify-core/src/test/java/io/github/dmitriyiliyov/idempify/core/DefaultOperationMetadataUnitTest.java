@@ -157,6 +157,27 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
+    @DisplayName("UT useConflictHandler() when a handler was resolved should say the call site hands conflicts over")
+    void useConflictHandler_whenHandlerWasResolved_shouldSayCallSiteHandsConflictsOver() {
+        // when
+        OperationMetadata result = full().conflictHandler(new RejectConflictHandler()).build();
+
+        // then
+        assertThat(result.useConflictHandler()).isTrue();
+    }
+
+    @Test
+    @DisplayName("UT useConflictHandler() when no handler was resolved should say the call site handles them itself")
+    void useConflictHandler_whenNoHandlerWasResolved_shouldSayCallSiteHandlesThemItself() {
+        // when
+        OperationMetadata result = full().build();
+
+        // then
+        assertThat(result.useConflictHandler()).isFalse();
+        assertThat(result.getConflictHandler()).isNull();
+    }
+
+    @Test
     @DisplayName("UT build() when the processor is TRANSACTIONAL and caching is on should refuse the pair")
     void build_whenProcessorIsTransactionalAndCachingIsOn_shouldRefusePair() {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()

@@ -62,4 +62,24 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
                     assertThat(context).hasSingleBean(PostgreSqlTransactionalOperationRepository.class);
                 });
     }
+
+    @Test
+    @DisplayName("IT context when idempify is switched off should register nothing at all")
+    void context_whenIdempifyIsSwitchedOff_shouldRegisterNothingAtAll() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(TransactionalOperationRepository.class);
+                    assertThat(context).doesNotHaveBean(PostgreSqlTransactionalOperationRepository.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when idempify is switched on by hand should register the module all the same")
+    void context_whenIdempifyIsSwitchedOnByHand_shouldRegisterModuleAllTheSame() {
+        contextRunner
+                .withPropertyValues("idempify.enabled=true")
+                .run(context -> assertThat(context).hasSingleBean(PostgreSqlTransactionalOperationRepository.class));
+    }
 }

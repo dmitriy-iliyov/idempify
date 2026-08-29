@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
@@ -11,7 +12,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -23,12 +23,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.time.Clock;
 
 @AutoConfiguration
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 @ConditionalOnWebApplication
 public class IdempifyHttpAutoConfiguration {
 

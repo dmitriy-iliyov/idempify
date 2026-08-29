@@ -25,8 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * value each one carries against the typed default the core holds, so a literal written back into an
  * annotation - or a config class going its own way - fails here rather than in production.
  * <p>
- * The capacity of the in-memory fallback store is the one default left unpinned: the core has no counterpart
- * for it.
+ * Two defaults have no typed counterpart in the core to be checked against - the capacity of the in-memory
+ * fallback store and the metrics switch - so for them the check is only that the annotation still reads the
+ * shared constant instead of a literal of its own.
  */
 class PropertyDefaultsUnitTest {
 
@@ -134,6 +135,17 @@ class PropertyDefaultsUnitTest {
         assertThat(Boolean.parseBoolean(enabled)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE);
         assertThat(Boolean.parseBoolean(shouldCache4xx)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE_4XX);
         assertThat(Boolean.parseBoolean(shouldCache5xx)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE_5XX);
+    }
+
+    @Test
+    @DisplayName("UT constructor defaults of the metrics block should read the constant rather than a literal")
+    void constructorDefaults_ofMetricsBlock_shouldReadConstantRatherThanLiteral() {
+        // when
+        String enabled = defaultValueOf(MetricsProperties.class, "enabled");
+
+        // then
+        assertThat(enabled).isEqualTo(IdempifyDefaults.METRICS_ENABLED_VALUE);
+        assertThat(new MetricsProperties(Boolean.valueOf(enabled)).isEnabled()).isFalse();
     }
 
     private Object fingerprintPropertiesFallingBackTo(String emptyBodyFallback) {

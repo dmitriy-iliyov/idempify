@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
+import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
@@ -9,16 +10,10 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration
-@ConditionalOnProperty(
-        prefix = "idempify",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnIdempifyEnabled
 @ConditionalOnClass({Aspect.class, ProceedingJoinPoint.class})
 public class IdempifyAopAutoConfiguration {
 
