@@ -23,7 +23,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.Assert.assertEquals;
 
 @Testcontainers
 class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
@@ -70,7 +69,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(result.isFirstAttempt()).isTrue();
         assertThat(result.getResult()).isNull();
-        assertEquals("fingerprint", result.getFingerprint());
+        assertThat(result.getFingerprint()).isEqualTo("fingerprint");
     }
 
     @Test
@@ -133,30 +132,50 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT update() when status does not match onStatus should not update and return current operation")
-    void update_whenStatusDoesNotMatchOnStatus_shouldNotUpdateAndReturnCurrentOperation() {
+    @DisplayName("IT update() when status does not match onStatus should throw OperationStatusMismatchException")
+    void update_whenStatusDoesNotMatchOnStatus_shouldThrowOperationStatusMismatchException() {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
+        Operation toUpdate = updateFor(key);
 
-        Operation toUpdate = new Operation(
-                key,
-                OperationStatus.PROCESSED,
-                true,
-                "new-result",
-                "new-fp",
-                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
-                Instant.now().truncatedTo(ChronoUnit.MICROS)
-        );
+        // when / then
+        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
+                .isInstanceOf(OperationStatusMismatchException.class)
+                .hasMessageContaining(key.toString());
+    }
+
+    @Test
+    @DisplayName("IT update() when status does not match onStatus should leave the stored operation alone")
+    void update_whenStatusDoesNotMatchOnStatus_shouldLeaveStoredOperationAlone() {
+        // given
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(buildOperation(key));
+        Operation toUpdate = updateFor(key);
 
         // when
-        Operation result = tested.update(toUpdate, OperationStatus.PROCESSED);
+        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
+                .isInstanceOf(OperationStatusMismatchException.class);
 
         // then
-        assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-        assertThat(result.getResult()).isNull();
-        assertEquals("fingerprint", result.getFingerprint());
+        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+            assertThat(stored.getResult()).isNull();
+            assertThat(stored.getFingerprint()).isEqualTo("fingerprint");
+        });
+    }
+
+    @Test
+    @DisplayName("IT update() when no operation is stored under the key should throw OperationStatusMismatchException")
+    void update_whenNoOperationIsStoredUnderKey_shouldThrowOperationStatusMismatchException() {
+        // given
+        UUID key = UUID.randomUUID();
+        Operation toUpdate = updateFor(key);
+
+        // when / then
+        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
+                .isInstanceOf(OperationStatusMismatchException.class)
+                .hasMessageContaining(key.toString());
     }
 
     @Test
@@ -224,6 +243,18 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
 
         // then
         assertThat(result).isEmpty();
+    }
+
+    private Operation updateFor(UUID key) {
+        return new Operation(
+                key,
+                OperationStatus.PROCESSED,
+                true,
+                "new-result",
+                "new-fp",
+                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
     }
 
     private Operation buildOperation(UUID key) {

@@ -49,22 +49,15 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
     public Operation update(Operation operation, OperationStatus onStatus) {
         return jdbcClient
                 .sql("""
-                    WITH updated AS (
-                        UPDATE idempotent_operations
+                    UPDATE idempotent_operations
                         SET status = ?,
                             is_first_attempt = ?,
                             result = ?,
                             fingerprint = ?,
                             expires_at = ?,
                             created_at = ?
-                        WHERE idempotency_key = ? AND status = ?
-                        RETURNING *
-                    )
-                    SELECT * FROM updated
-                    UNION ALL
-                    SELECT * FROM idempotent_operations
-                    WHERE idempotency_key = ?
-                      AND NOT EXISTS (SELECT 1 FROM updated)
+                    WHERE idempotency_key = ? AND status = ?
+                    RETURNING *
                 """)
                 .params(
                         operation.getStatus().name(),
@@ -74,11 +67,11 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
                         Timestamp.from(operation.getExpiresAt()),
                         Timestamp.from(operation.getCreatedAt()),
                         operation.getIdempotencyKey(),
-                        onStatus.name(),
-                        operation.getIdempotencyKey()
+                        onStatus.name()
                 )
                 .query((rs, rowNum) -> toOperation(rs))
-                .single();
+                .optional()
+                .orElseThrow(() -> new OperationStatusMismatchException(operation.getIdempotencyKey(), onStatus));
     }
 
     @Override
@@ -87,7 +80,7 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
                 .sql("""
                     UPDATE idempotent_operations
                         SET result = ?, status = ?
-                        WHERE idempotency_key = ? AND status = ?
+                    WHERE idempotency_key = ? AND status = ?
                     RETURNING *
                 """)
                 .params(result, status.name(), idempotencyKey, onStatus.name())
