@@ -31,7 +31,6 @@ under the same key is rejected rather than silently answered from the store.
 - **Layered configuration** - a call site's annotation, the named config it points at, and the global
   `idempify.*` properties, in that order of precedence. What a layer leaves unspecified the next one answers.
 - **Observability** - provides out-of-the-box metrics integration via Micrometer.
-  tagged meter.
 
 ## Supported Infrastructure
 
@@ -42,12 +41,6 @@ under the same key is rejected rather than silently answered from the store.
 
 ## Limitations
 
-- **`LOCK_BASED` is a stub, and it is the default.** `LockBasedIdempotentProcessor` returns `null`, and the
-  core auto-configuration registers only the transactional one, so a call site left at the default fails with
-  "no processor found". Set `processor-type: TRANSACTIONAL` explicitly.
-- **Response caching has nowhere to run yet.** The cache backends, the HTTP caching filter and the
-  `ResponseCacheConfig` layer are implemented, but caching is rejected under `TRANSACTIONAL` and the
-  lock-based processor that would allow it does not exist. Consider the whole cache path preview-only.
 - **Two sources of truth for a replay.** The repository stores the serialized *method result*; the response
   cache stores the *HTTP response* (status, content type, bytes). They are filled at different levels, expire
   independently and are never reconciled, so a replay through the repository loses the status code and
@@ -55,11 +48,7 @@ under the same key is rejected rather than silently answered from the store.
 - **`Class<T>` as the result type descriptor.** Generic return types - `List<Order>`, `Optional<X>`,
   `ResponseEntity<Order>` - do not survive erasure, and `void` has no sensible descriptor at all. Only
   concrete, non-generic return types are supported today.
-- **`IdempotencyEventListener` takes no arguments**, so an implementation can count outcomes but cannot see
-  the key, the timing or the operation behind one.
 - **No automatic table creation** - the DDL is applied by hand.
-- **Not published to Maven Central**, so the artifacts have to be built and installed locally
-  (`./mvnw install`).
 
 ## Quick Start
 
@@ -206,18 +195,44 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
    - If the row is `PROCESSED` and the call site fingerprints, `FingerprintMatcher` compares the stored
      fingerprint against the current request's; a mismatch invokes `FingerprintPolicy.handle(...)` (default:
      throws `FingerprintMismatchException` - same key + different request is an error, not a silent replay).
-     Otherwise the stored result is deserialized and returned, and the operation's state is published to the
-     `OperationStateChannel` marked as a replay.
-   - Otherwise `startOrReply` answers `Optional.empty()`, meaning the caller's business logic actually runs.
+     Otherwise the stored result is deserialized and handed back as a replay.
+   - Otherwise `startOrReply` answers with an `OperationDetail` still in `IN_PROCESS`, meaning the caller's
+     business logic actually runs.
    - `complete(key, result)` then serializes the result and performs a conditional
      `UPDATE ... WHERE idempotency_key = ? AND status = 'IN_PROCESS'`. A condition that matches no row is not
      a silent no-op but an `OperationStatusMismatchException`.
+6. Once the transaction has committed - and only then - the processor publishes the operation's state to the
+   `OperationStateChannel` and reports the outcome to `IdempotencyEventListener`: `onDuplicate()` for a replay,
+   `onSuccess()` for an operation it ran itself.
+
+### Processing Branches
+
+Two processors, and one question tells them apart: **does the operation's record share the transaction of the
+business operation it guards?** Everything else follows from the answer - whether a failed result can be kept,
+what a duplicate meets while the first call is still running, and what the store has to provide.
+
+|                                 | `TRANSACTIONAL`                                                                              | `LOCK_BASED` |
+|---------------------------------|----------------------------------------------------------------------------------------------|--------------|
+| Atomicity                       | commit or roll back together                                                                 | -            |
+| A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | -            |
+| A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | -            |
+| Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | -            |
+| Response cache                  | rejected for the same reason - a cached response would outlive the record it came from       | -            |
+| Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | -            |
+| Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -            |
+| Today                           | implemented                                                                                  | a stub       |
+
+The `LOCK_BASED` column is empty on purpose: the branch does not exist yet, and what it guarantees will be
+written here once it does. What it is *for* is the mirror image of the column beside it - a record that does
+not roll back with the business operation can keep a failed result, can be handed to a conflict handler while
+the first call is still running, and can live in a store that has no transactional compare-and-swap. See
+[Roadmap](#roadmap).
 
 ### Idempotency Guarantees
 
 > [!WARNING]
 > Everything below describes the `TRANSACTIONAL` processor - the only one implemented. See
-> [Limitations](#limitations).
+> [Processing Branches](#processing-branches) and [Limitations](#limitations).
 
 #### At-Most-Once Execution
 

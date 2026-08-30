@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -21,9 +20,11 @@ public interface TransactionalOperationManager {
      * @param context  what identifies the current call.
      * @param metadata the resolved settings of the call site.
      * @param <T>      the type of the result.
-     * @return the stored result to replay, or empty if the caller must run the business operation itself.
+     * @return what the store holds for this key, never {@code null}: a {@link OperationStatus#PROCESSED}
+     *         operation whose result is there to be replayed, or one this call has just claimed and
+     *         therefore must run itself.
      */
-    <T> Optional<T> startOrReply(OperationContext<T> context, OperationMetadata metadata);
+    <T> OperationDetail<T> startOrReply(OperationContext<T> context, OperationMetadata metadata);
 
     /**
      * Records the result of an operation the caller has just run, moving it out of the in-process state.
@@ -31,7 +32,8 @@ public interface TransactionalOperationManager {
      * @param idempotencyKey the key of the operation to complete.
      * @param result         the result to store.
      * @param <T>            the type of the result.
-     * @return the same result, so the caller can return it directly.
+     * @return the completed operation, never {@code null} - the same result, plus what the store decided
+     *         about it, its expiry above all.
      */
-    <T> T complete(UUID idempotencyKey, T result);
+    <T> OperationDetail<T> complete(UUID idempotencyKey, T result);
 }

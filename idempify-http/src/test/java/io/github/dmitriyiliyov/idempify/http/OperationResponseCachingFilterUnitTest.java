@@ -965,11 +965,11 @@ class OperationResponseCachingFilterUnitTest {
     }
 
     private void givenRecordedOperation(Instant expiresAt) {
-        channel.publish(new DefaultOperationState(expiresAt, false));
+        channel.publish(TestOperationState.of(expiresAt, false));
     }
 
     private void givenReplayedOperation() {
-        channel.publish(new DefaultOperationState(EXPIRES_AT, true));
+        channel.publish(TestOperationState.of(EXPIRES_AT, true));
     }
 
     private void givenGeneratedFingerprint(String fingerprint) {

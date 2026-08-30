@@ -2,14 +2,11 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
-import io.github.dmitriyiliyov.idempify.core.response.DefaultOperationState;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 public class DefaultTransactionalOperationManager implements TransactionalOperationManager {
@@ -20,7 +17,6 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
     private final FingerprintMatcher fingerprintMatcher;
     private final ResultSerializer resultSerializer;
     private final ResultDeserializer resultDeserializer;
-    private final OperationStateChannel channel;
     private final Clock clock;
 
     public DefaultTransactionalOperationManager(OperationMapper mapper,
@@ -28,19 +24,17 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
                                                 FingerprintMatcher fingerprintMatcher,
                                                 ResultSerializer resultSerializer,
                                                 ResultDeserializer resultDeserializer,
-                                                OperationStateChannel channel,
                                                 Clock clock) {
         this.mapper = Objects.requireNonNull(mapper, "mapper cannot be null");
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
         this.resultSerializer = Objects.requireNonNull(resultSerializer, "resultSerializer cannot be null");
         this.resultDeserializer = Objects.requireNonNull(resultDeserializer, "resultDeserializer cannot be null");
-        this.channel = Objects.requireNonNull(channel, "channel cannot be null");
         this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
     @Override
-    public <T> Optional<T> startOrReply(OperationContext<T> context, OperationMetadata metadata) {
+    public <T> OperationDetail<T> startOrReply(OperationContext<T> context, OperationMetadata metadata) {
         Operation operation = saveOrFetch(context, metadata);
 
         if (metadata.useFingerprint() && !operation.isFirstAttempt()) {
@@ -57,32 +51,36 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
             }
         }
 
-        Optional<T> nullableResult;
+        boolean replayed = false;
+        T result = null;
+
         if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
-            nullableResult = Optional.of(
-                    resultDeserializer.deserialize(operation.getResult(), context.getOperationResultType())
-            );
-            channel.publish(new DefaultOperationState(operation.getExpiresAt(), true));
-        } else {
-            nullableResult = Optional.empty();
+            replayed = true;
+            result = resultDeserializer.deserialize(operation.getResult(), context.getOperationResultType());
         }
 
-        return nullableResult;
+        return new DefaultOperationDetail<>(
+                operation.getIdempotencyKey(),
+                operation.getStatus(),
+                replayed,
+                result,
+                operation.getExpiresAt()
+        );
     }
 
     protected <T> Operation saveOrFetch(OperationContext<T> context, OperationMetadata metadata) {
         String fingerprint = context.getFingerprint().isEmpty() ? null : context.getFingerprint().get();
-        Operation toInsert = mapper.toOperation(
+        Operation toSave = mapper.toOperation(
                 context.getIdempotencyKey(),
                 fingerprint,
                 metadata,
                 clock.instant()
         );
 
-        Operation exists = repository.saveIfAbsent(toInsert);
+        Operation exists = repository.saveIfAbsent(toSave);
 
         if (exists.isExpired(clock.instant())) {
-            exists = repository.update(toInsert, OperationStatus.PROCESSED);
+            exists = repository.update(toSave, OperationStatus.PROCESSED);
         }
 
         return exists;
@@ -109,14 +107,19 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
 //    }
 
     @Override
-    public <T> T complete(UUID idempotencyKey, T result) {
+    public <T> OperationDetail<T> complete(UUID idempotencyKey, T result) {
         Operation operation = repository.saveResultAndUpdateStatus(
                 resultSerializer.serialize(result),
                 OperationStatus.PROCESSED,
                 idempotencyKey,
                 OperationStatus.IN_PROCESS
         );
-        channel.publish(new DefaultOperationState(operation.getExpiresAt(), false));
-        return result;
+        return new DefaultOperationDetail<>(
+                operation.getIdempotencyKey(),
+                operation.getStatus(),
+                false,
+                result,
+                operation.getExpiresAt()
+        );
     }
 }

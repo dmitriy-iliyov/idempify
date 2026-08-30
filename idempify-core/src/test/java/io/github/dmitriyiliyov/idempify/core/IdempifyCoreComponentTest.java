@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.IntSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,8 +31,9 @@ class IdempifyCoreComponentTest {
     private static final UUID OTHER_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
     private final InMemoryOperationRepository repository = new InMemoryOperationRepository();
-    private final RecordingStateChannel channel = new RecordingStateChannel();
     private final RecordingTransactionManager transactionManager = new RecordingTransactionManager();
+    private final RecordingStateChannel channel = new RecordingStateChannel(() -> transactionManager.commits);
+    private final RecordingEventListener eventListener = new RecordingEventListener();
     private final FingerprintPolicy fingerprintPolicy = new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback());
 
     private TestClock clock;
@@ -46,13 +48,13 @@ class IdempifyCoreComponentTest {
                 new DefaultFingerprintMatcher(IdempotencyEventListener.NOOP),
                 new PassThroughResultSerializer(),
                 new PassThroughResultSerializer(),
-                channel,
                 clock
         );
         processor = new DelegatingIdempotentProcessor(List.of(new TransactionalIdempotentProcessor(
                 new TransactionTemplate(transactionManager),
                 operationManager,
-                IdempotencyEventListener.NOOP
+                channel,
+                eventListener
         )));
     }
 
@@ -87,6 +89,21 @@ class IdempifyCoreComponentTest {
         // then
         assertThat(result).isEqualTo("charged");
         assertThat(operation.calls).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("CT request when the same key comes back should be counted as a duplicate and not as a second success")
+    void request_whenSameKeyComesBack_shouldBeCountedAsDuplicateAndNotAsSecondSuccess() {
+        // given
+        RecordingOperation operation = new RecordingOperation("charged");
+        call(KEY, request("body"), metadata(false), operation);
+
+        // when
+        call(KEY, request("body"), metadata(false), operation);
+
+        // then
+        assertThat(eventListener.successes).isEqualTo(1);
+        assertThat(eventListener.duplicates).isEqualTo(1);
     }
 
     @Test
@@ -212,6 +229,35 @@ class IdempifyCoreComponentTest {
     }
 
     @Test
+    @DisplayName("CT request when the transaction is rolled back should publish no state and count no success")
+    void request_whenTransactionIsRolledBack_shouldPublishNoStateAndCountNoSuccess() {
+        // given
+        IllegalStateException thrown = new IllegalStateException("card declined");
+
+        // when / then
+        assertThatThrownBy(() -> call(KEY, request("body"), metadata(false), new FailingOperation(thrown)))
+                .isSameAs(thrown);
+
+        assertThat(transactionManager.rollbacks).isEqualTo(1);
+        assertThat(channel.consume()).isNull();
+        assertThat(eventListener.successes).isZero();
+    }
+
+    @Test
+    @DisplayName("CT request when the operation completes should tell the transport only after the transaction committed")
+    void request_whenOperationCompletes_shouldTellTransportOnlyAfterTransactionCommitted() {
+        // given
+        RecordingOperation operation = new RecordingOperation("charged");
+
+        // when
+        call(KEY, request("body"), metadata(false), operation);
+
+        // then
+        assertThat(transactionManager.commits).isEqualTo(1);
+        assertThat(channel.commitsAtPublish).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("CT request when the metadata names a processor nobody serves should fail before touching the store")
     void request_whenMetadataNamesProcessorNobodyServes_shouldFailBeforeTouchingStore() {
         // given
@@ -332,11 +378,18 @@ class IdempifyCoreComponentTest {
 
     private static final class RecordingStateChannel implements OperationStateChannel {
 
+        private final IntSupplier commits;
         private OperationState state;
+        private int commitsAtPublish;
+
+        private RecordingStateChannel(IntSupplier commits) {
+            this.commits = commits;
+        }
 
         @Override
         public void publish(OperationState state) {
             this.state = state;
+            this.commitsAtPublish = commits.getAsInt();
         }
 
         @Override
@@ -365,6 +418,34 @@ class IdempifyCoreComponentTest {
         @Override
         public void rollback(TransactionStatus status) {
             rollbacks++;
+        }
+    }
+
+    private static final class RecordingEventListener implements IdempotencyEventListener {
+
+        private int successes;
+        private int duplicates;
+        private int exceptions;
+
+        @Override
+        public void onDuplicate() {
+            duplicates++;
+        }
+
+        @Override
+        public void onConflict() {}
+
+        @Override
+        public void onFingerprintMismatch() {}
+
+        @Override
+        public void onException() {
+            exceptions++;
+        }
+
+        @Override
+        public void onSuccess() {
+            successes++;
         }
     }
 

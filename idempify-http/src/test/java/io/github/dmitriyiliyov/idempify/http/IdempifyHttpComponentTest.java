@@ -11,7 +11,10 @@ import io.github.dmitriyiliyov.idempify.core.fingerprint.ThrowingEmptyBodyFallba
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
-import io.github.dmitriyiliyov.idempify.core.response.*;
+import io.github.dmitriyiliyov.idempify.core.response.CachedResponse;
+import io.github.dmitriyiliyov.idempify.core.response.OperationState;
+import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -541,7 +544,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/replayed")
         public String replayed() {
-            channel.getObject().publish(new DefaultOperationState(NOW.plus(OPERATION_TTL), true));
+            channel.getObject().publish(TestOperationState.of(NOW.plus(OPERATION_TTL), true));
             return "replayed";
         }
 
@@ -626,7 +629,7 @@ class IdempifyHttpComponentTest {
             OperationState alreadyPublished = operationStateChannel.consume();
             operationStateChannel.publish(alreadyPublished != null
                     ? alreadyPublished
-                    : new DefaultOperationState(NOW.plus(OPERATION_TTL), false));
+                    : TestOperationState.of(NOW.plus(OPERATION_TTL), false));
         }
     }
 

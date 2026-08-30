@@ -134,7 +134,6 @@ public class IdempifyCoreAutoConfiguration {
             FingerprintMatcher fingerprintMatcher,
             ResultSerializer resultSerializer,
             ResultDeserializer resultDeserializer,
-            OperationStateChannel channel,
             Clock clock
     ) {
         return new DefaultTransactionalOperationManager(
@@ -143,7 +142,6 @@ public class IdempifyCoreAutoConfiguration {
                 fingerprintMatcher,
                 resultSerializer,
                 resultDeserializer,
-                channel,
                 clock
         );
     }
@@ -153,9 +151,10 @@ public class IdempifyCoreAutoConfiguration {
     public TypeAwareIdempotentProcessor idempifyTransactionalTypeAwareIdempotentProcessor(
             TransactionTemplate transactionTemplate,
             TransactionalOperationManager manager,
+            OperationStateChannel channel,
             IdempotencyEventListener eventListener
     ) {
-        return new TransactionalIdempotentProcessor(transactionTemplate, manager, eventListener);
+        return new TransactionalIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
     }
 
     @Primary

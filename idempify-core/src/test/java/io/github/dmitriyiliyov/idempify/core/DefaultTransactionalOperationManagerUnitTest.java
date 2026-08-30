@@ -3,20 +3,16 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,9 +42,6 @@ class DefaultTransactionalOperationManagerUnitTest {
     @Mock
     ResultDeserializer resultDeserializer;
 
-    @Mock
-    OperationStateChannel channel;
-
     TestClock clock;
 
     DefaultTransactionalOperationManager tested;
@@ -63,7 +56,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor when mapper is null should throw NullPointerException")
     void constructor_whenMapperIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                null, repository, fingerprintMatcher, resultSerializer, resultDeserializer, channel, clock))
+                null, repository, fingerprintMatcher, resultSerializer, resultDeserializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("mapper cannot be null");
     }
@@ -72,7 +65,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, null, fingerprintMatcher, resultSerializer, resultDeserializer, channel, clock))
+                mapper, null, fingerprintMatcher, resultSerializer, resultDeserializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("repository cannot be null");
     }
@@ -81,7 +74,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor when fingerprintMatcher is null should throw NullPointerException")
     void constructor_whenFingerprintMatcherIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, repository, null, resultSerializer, resultDeserializer, channel, clock))
+                mapper, repository, null, resultSerializer, resultDeserializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("fingerprintMatcher cannot be null");
     }
@@ -90,7 +83,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor when resultSerializer is null should throw NullPointerException")
     void constructor_whenResultSerializerIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, repository, fingerprintMatcher, null, resultDeserializer, channel, clock))
+                mapper, repository, fingerprintMatcher, null, resultDeserializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("resultSerializer cannot be null");
     }
@@ -99,32 +92,23 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor when resultDeserializer is null should throw NullPointerException")
     void constructor_whenResultDeserializerIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, repository, fingerprintMatcher, resultSerializer, null, channel, clock))
+                mapper, repository, fingerprintMatcher, resultSerializer, null, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("resultDeserializer cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor when channel is null should throw NullPointerException")
-    void constructor_whenChannelIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, repository, fingerprintMatcher, resultSerializer, resultDeserializer, null, clock))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("channel cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
-                mapper, repository, fingerprintMatcher, resultSerializer, resultDeserializer, channel, null))
+                mapper, repository, fingerprintMatcher, resultSerializer, resultDeserializer, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clock cannot be null");
     }
 
     @Test
-    @DisplayName("UT startOrReply() when the key is seen for the first time should have nothing to reply with")
-    void startOrReply_whenKeyIsSeenForFirstTime_shouldHaveNothingToReplyWith() {
+    @DisplayName("UT startOrReply() when the key is seen for the first time should hand back an operation nobody has completed")
+    void startOrReply_whenKeyIsSeenForFirstTime_shouldHandBackOperationNobodyHasCompleted() {
         // given
         OperationContext<String> context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
@@ -134,16 +118,18 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.saveIfAbsent(inserted)).thenReturn(inserted);
 
         // when
-        Optional<String> result = tested.startOrReply(context, metadata);
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
 
         // then
-        assertThat(result).isEmpty();
-        verifyNoInteractions(resultDeserializer, channel);
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(detail.getResult()).isNull();
+        assertThat(detail.replayed()).isFalse();
+        verifyNoInteractions(resultDeserializer);
     }
 
     @Test
-    @DisplayName("UT startOrReply() when the operation is already processed should reply with its deserialized result")
-    void startOrReply_whenOperationIsAlreadyProcessed_shouldReplyWithItsDeserializedResult() {
+    @DisplayName("UT startOrReply() when the operation is already processed should hand back its deserialized result")
+    void startOrReply_whenOperationIsAlreadyProcessed_shouldHandBackItsDeserializedResult() {
         // given
         OperationContext<String> context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
@@ -155,15 +141,16 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
 
         // when
-        Optional<String> result = tested.startOrReply(context, metadata);
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
 
         // then
-        assertThat(result).contains("deserialized");
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(detail.getResult()).isEqualTo("deserialized");
     }
 
     @Test
-    @DisplayName("UT startOrReply() when the operation is replayed should publish a replayed state carrying its expiry")
-    void startOrReply_whenOperationIsReplayed_shouldPublishReplayedStateCarryingItsExpiry() {
+    @DisplayName("UT startOrReply() when the operation is replayed should mark the detail replayed and carry the stored expiry")
+    void startOrReply_whenOperationIsReplayed_shouldMarkDetailReplayedAndCarryStoredExpiry() {
         // given
         OperationContext<String> context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
@@ -175,13 +162,34 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
 
         // when
-        tested.startOrReply(context, metadata);
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
 
         // then
-        ArgumentCaptor<OperationState> captor = ArgumentCaptor.forClass(OperationState.class);
-        verify(channel, times(1)).publish(captor.capture());
-        assertThat(captor.getValue().getExpiresAt()).isEqualTo(EXPIRES_AT);
-        assertThat(captor.getValue().replayed()).isTrue();
+        assertThat(detail.replayed()).isTrue();
+        assertThat(detail.getIdempotencyKey()).isEqualTo(KEY);
+        assertThat(detail.getExpiresAt()).isEqualTo(EXPIRES_AT);
+    }
+
+    @Test
+    @DisplayName("UT startOrReply() when the stored result is null should replay it instead of taking it for no result")
+    void startOrReply_whenStoredResultIsNull_shouldReplayItInsteadOfTakingItForNoResult() {
+        // given
+        OperationContext<String> context = context("fingerprint");
+        OperationMetadata metadata = metadata(false);
+        Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
+        Operation stored = operation(OperationStatus.PROCESSED, false, null);
+
+        givenMapped(metadata, "fingerprint", toInsert);
+        when(repository.saveIfAbsent(toInsert)).thenReturn(stored);
+        when(resultDeserializer.deserialize(null, String.class)).thenReturn(null);
+
+        // when
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+
+        // then
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(detail.replayed()).isTrue();
+        assertThat(detail.getResult()).isNull();
     }
 
     @Test
@@ -198,12 +206,13 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.update(toInsert, OperationStatus.PROCESSED)).thenReturn(toInsert);
 
         // when
-        Optional<String> result = tested.startOrReply(context, metadata);
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
 
         // then
-        assertThat(result).isEmpty();
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(detail.replayed()).isFalse();
         verify(repository, times(1)).update(toInsert, OperationStatus.PROCESSED);
-        verifyNoInteractions(resultDeserializer, channel);
+        verifyNoInteractions(resultDeserializer);
     }
 
     @Test
@@ -223,6 +232,27 @@ class DefaultTransactionalOperationManagerUnitTest {
         tested.startOrReply(context, metadata);
 
         // then
+        verify(repository, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT startOrReply() when the stored row is in process past its expiry should leave it alone")
+    void startOrReply_whenStoredRowIsInProcessPastItsExpiry_shouldLeaveItAlone() {
+        // given
+        OperationContext<String> context = context("fingerprint");
+        OperationMetadata metadata = metadata(false);
+        Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
+        Operation stale = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, "fingerprint", NOW.minusSeconds(1), NOW.minusSeconds(10));
+
+        givenMapped(metadata, "fingerprint", toInsert);
+        when(repository.saveIfAbsent(toInsert)).thenReturn(stale);
+
+        // when
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+
+        // then
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(detail.getExpiresAt()).isEqualTo(NOW.minusSeconds(1));
         verify(repository, never()).update(any(), any());
     }
 
@@ -330,35 +360,65 @@ class DefaultTransactionalOperationManagerUnitTest {
                 .thenReturn(operation(OperationStatus.PROCESSED, true, "raw"));
 
         // when
-        String result = tested.complete(KEY, "result");
+        OperationDetail<String> detail = tested.complete(KEY, "result");
 
         // then
-        assertThat(result).isEqualTo("result");
+        assertThat(detail.getResult()).isEqualTo("result");
         verify(repository, times(1))
                 .saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS);
     }
 
     @Test
-    @DisplayName("UT complete() should publish a freshly executed state carrying the stored expiry")
-    void complete_shouldPublishFreshlyExecutedStateCarryingStoredExpiry() {
+    @DisplayName("UT complete() should hand back a detail that is not a replay and carries the stored expiry")
+    void complete_shouldHandBackDetailThatIsNotReplayAndCarriesStoredExpiry() {
         // given
         when(resultSerializer.serialize("result")).thenReturn("raw");
         when(repository.saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
                 .thenReturn(operation(OperationStatus.PROCESSED, true, "raw"));
 
         // when
-        tested.complete(KEY, "result");
+        OperationDetail<String> detail = tested.complete(KEY, "result");
 
         // then
-        ArgumentCaptor<OperationState> captor = ArgumentCaptor.forClass(OperationState.class);
-        verify(channel, times(1)).publish(captor.capture());
-        assertThat(captor.getValue().getExpiresAt()).isEqualTo(EXPIRES_AT);
-        assertThat(captor.getValue().replayed()).isFalse();
+        assertThat(detail.replayed()).isFalse();
+        assertThat(detail.getIdempotencyKey()).isEqualTo(KEY);
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(detail.getExpiresAt()).isEqualTo(EXPIRES_AT);
+    }
+
+    @Test
+    @DisplayName("UT complete() when the operation returned null should store and hand back that null")
+    void complete_whenOperationReturnedNull_shouldStoreAndHandBackThatNull() {
+        // given
+        when(resultSerializer.serialize(null)).thenReturn(null);
+        when(repository.saveResultAndUpdateStatus(null, OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
+                .thenReturn(operation(OperationStatus.PROCESSED, true, null));
+
+        // when
+        OperationDetail<String> detail = tested.complete(KEY, null);
+
+        // then
+        assertThat(detail.getResult()).isNull();
+        assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+    }
+
+    @Test
+    @DisplayName("UT complete() when the row is no longer in process should let the mismatch out")
+    void complete_whenRowIsNoLongerInProcess_shouldLetMismatchOut() {
+        // given
+        when(resultSerializer.serialize("result")).thenReturn("raw");
+        when(repository.saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
+                .thenThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS));
+
+        // when / then
+        assertThatThrownBy(() -> tested.complete(KEY, "result"))
+                .isInstanceOf(OperationStatusMismatchException.class)
+                .hasMessageContaining(KEY.toString());
     }
 
     private DefaultTransactionalOperationManager manager(Clock clock) {
         return new DefaultTransactionalOperationManager(
-                mapper, repository, fingerprintMatcher, resultSerializer, resultDeserializer, channel, clock);
+                mapper, repository, fingerprintMatcher, resultSerializer, resultDeserializer, clock);
     }
 
     private void givenMapped(OperationMetadata metadata, String fingerprint, Operation mapped) {

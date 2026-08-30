@@ -2,16 +2,19 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
+import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.TransactionSystemException;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.Optional;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,12 +26,16 @@ import static org.mockito.Mockito.*;
 class TransactionalIdempotentProcessorUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final Instant EXPIRES_AT = TestClock.EPOCH.plus(Duration.ofHours(24));
 
     @Mock
     TransactionTemplate transactionTemplate;
 
     @Mock
     TransactionalOperationManager operationManager;
+
+    @Mock
+    OperationStateChannel channel;
 
     @Mock
     IdempotencyEventListener eventListener;
@@ -39,7 +46,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when transactionTemplate is null should throw NullPointerException")
     void constructor_whenTransactionTemplateIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(null, operationManager, eventListener))
+        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(null, operationManager, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("transactionTemplate cannot be null");
     }
@@ -47,15 +54,23 @@ class TransactionalIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when operationManager is null should throw NullPointerException")
     void constructor_whenOperationManagerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, null, eventListener))
+        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, null, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationManager cannot be null");
     }
 
     @Test
+    @DisplayName("UT constructor when channel is null should throw NullPointerException")
+    void constructor_whenChannelIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("channel cannot be null");
+    }
+
+    @Test
     @DisplayName("UT constructor when eventListener is null should throw NullPointerException")
     void constructor_whenEventListenerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, operationManager, null))
+        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, operationManager, channel, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("eventListener cannot be null");
     }
@@ -67,15 +82,16 @@ class TransactionalIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT process() when the operation manager replies should return that reply without running the operation")
-    void process_whenOperationManagerReplies_shouldReturnThatReplyWithoutRunningOperation() {
+    @DisplayName("UT process() when the operation is already processed should return the stored result without running the operation")
+    void process_whenOperationIsAlreadyProcessed_shouldReturnStoredResultWithoutRunningOperation() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext<String> context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.of("replayed"));
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "replayed"));
 
         // when
         String result = tested.process(context, metadata);
@@ -84,20 +100,21 @@ class TransactionalIdempotentProcessorUnitTest {
         assertThat(result).isEqualTo("replayed");
         assertThat(callback.calls).isZero();
         verify(operationManager, never()).complete(any(), any());
-        verify(eventListener, never()).onSuccess();
     }
 
     @Test
-    @DisplayName("UT process() when the operation manager has no reply should run the operation and complete it")
-    void process_whenOperationManagerHasNoReply_shouldRunOperationAndCompleteIt() {
+    @DisplayName("UT process() when the operation was only claimed should run it and complete it")
+    void process_whenOperationWasOnlyClaimed_shouldRunItAndCompleteIt() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext<String> context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.empty());
-        when(operationManager.complete(KEY, "fresh")).thenReturn("fresh");
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+        when(operationManager.complete(KEY, "fresh"))
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
         String result = tested.process(context, metadata);
@@ -106,7 +123,104 @@ class TransactionalIdempotentProcessorUnitTest {
         assertThat(result).isEqualTo("fresh");
         assertThat(callback.calls).isEqualTo(1);
         verify(operationManager, times(1)).complete(KEY, "fresh");
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation ran should count a success and not a duplicate")
+    void process_whenOperationRan_shouldCountSuccessAndNotDuplicate() {
+        // given
+        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+        when(operationManager.complete(KEY, "fresh"))
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
+
+        // when
+        tested.process(context, metadata);
+
+        // then
         verify(eventListener, times(1)).onSuccess();
+        verify(eventListener, never()).onDuplicate();
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation is replayed should count a duplicate and not a success")
+    void process_whenOperationIsReplayed_shouldCountDuplicateAndNotSuccess() {
+        // given
+        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "replayed"));
+
+        // when
+        tested.process(context, metadata);
+
+        // then
+        verify(eventListener, times(1)).onDuplicate();
+        verify(eventListener, never()).onSuccess();
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation returned null should replay that null without running it again")
+    void process_whenOperationReturnedNull_shouldReplayThatNullWithoutRunningItAgain() {
+        // given
+        RecordingCallback callback = new RecordingCallback("fresh");
+        OperationContext<String> context = context(callback);
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.PROCESSED, true, null));
+
+        // when
+        String result = tested.process(context, metadata);
+
+        // then
+        assertThat(result).isNull();
+        assertThat(callback.calls).isZero();
+    }
+
+    @Test
+    @DisplayName("UT process() when the transaction is through should publish what it recorded about the operation")
+    void process_whenTransactionIsThrough_shouldPublishWhatItRecordedAboutOperation() {
+        // given
+        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationDetail<String> completed = detail(OperationStatus.PROCESSED, false, "fresh");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+        when(operationManager.complete(KEY, "fresh")).thenReturn(completed);
+
+        // when
+        tested.process(context, metadata);
+
+        // then
+        verify(channel, times(1)).publish(completed);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation is replayed should publish the replayed state too")
+    void process_whenOperationIsReplayed_shouldPublishReplayedStateToo() {
+        // given
+        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationDetail<String> replayed = detail(OperationStatus.PROCESSED, true, "replayed");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata)).thenReturn(replayed);
+
+        // when
+        tested.process(context, metadata);
+
+        // then
+        verify(channel, times(1)).publish(replayed);
     }
 
     @Test
@@ -118,7 +232,8 @@ class TransactionalIdempotentProcessorUnitTest {
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.empty());
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
 
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
@@ -136,7 +251,8 @@ class TransactionalIdempotentProcessorUnitTest {
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.empty());
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
 
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata))
@@ -171,19 +287,40 @@ class TransactionalIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT process() when the transaction template skips the callback should return nothing")
-    void process_whenTransactionTemplateSkipsCallback_shouldReturnNothing() {
+    @DisplayName("UT process() when the operation fails should tell the transport nothing")
+    void process_whenOperationFails_shouldTellTransportNothing() {
+        // given
+        OperationContext<String> context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+
+        // when
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isInstanceOf(IllegalStateException.class);
+
+        // then
+        verifyNoInteractions(channel);
+    }
+
+    @Test
+    @DisplayName("UT process() when the transaction itself fails should report the failure and tell the transport nothing")
+    void process_whenTransactionItselfFails_shouldReportFailureAndTellTransportNothing() {
         // given
         OperationContext<String> context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
+        TransactionSystemException thrown = new TransactionSystemException("commit failed");
 
-        when(transactionTemplate.execute(any())).thenReturn(null);
+        when(transactionTemplate.execute(any())).thenThrow(thrown);
 
-        // when
-        String result = tested.process(context, metadata);
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
-        // then
-        assertThat(result).isNull();
+        verifyNoInteractions(channel);
+        verify(eventListener, times(1)).onException();
+        verify(eventListener, never()).onSuccess();
     }
 
     @Test
@@ -194,7 +331,8 @@ class TransactionalIdempotentProcessorUnitTest {
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.empty());
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
 
         // when
         assertThatThrownBy(() -> tested.process(context, metadata))
@@ -235,8 +373,10 @@ class TransactionalIdempotentProcessorUnitTest {
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata)).thenReturn(Optional.empty());
-        when(operationManager.complete(KEY, "fresh")).thenReturn("fresh");
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+        when(operationManager.complete(KEY, "fresh"))
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
         tested.process(context, metadata);
@@ -252,6 +392,10 @@ class TransactionalIdempotentProcessorUnitTest {
 
     private OperationContext<String> context(ExternalOperationCallback<String> callback) {
         return new DefaultOperationContext<>(String.class, callback, KEY, "fingerprint");
+    }
+
+    private OperationDetail<String> detail(OperationStatus status, boolean replayed, String result) {
+        return new DefaultOperationDetail<>(KEY, status, replayed, result, EXPIRES_AT);
     }
 
     private static final class RecordingCallback implements ExternalOperationCallback<String> {
