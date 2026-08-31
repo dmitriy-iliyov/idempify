@@ -21,7 +21,7 @@ public final class DefaultOperationDetail<T> implements OperationDetail<T> {
         this.status = Objects.requireNonNull(status, "status cannot be null");
         this.replayed = replayed;
         this.result = result;
-        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt cannot be null");
+        this.expiresAt = expiresAt;
     }
 
     @Override

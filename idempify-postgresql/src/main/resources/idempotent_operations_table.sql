@@ -4,6 +4,6 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
     fingerprint VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL
 );

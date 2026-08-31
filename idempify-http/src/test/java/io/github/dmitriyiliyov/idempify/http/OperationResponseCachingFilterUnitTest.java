@@ -1,5 +1,8 @@
 package io.github.dmitriyiliyov.idempify.http;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -19,10 +22,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletResponse;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -38,6 +38,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,10 +88,21 @@ class OperationResponseCachingFilterUnitTest {
     private final MockHttpServletResponse response = new MockHttpServletResponse();
 
     private OperationResponseCachingFilter tested;
+    private RecordingLogAppender logAppender;
+    private Level previousLogLevel;
 
     @BeforeEach
     void setUp() {
         tested = new OperationResponseCachingFilter(matcher, channel, fingerprintMatcher, keyExtractor, cache, mapper, clock);
+    }
+
+    @AfterEach
+    void detachLogAppender() {
+        if (logAppender != null) {
+            filterLogger().detachAppender(logAppender);
+            filterLogger().setLevel(previousLogLevel);
+            logAppender = null;
+        }
     }
 
     @Test
@@ -762,6 +775,61 @@ class OperationResponseCachingFilterUnitTest {
     }
 
     @Test
+    @DisplayName("UT doFilter() when the recorded operation has no expiry yet should store nothing and still answer the client")
+    void doFilter_whenRecordedOperationHasNoExpiryYet_shouldStoreNothingAndStillAnswerClient() throws Exception {
+        // given
+        byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation(null);
+        RecordingFilterChain chain = respondingChain(201, "application/json", body);
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(response.getStatus()).isEqualTo(201);
+        assertThat(response.getContentAsByteArray()).isEqualTo(body);
+        verify(cache, never()).save(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when the recorded operation has no expiry yet should report it as an ordinary branch and not a failure")
+    void doFilter_whenRecordedOperationHasNoExpiryYet_shouldReportItAsOrdinaryBranchAndNotFailure() throws Exception {
+        // given
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation(null);
+        RecordingFilterChain chain = respondingChain(201, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+        recordFilterLog();
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(logAppender.eventsAt(Level.ERROR)).isEmpty();
+        assertThat(logAppender.messagesAt(Level.DEBUG)).anySatisfy(
+                message -> assertThat(message).contains("has no expiry yet"));
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when the recorded operation has already expired should report it as an ordinary branch and not a failure")
+    void doFilter_whenRecordedOperationHasAlreadyExpired_shouldReportItAsOrdinaryBranchAndNotFailure() throws Exception {
+        // given
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation(NOW.minusSeconds(1));
+        RecordingFilterChain chain = respondingChain(201, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+        recordFilterLog();
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(logAppender.eventsAt(Level.ERROR)).isEmpty();
+    }
+
+    @Test
     @DisplayName("UT doFilter() when the chain throws should store nothing because no operation was recorded")
     void doFilter_whenChainThrows_shouldStoreNothingBecauseNoOperationWasRecorded() {
         // given
@@ -968,6 +1036,18 @@ class OperationResponseCachingFilterUnitTest {
         channel.publish(TestOperationState.of(expiresAt, false));
     }
 
+    private void recordFilterLog() {
+        logAppender = new RecordingLogAppender();
+        logAppender.start();
+        previousLogLevel = filterLogger().getLevel();
+        filterLogger().setLevel(Level.DEBUG);
+        filterLogger().addAppender(logAppender);
+    }
+
+    private ch.qos.logback.classic.Logger filterLogger() {
+        return (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OperationResponseCachingFilter.class);
+    }
+
     private void givenReplayedOperation() {
         channel.publish(TestOperationState.of(EXPIRES_AT, true));
     }
@@ -1046,6 +1126,28 @@ class OperationResponseCachingFilterUnitTest {
      * Stands in for the core's half of the request: the operation manager publishes here what it actually
      * wrote to the repository, and the filter reads it back to decide whether there is anything worth caching.
      */
+    /**
+     * Collects what the filter logged, so that a branch taken on purpose can be told apart from one that only
+     * looks harmless because the surrounding {@code catch} swallowed it.
+     */
+    private static final class RecordingLogAppender extends AppenderBase<ILoggingEvent> {
+
+        private final List<ILoggingEvent> events = new ArrayList<>();
+
+        @Override
+        protected synchronized void append(ILoggingEvent event) {
+            events.add(event);
+        }
+
+        private synchronized List<ILoggingEvent> eventsAt(Level level) {
+            return events.stream().filter(event -> level.equals(event.getLevel())).toList();
+        }
+
+        private synchronized List<String> messagesAt(Level level) {
+            return eventsAt(level).stream().map(ILoggingEvent::getFormattedMessage).toList();
+        }
+    }
+
     private static final class RecordingOperationStateChannel implements OperationStateChannel {
 
         private OperationState state;

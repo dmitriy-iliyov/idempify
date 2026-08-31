@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -22,18 +23,26 @@ public interface TransactionalOperationManager {
      * @param <T>      the type of the result.
      * @return what the store holds for this key, never {@code null}: a {@link OperationStatus#PROCESSED}
      *         operation whose result is there to be replayed, or one this call has just claimed and
-     *         therefore must run itself.
+     *         therefore must run itself. A claim carries no expiry yet - that is
+     *         {@link #complete}'s to write.
      */
     <T> OperationDetail<T> startOrReply(OperationContext<T> context, OperationMetadata metadata);
 
     /**
-     * Records the result of an operation the caller has just run, moving it out of the in-process state.
+     * Records the result of an operation the caller has just run, moving it out of the in-process state and
+     * giving it the expiry it will be replayed under.
+     * <p>
+     * The TTL arrives here, at completion, rather than at the claim, because an operation that ran longer
+     * than its own TTL would otherwise commit a row that is already stale: no replay would ever be served
+     * from it, and the response would miss the cache too. The expiry is therefore counted from the moment
+     * the result exists.
      *
      * @param idempotencyKey the key of the operation to complete.
+     * @param ttl            how long the stored result stays replayable, counted from now.
      * @param result         the result to store.
      * @param <T>            the type of the result.
      * @return the completed operation, never {@code null} - the same result, plus what the store decided
      *         about it, its expiry above all.
      */
-    <T> OperationDetail<T> complete(UUID idempotencyKey, T result);
+    <T> OperationDetail<T> complete(UUID idempotencyKey, Duration ttl, T result);
 }

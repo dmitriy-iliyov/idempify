@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -18,6 +19,9 @@ public interface TransactionalOperationRepository extends OperationRepository {
      * above rests on a second request for the same key waiting here instead of walking past a claim that has
      * already been released. An implementation whose lock lives for the statement alone lets a duplicate run
      * the business method a second time.
+     * <p>
+     * A claim carries no expiry: {@code expires_at} is written only when the operation completes, so the
+     * row this method inserts leaves it {@code NULL}.
      *
      * @param operation the operation to save.
      * @return the saved operation, or the existing operation if one was already present.
@@ -35,6 +39,9 @@ public interface TransactionalOperationRepository extends OperationRepository {
      * A missed condition is therefore a failure rather than an outcome to inspect - the row is expected to
      * be there and to be in {@code onStatus}. An implementation must not fall back to returning what it found - a row written by somebody else is indistinguishable
      * from the caller's own once returned, and everything downstream reads it as the caller's.
+     * <p>
+     * Every column is written from {@code operation}, {@code expires_at} included - an implementation that
+     * leaves one behind would let a row reclaimed after expiry keep the expiry of the operation it replaced.
      *
      * @param operation the operation to update.
      * @param onStatus  the expected current status of the operation for the update to proceed.
@@ -51,13 +58,22 @@ public interface TransactionalOperationRepository extends OperationRepository {
      * completes an operation the caller itself started and still holds, so the row is expected to be there
      * and to be in {@code onStatus}. An implementation must not silently leave the row alone and return
      * whatever it found.
+     * <p>
+     * This is the only method that puts an expiry on a row. {@link #saveIfAbsent} claims a key without one,
+     * so the column must be nullable and reads must survive {@code NULL}; the invariant that buys is the one
+     * {@link Operation#isExpired} leans on - an expiry exists exactly on a completed operation.
      *
      * @param result         the serialized result to save.
      * @param status         the new status of the operation.
+     * @param expiresAt      when the stored result stops being replayable.
      * @param idempotencyKey the idempotency key of the operation to update.
      * @param onStatus       the expected current status of the operation for the update to proceed.
      * @return the updated operation, never {@code null}.
      * @throws OperationStatusMismatchException if no row with this key is in {@code onStatus}.
      */
-    Operation saveResultAndUpdateStatus(String result, OperationStatus status, UUID idempotencyKey, OperationStatus onStatus);
+    Operation saveResultAndUpdateStatus(String result,
+                                        OperationStatus status,
+                                        Instant expiresAt,
+                                        UUID idempotencyKey,
+                                        OperationStatus onStatus);
 }

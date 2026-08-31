@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -107,10 +109,12 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
 //    }
 
     @Override
-    public <T> OperationDetail<T> complete(UUID idempotencyKey, T result) {
+    public <T> OperationDetail<T> complete(UUID idempotencyKey, Duration ttl, T result) {
+        Instant expiresAt = clock.instant().plus(ttl);
         Operation operation = repository.saveResultAndUpdateStatus(
                 resultSerializer.serialize(result),
                 OperationStatus.PROCESSED,
+                expiresAt,
                 idempotencyKey,
                 OperationStatus.IN_PROCESS
         );

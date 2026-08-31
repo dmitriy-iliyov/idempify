@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -18,6 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,7 +27,8 @@ class DefaultTransactionalOperationManagerUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant NOW = TestClock.EPOCH;
-    private static final Instant EXPIRES_AT = NOW.plus(Duration.ofHours(24));
+    private static final Duration TTL = Duration.ofHours(24);
+    private static final Instant EXPIRES_AT = NOW.plus(TTL);
 
     @Mock
     OperationMapper mapper;
@@ -125,6 +128,44 @@ class DefaultTransactionalOperationManagerUnitTest {
         assertThat(detail.getResult()).isNull();
         assertThat(detail.replayed()).isFalse();
         verifyNoInteractions(resultDeserializer);
+    }
+
+    @Test
+    @DisplayName("UT startOrReply() when the key is claimed should hand back a detail with no expiry yet")
+    void startOrReply_whenKeyIsClaimed_shouldHandBackDetailWithNoExpiryYet() {
+        // given
+        OperationContext<String> context = context("fingerprint");
+        OperationMetadata metadata = metadata(false);
+        Operation claimed = operation(OperationStatus.IN_PROCESS, true, null);
+
+        givenMapped(metadata, "fingerprint", claimed);
+        when(repository.saveIfAbsent(claimed)).thenReturn(claimed);
+
+        // when
+        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+
+        // then
+        assertThat(detail.getExpiresAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT startOrReply() should map the operation without an expiry of its own")
+    void startOrReply_shouldMapOperationWithoutExpiryOfItsOwn() {
+        // given
+        OperationContext<String> context = context("fingerprint");
+        OperationMetadata metadata = metadata(false);
+        Operation claimed = operation(OperationStatus.IN_PROCESS, true, null);
+
+        givenMapped(metadata, "fingerprint", claimed);
+        when(repository.saveIfAbsent(claimed)).thenReturn(claimed);
+
+        // when
+        tested.startOrReply(context, metadata);
+
+        // then
+        ArgumentCaptor<Operation> saved = ArgumentCaptor.forClass(Operation.class);
+        verify(repository).saveIfAbsent(saved.capture());
+        assertThat(saved.getValue().getExpiresAt()).isNull();
     }
 
     @Test
@@ -356,34 +397,78 @@ class DefaultTransactionalOperationManagerUnitTest {
     void complete_shouldStoreSerializedResultUnderCompareAndSwapOnInProcess() {
         // given
         when(resultSerializer.serialize("result")).thenReturn("raw");
-        when(repository.saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
-                .thenReturn(operation(OperationStatus.PROCESSED, true, "raw"));
+        givenCompletionReturns(completedAt("raw", EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, "result");
+        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
 
         // then
         assertThat(detail.getResult()).isEqualTo("result");
         verify(repository, times(1))
-                .saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS);
+                .saveResultAndUpdateStatus(eq("raw"), eq(OperationStatus.PROCESSED), any(),
+                        eq(KEY), eq(OperationStatus.IN_PROCESS));
     }
 
     @Test
-    @DisplayName("UT complete() should hand back a detail that is not a replay and carries the stored expiry")
-    void complete_shouldHandBackDetailThatIsNotReplayAndCarriesStoredExpiry() {
+    @DisplayName("UT complete() should count the expiry from the moment the result exists, not from the claim")
+    void complete_shouldCountExpiryFromMomentResultExistsNotFromClaim() {
         // given
+        clock.advance(Duration.ofHours(2));
         when(resultSerializer.serialize("result")).thenReturn("raw");
-        when(repository.saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
-                .thenReturn(operation(OperationStatus.PROCESSED, true, "raw"));
+        givenCompletionReturns(completedAt("raw", EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, "result");
+        tested.complete(KEY, TTL, "result");
+
+        // then
+        assertThat(capturedExpiry()).isEqualTo(NOW.plus(Duration.ofHours(2)).plus(TTL));
+    }
+
+    @Test
+    @DisplayName("UT complete() when the operation outran its own ttl should still store an expiry in the future")
+    void complete_whenOperationOutranItsOwnTtl_shouldStillStoreExpiryInTheFuture() {
+        // given
+        clock.advance(TTL.plus(Duration.ofMinutes(1)));
+        when(resultSerializer.serialize("result")).thenReturn("raw");
+        givenCompletionReturns(completedAt("raw", EXPIRES_AT));
+
+        // when
+        tested.complete(KEY, TTL, "result");
+
+        // then
+        assertThat(capturedExpiry()).isAfter(clock.instant());
+    }
+
+    @Test
+    @DisplayName("UT complete() should hand back the expiry the store settled on rather than the one it asked for")
+    void complete_shouldHandBackExpiryStoreSettledOnRatherThanOneItAskedFor() {
+        // given
+        Instant storeSettledOn = NOW.plus(Duration.ofMinutes(5));
+        when(resultSerializer.serialize("result")).thenReturn("raw");
+        givenCompletionReturns(completedAt("raw", storeSettledOn));
+
+        // when
+        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
+
+        // then
+        assertThat(detail.getExpiresAt()).isEqualTo(storeSettledOn);
+        assertThat(capturedExpiry()).isEqualTo(EXPIRES_AT);
+    }
+
+    @Test
+    @DisplayName("UT complete() should hand back a detail that is not a replay")
+    void complete_shouldHandBackDetailThatIsNotReplay() {
+        // given
+        when(resultSerializer.serialize("result")).thenReturn("raw");
+        givenCompletionReturns(completedAt("raw", EXPIRES_AT));
+
+        // when
+        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
 
         // then
         assertThat(detail.replayed()).isFalse();
         assertThat(detail.getIdempotencyKey()).isEqualTo(KEY);
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(detail.getExpiresAt()).isEqualTo(EXPIRES_AT);
     }
 
     @Test
@@ -391,11 +476,10 @@ class DefaultTransactionalOperationManagerUnitTest {
     void complete_whenOperationReturnedNull_shouldStoreAndHandBackThatNull() {
         // given
         when(resultSerializer.serialize(null)).thenReturn(null);
-        when(repository.saveResultAndUpdateStatus(null, OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
-                .thenReturn(operation(OperationStatus.PROCESSED, true, null));
+        givenCompletionReturns(completedAt(null, EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, null);
+        OperationDetail<String> detail = tested.complete(KEY, TTL, null);
 
         // then
         assertThat(detail.getResult()).isNull();
@@ -407,13 +491,25 @@ class DefaultTransactionalOperationManagerUnitTest {
     void complete_whenRowIsNoLongerInProcess_shouldLetMismatchOut() {
         // given
         when(resultSerializer.serialize("result")).thenReturn("raw");
-        when(repository.saveResultAndUpdateStatus("raw", OperationStatus.PROCESSED, KEY, OperationStatus.IN_PROCESS))
+        when(repository.saveResultAndUpdateStatus(any(), any(), any(), any(), any()))
                 .thenThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS));
 
         // when / then
-        assertThatThrownBy(() -> tested.complete(KEY, "result"))
+        assertThatThrownBy(() -> tested.complete(KEY, TTL, "result"))
                 .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(KEY.toString());
+    }
+
+    private void givenCompletionReturns(Operation completed) {
+        when(repository.saveResultAndUpdateStatus(any(), eq(OperationStatus.PROCESSED), any(),
+                eq(KEY), eq(OperationStatus.IN_PROCESS)))
+                .thenReturn(completed);
+    }
+
+    private Instant capturedExpiry() {
+        ArgumentCaptor<Instant> expiresAt = ArgumentCaptor.forClass(Instant.class);
+        verify(repository).saveResultAndUpdateStatus(any(), any(), expiresAt.capture(), any(), any());
+        return expiresAt.getValue();
     }
 
     private DefaultTransactionalOperationManager manager(Clock clock) {
@@ -440,6 +536,11 @@ class DefaultTransactionalOperationManagerUnitTest {
     }
 
     private Operation operation(OperationStatus status, boolean firstAttempt, String result) {
-        return new Operation(KEY, status, firstAttempt, result, "fingerprint", EXPIRES_AT, NOW);
+        Instant expiresAt = OperationStatus.PROCESSED.equals(status) ? EXPIRES_AT : null;
+        return new Operation(KEY, status, firstAttempt, result, "fingerprint", expiresAt, NOW);
+    }
+
+    private Operation completedAt(String result, Instant expiresAt) {
+        return new Operation(KEY, OperationStatus.PROCESSED, true, result, "fingerprint", expiresAt, NOW);
     }
 }

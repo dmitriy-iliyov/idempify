@@ -56,6 +56,12 @@ class OperationUnitTest {
     }
 
     @Test
+    @DisplayName("UT isExpired() when a running operation carries no expiry at all should not report it as expired")
+    void isExpired_whenRunningOperationCarriesNoExpiryAtAll_shouldNotReportItAsExpired() {
+        assertThat(operation(OperationStatus.IN_PROCESS, true, null).isExpired(NOW.plusSeconds(1))).isFalse();
+    }
+
+    @Test
     @DisplayName("UT setters should hand back everything they were given")
     void setters_shouldHandBackEverythingTheyWereGiven() {
         // given

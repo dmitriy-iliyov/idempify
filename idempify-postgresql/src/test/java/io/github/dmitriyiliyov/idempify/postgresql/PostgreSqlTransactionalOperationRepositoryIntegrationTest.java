@@ -93,7 +93,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(buildOperation(key));
-        tested.saveResultAndUpdateStatus("original-result", OperationStatus.PROCESSED, key, OperationStatus.IN_PROCESS);
+        tested.saveResultAndUpdateStatus("original-result", OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.IN_PROCESS);
 
         // when
         Operation result = tested.saveIfAbsent(buildOperation(key));
@@ -187,7 +187,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         String result = "serialized-result";
 
         // when
-        tested.saveResultAndUpdateStatus(result, OperationStatus.PROCESSED, key, OperationStatus.IN_PROCESS);
+        tested.saveResultAndUpdateStatus(result, OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.IN_PROCESS);
 
         // then
         Optional<Operation> updated = tested.findByIdempotencyKey(key);
@@ -204,7 +204,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         tested.saveIfAbsent(buildOperation(key));
 
         // when
-        assertThatThrownBy(() -> tested.saveResultAndUpdateStatus("new-result", OperationStatus.PROCESSED, key, OperationStatus.PROCESSED))
+        assertThatThrownBy(() -> tested.saveResultAndUpdateStatus("new-result", OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.PROCESSED))
                 .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(key.toString())
                 .hasMessageContaining(OperationStatus.PROCESSED.name());
@@ -214,6 +214,75 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         assertThat(notUpdated).isPresent();
         assertThat(notUpdated.get().getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(notUpdated.get().getResult()).isNull();
+    }
+
+    @Test
+    @DisplayName("IT saveIfAbsent() when the key is claimed should store a row that carries no expiry")
+    void saveIfAbsent_whenKeyIsClaimed_shouldStoreRowThatCarriesNoExpiry() {
+        // given
+        UUID key = UUID.randomUUID();
+
+        // when
+        Operation claimed = tested.saveIfAbsent(buildOperation(key));
+
+        // then
+        assertThat(claimed.getExpiresAt()).isNull();
+        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
+                stored -> assertThat(stored.getExpiresAt()).isNull());
+    }
+
+    @Test
+    @DisplayName("IT saveResultAndUpdateStatus() should be what puts an expiry on a row that had none")
+    void saveResultAndUpdateStatus_shouldBeWhatPutsExpiryOnRowThatHadNone() {
+        // given
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(buildOperation(key));
+        Instant expiresAt = anHourFromNow();
+
+        // when
+        Operation completed = tested.saveResultAndUpdateStatus(
+                "serialized-result", OperationStatus.PROCESSED, expiresAt, key, OperationStatus.IN_PROCESS);
+
+        // then
+        assertThat(completed.getExpiresAt()).isEqualTo(expiresAt);
+        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
+                stored -> assertThat(stored.getExpiresAt()).isEqualTo(expiresAt));
+    }
+
+    @Test
+    @DisplayName("IT saveResultAndUpdateStatus() when the same key completes again should replace the previous expiry")
+    void saveResultAndUpdateStatus_whenSameKeyCompletesAgain_shouldReplacePreviousExpiry() {
+        // given
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(buildOperation(key));
+        Instant firstExpiry = anHourFromNow();
+        tested.saveResultAndUpdateStatus("first", OperationStatus.PROCESSED, firstExpiry, key, OperationStatus.IN_PROCESS);
+        Instant secondExpiry = Instant.now().plus(9, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
+
+        // when
+        tested.saveResultAndUpdateStatus("second", OperationStatus.PROCESSED, secondExpiry, key, OperationStatus.PROCESSED);
+
+        // then
+        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
+                stored -> assertThat(stored.getExpiresAt()).isEqualTo(secondExpiry));
+    }
+
+    @Test
+    @DisplayName("IT update() when an expired row is reclaimed should clear the expiry it inherited")
+    void update_whenExpiredRowIsReclaimed_shouldClearExpiryItInherited() {
+        // given
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(buildOperation(key));
+        Instant staleExpiry = Instant.now().minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
+        tested.saveResultAndUpdateStatus("stale", OperationStatus.PROCESSED, staleExpiry, key, OperationStatus.IN_PROCESS);
+
+        // when
+        Operation reclaimed = tested.update(buildOperation(key), OperationStatus.PROCESSED);
+
+        // then
+        assertThat(reclaimed.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(reclaimed.getExpiresAt()).isNull();
+        assertThat(reclaimed.getResult()).isNull();
     }
 
     @Test
@@ -264,8 +333,12 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
                 true,
                 null,
                 "fingerprint",
-                Instant.now().plus(24, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
+                null,
                 Instant.now().truncatedTo(ChronoUnit.MICROS)
         );
+    }
+
+    private Instant anHourFromNow() {
+        return Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
     }
 }

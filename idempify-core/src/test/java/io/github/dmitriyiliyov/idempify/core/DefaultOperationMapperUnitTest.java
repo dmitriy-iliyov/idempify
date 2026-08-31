@@ -32,13 +32,26 @@ class DefaultOperationMapperUnitTest {
     }
 
     @Test
-    @DisplayName("UT toOperation() should set the expiry a ttl away from the given timestamp")
-    void toOperation_shouldSetExpiryTtlAwayFromGivenTimestamp() {
+    @DisplayName("UT toOperation() should leave the expiry unset however short the configured ttl is")
+    void toOperation_shouldLeaveExpiryUnsetHoweverShortConfiguredTtlIs() {
         // when
         Operation result = tested.toOperation(KEY, "fingerprint", metadata(Duration.ofMinutes(30)), NOW);
 
         // then
-        assertThat(result.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+        assertThat(result.getExpiresAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT toOperation() when the ttl differs should map the very same claim")
+    void toOperation_whenTtlDiffers_shouldMapVerySameClaim() {
+        // when
+        Operation shortTtl = tested.toOperation(KEY, "fingerprint", metadata(Duration.ofSeconds(1)), NOW);
+        Operation longTtl = tested.toOperation(KEY, "fingerprint", metadata(Duration.ofDays(365)), NOW);
+
+        // then
+        assertThat(shortTtl.getExpiresAt()).isEqualTo(longTtl.getExpiresAt());
+        assertThat(shortTtl.getStatus()).isEqualTo(longTtl.getStatus());
+        assertThat(shortTtl.getCreatedAt()).isEqualTo(longTtl.getCreatedAt());
     }
 
     @Test

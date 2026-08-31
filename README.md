@@ -198,9 +198,10 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
      Otherwise the stored result is deserialized and handed back as a replay.
    - Otherwise `startOrReply` answers with an `OperationDetail` still in `IN_PROCESS`, meaning the caller's
      business logic actually runs.
-   - `complete(key, result)` then serializes the result and performs a conditional
-     `UPDATE ... WHERE idempotency_key = ? AND status = 'IN_PROCESS'`. A condition that matches no row is not
-     a silent no-op but an `OperationStatusMismatchException`.
+   - `complete(key, ttl, result)` then serializes the result, dates the expiry from this moment and performs a
+     conditional `UPDATE ... SET result = ?, status = ?, expires_at = ? WHERE idempotency_key = ? AND
+     status = 'IN_PROCESS'`. A condition that matches no row is not a silent no-op but an
+     `OperationStatusMismatchException`.
 6. Once the transaction has committed - and only then - the processor publishes the operation's state to the
    `OperationStateChannel` and reports the outcome to `IdempotencyEventListener`: `onDuplicate()` for a replay,
    `onSuccess()` for an operation it ran itself.
@@ -356,18 +357,23 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
     fingerprint VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL
 );
 ```
 
 ### Expiry & Cleanup
 
-`expires_at` is written when the operation starts - the moment it was claimed plus the ttl resolved for that
-call site (24 hours by default). Past that moment the key is free again: the next request carrying it
+`expires_at` is written when the operation **completes** - the moment its result exists, plus the ttl resolved
+for that call site (24 hours by default). Past that moment the key is free again: the next request carrying it
 overwrites the row and runs the business method as a first attempt. A cached response never outlives the
 record it replays, because the writer hands the cache what is left of the operation's lifetime as the entry's
 own ttl.
+
+Counting from completion rather than from the claim is what keeps a slow operation replayable: one that ran
+longer than its own ttl would otherwise commit a row that is already stale, serve no replay to anybody, and
+miss the response cache as well. The price is that a row being worked on right now has **no** expiry at all -
+the column is nullable, and `expires_at IS NULL` means "still running", never "expired long ago".
 
 Expired rows are **not** deleted by the library - nothing in it schedules a sweep, and an expired row costs
 nothing until its key comes back. Reclaiming the space is the application's job:
@@ -377,7 +383,11 @@ DELETE FROM idempotent_operations WHERE expires_at < now();
 ```
 
 Run it outside a request, and only against expired rows: deleting a row an operation still owns is what
-`OperationStatusMismatchException` reports when the operation tries to complete.
+`OperationStatusMismatchException` reports when the operation tries to complete. Note what this query leaves
+behind: a row still in `IN_PROCESS` has a `NULL` expiry, so the predicate never selects it. That is the point
+while an operation is running - and a gap once one has died mid-flight, since nothing then resets it. Sweeping
+those needs a different predicate, over `created_at` rather than `expires_at`, and a limit the application
+picks for how long a claim may plausibly stay open.
 
 ---
 

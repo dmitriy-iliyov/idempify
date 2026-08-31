@@ -14,6 +14,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.IntSupplier;
 
@@ -195,6 +196,59 @@ class IdempifyCoreComponentTest {
     }
 
     @Test
+    @DisplayName("CT request when the operation ran longer than its own ttl should still be replayable afterwards")
+    void request_whenOperationRanLongerThanItsOwnTtl_shouldStillBeReplayableAfterwards() {
+        // given
+        Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
+        SlowOperation slow = new SlowOperation("charged", clock, ttl.plus(Duration.ofHours(1)));
+
+        // when
+        call(KEY, request("body"), metadata(false), slow);
+        String replayed = call(KEY, request("body"), metadata(false), slow);
+
+        // then
+        assertThat(replayed).isEqualTo("charged");
+        assertThat(slow.calls).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("CT request when the operation ran longer than its own ttl should date the expiry from the result")
+    void request_whenOperationRanLongerThanItsOwnTtl_shouldDateExpiryFromResult() {
+        // given
+        Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
+        Duration ranFor = ttl.plus(Duration.ofHours(1));
+        SlowOperation slow = new SlowOperation("charged", clock, ranFor);
+
+        // when
+        call(KEY, request("body"), metadata(false), slow);
+
+        // then
+        assertThat(channel.consume().getExpiresAt())
+                .isEqualTo(TestClock.EPOCH.plus(ranFor).plus(ttl));
+    }
+
+    @Test
+    @DisplayName("CT request while the operation is still running should hold a row that carries no expiry")
+    void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() {
+        // given
+        List<Operation> seenMidFlight = new ArrayList<>();
+        ExternalOperationCallback<String> peeking = () -> {
+            seenMidFlight.add(repository.findByIdempotencyKey(KEY).orElseThrow());
+            return "charged";
+        };
+
+        // when
+        call(KEY, request("body"), metadata(false), peeking);
+
+        // then
+        assertThat(seenMidFlight).singleElement().satisfies(midFlight -> {
+            assertThat(midFlight.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+            assertThat(midFlight.getExpiresAt()).isNull();
+        });
+        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().getExpiresAt()).isNotNull();
+    }
+
+    @Test
     @DisplayName("CT request when the operation is replayed should tell the transport it was replayed")
     void request_whenOperationIsReplayed_shouldTellTransportItWasReplayed() {
         // given
@@ -322,23 +376,26 @@ class IdempifyCoreComponentTest {
         @Override
         public Operation update(Operation operation, OperationStatus onStatus) {
             Operation stored = rows.get(operation.getIdempotencyKey());
-            if (stored != null && stored.getStatus() == onStatus) {
-                rows.put(operation.getIdempotencyKey(), copyOf(operation));
-                return copyOf(operation);
+            if (stored == null || stored.getStatus() != onStatus) {
+                throw new OperationStatusMismatchException(operation.getIdempotencyKey(), onStatus);
             }
-            return copyOf(stored);
+            rows.put(operation.getIdempotencyKey(), copyOf(operation));
+            return copyOf(operation);
         }
 
         @Override
         public Operation saveResultAndUpdateStatus(String result,
                                                    OperationStatus status,
+                                                   Instant expiresAt,
                                                    UUID idempotencyKey,
                                                    OperationStatus onStatus) {
             Operation stored = rows.get(idempotencyKey);
-            if (stored != null && stored.getStatus() == onStatus) {
-                stored.setResult(result);
-                stored.setStatus(status);
+            if (stored == null || stored.getStatus() != onStatus) {
+                throw new OperationStatusMismatchException(idempotencyKey, onStatus);
             }
+            stored.setResult(result);
+            stored.setStatus(status);
+            stored.setExpiresAt(expiresAt);
             return copyOf(stored);
         }
 
@@ -461,6 +518,31 @@ class IdempifyCoreComponentTest {
         @Override
         public String call() {
             calls++;
+            return result;
+        }
+    }
+
+    /**
+     * An operation that takes time: it moves the clock forward before returning, which is how the expiry
+     * being counted from completion rather than from the claim becomes observable at all.
+     */
+    private static final class SlowOperation implements ExternalOperationCallback<String> {
+
+        private final String result;
+        private final TestClock clock;
+        private final Duration duration;
+        private int calls;
+
+        private SlowOperation(String result, TestClock clock, Duration duration) {
+            this.result = result;
+            this.clock = clock;
+            this.duration = duration;
+        }
+
+        @Override
+        public String call() {
+            calls++;
+            clock.advance(duration);
             return result;
         }
     }

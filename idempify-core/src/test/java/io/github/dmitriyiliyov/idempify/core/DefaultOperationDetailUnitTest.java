@@ -31,11 +31,15 @@ class DefaultOperationDetailUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor when expiresAt is null should throw NullPointerException")
-    void constructor_whenExpiresAtIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultOperationDetail<>(KEY, OperationStatus.PROCESSED, true, "result", null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("expiresAt cannot be null");
+    @DisplayName("UT constructor when expiresAt is null should keep it, because an unfinished operation has none")
+    void constructor_whenExpiresAtIsNull_shouldKeepItBecauseUnfinishedOperationHasNone() {
+        // when
+        DefaultOperationDetail<String> tested =
+                new DefaultOperationDetail<>(KEY, OperationStatus.IN_PROCESS, false, null, null);
+
+        // then
+        assertThat(tested.getExpiresAt()).isNull();
+        assertThat(tested.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
     }
 
     @Test

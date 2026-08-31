@@ -36,7 +36,7 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
                 }
 
                 T result = IdempotentProcessorUtils.getResult(context.getOperationCallback());
-                operation = operationManager.complete(context.getIdempotencyKey(), result);
+                operation = operationManager.complete(context.getIdempotencyKey(), metadata.getTtl(), result);
                 return operation;
             });
 

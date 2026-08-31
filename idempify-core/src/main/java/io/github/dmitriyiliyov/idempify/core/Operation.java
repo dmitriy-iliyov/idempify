@@ -43,6 +43,10 @@ public class Operation {
      * Only a {@link OperationStatus#PROCESSED} operation can expire. One still
      * {@link OperationStatus#IN_PROCESS} is never overwritten however long it has been running, which also
      * makes this mutually exclusive with {@link #hasConflict()}.
+     * <p>
+     * The status test is also what keeps the expiry dereference safe: an expiry is written only when an
+     * operation completes, so a row that has one is {@code PROCESSED} by construction and a row without one
+     * never reaches the comparison.
      *
      * @param now the current instant, taken from the caller's clock.
      */

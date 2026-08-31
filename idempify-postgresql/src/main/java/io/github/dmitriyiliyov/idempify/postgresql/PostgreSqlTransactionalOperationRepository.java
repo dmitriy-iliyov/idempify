@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,8 +26,8 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
     public Operation saveIfAbsent(Operation operation) {
         return jdbcClient
                 .sql("""
-                    INSERT INTO idempotent_operations (idempotency_key, status, is_first_attempt, result, fingerprint, expires_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO idempotent_operations (idempotency_key, status, is_first_attempt, result, fingerprint, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(idempotency_key) 
                     DO UPDATE 
                         SET is_first_attempt = false
@@ -38,7 +39,6 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
                         operation.isFirstAttempt(),
                         operation.getResult(),
                         operation.getFingerprint(),
-                        Timestamp.from(operation.getExpiresAt()),
                         Timestamp.from(operation.getCreatedAt())
                 )
                 .query((rs, rowNum) -> toOperation(rs))
@@ -64,7 +64,7 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
                         operation.isFirstAttempt(),
                         operation.getResult(),
                         operation.getFingerprint(),
-                        Timestamp.from(operation.getExpiresAt()),
+                        toTimestamp(operation.getExpiresAt()),
                         Timestamp.from(operation.getCreatedAt()),
                         operation.getIdempotencyKey(),
                         onStatus.name()
@@ -75,15 +75,16 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
     }
 
     @Override
-    public Operation saveResultAndUpdateStatus(String result, OperationStatus status, UUID idempotencyKey, OperationStatus onStatus) {
+    public Operation saveResultAndUpdateStatus(String result, OperationStatus status, Instant expiresAt,
+                                               UUID idempotencyKey, OperationStatus onStatus) {
         return jdbcClient
                 .sql("""
                     UPDATE idempotent_operations
-                        SET result = ?, status = ?
+                        SET result = ?, status = ?, expires_at = ?
                     WHERE idempotency_key = ? AND status = ?
                     RETURNING *
                 """)
-                .params(result, status.name(), idempotencyKey, onStatus.name())
+                .params(result, status.name(), Timestamp.from(expiresAt), idempotencyKey, onStatus.name())
                 .query((rs, rowNum) -> toOperation(rs))
                 .optional()
                 .orElseThrow(() -> new OperationStatusMismatchException(idempotencyKey, onStatus));
@@ -108,8 +109,16 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
                 rs.getBoolean("is_first_attempt"),
                 rs.getString("result"),
                 rs.getString("fingerprint"),
-                rs.getTimestamp("expires_at").toInstant(),
+                toInstant(rs.getTimestamp("expires_at")),
                 rs.getTimestamp("created_at").toInstant()
         );
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private Timestamp toTimestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 }

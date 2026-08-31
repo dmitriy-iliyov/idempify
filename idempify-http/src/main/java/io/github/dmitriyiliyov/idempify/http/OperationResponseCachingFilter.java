@@ -239,10 +239,12 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                     fingerprint
             );
 
-            Duration ttl = Duration.between(clock.instant(), operationState.getExpiresAt());
-            if (ttl.isPositive()) {
-                cache.save(idempotencyKey, cacheableResponse, ttl);
+            Duration ttl = cacheTtl(operationState);
+            if (ttl == null) {
+                log.debug("Operation (idempotencyKey={}) has no expiry yet, response not cached", idempotencyKey);
+                return;
             }
+            cache.save(idempotencyKey, cacheableResponse, ttl);
         } catch (Exception e) {
             log.error("Error when saving operation response (idempotencyKey={})", idempotencyKey, e);
         }
@@ -272,5 +274,13 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
 
     private boolean is5xx(int status) {
         return status >= 500 && status < 600;
+    }
+
+    private Duration cacheTtl(OperationState operationState) {
+        if (operationState.getExpiresAt() == null) {
+            return null;
+        }
+        Duration ttl = Duration.between(clock.instant(), operationState.getExpiresAt());
+        return ttl.isPositive() ? ttl : null;
     }
 }
