@@ -20,7 +20,7 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
     }
 
     @Override
-    public <T> T intercept(InterceptContext<T> context) {
+    public Object intercept(InterceptContext context) {
         UUID idempotencyKey = context.getIdempotencyKey();
 
         if (idempotencyKey == null) {
@@ -47,7 +47,7 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
             }
         }
 
-        OperationContext<T> operationContext = new DefaultOperationContext<>(
+        OperationContext operationContext = new DefaultOperationContext(
                 context.getOperationResultType(),
                 context.getOperationCallback(),
                 idempotencyKey,

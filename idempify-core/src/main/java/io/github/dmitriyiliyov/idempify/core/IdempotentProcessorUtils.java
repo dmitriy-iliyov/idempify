@@ -4,7 +4,7 @@ public final class IdempotentProcessorUtils {
 
     private IdempotentProcessorUtils() {}
 
-    public static <T> T getResult(ExternalOperationCallback<T> operationCallback) {
+    public static Object getResult(ExternalOperationCallback operationCallback) {
         try {
             return operationCallback.call();
         } catch (Throwable t) {

@@ -4,18 +4,18 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-public final class DefaultOperationDetail<T> implements OperationDetail<T> {
+public final class DefaultOperationDetail implements OperationDetail {
 
     private final UUID idempotencyKey;
     private final OperationStatus status;
     private final boolean replayed;
-    private final T result;
+    private final Object result;
     private final Instant expiresAt;
 
     public DefaultOperationDetail(UUID idempotencyKey,
                                   OperationStatus status,
                                   boolean replayed,
-                                  T result,
+                                  Object result,
                                   Instant expiresAt) {
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey cannot be null");
         this.status = Objects.requireNonNull(status, "status cannot be null");
@@ -40,7 +40,7 @@ public final class DefaultOperationDetail<T> implements OperationDetail<T> {
     }
 
     @Override
-    public T getResult() {
+    public Object getResult() {
         return result;
     }
 

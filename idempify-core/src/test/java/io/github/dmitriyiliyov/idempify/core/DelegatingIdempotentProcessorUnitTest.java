@@ -53,7 +53,7 @@ class DelegatingIdempotentProcessorUnitTest {
         DelegatingIdempotentProcessor tested = new DelegatingIdempotentProcessor(List.of(transactional, lockBased));
 
         // when
-        String result = tested.process(context(), metadata(ProcessorType.LOCK_BASED));
+        Object result = tested.process(context(), metadata(ProcessorType.LOCK_BASED));
 
         // then
         assertThat(result).isEqualTo("from-lock-based");
@@ -75,8 +75,8 @@ class DelegatingIdempotentProcessorUnitTest {
                 .hasMessageContaining(KEY.toString());
     }
 
-    private OperationContext<String> context() {
-        return new DefaultOperationContext<>(String.class, () -> "fresh", KEY, "fingerprint");
+    private OperationContext context() {
+        return new DefaultOperationContext(ResultType.ofClass(String.class), () -> "fresh", KEY, "fingerprint");
     }
 
     private OperationMetadata metadata(ProcessorType processorType) {
@@ -95,10 +95,9 @@ class DelegatingIdempotentProcessorUnitTest {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
-        public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
+        public Object process(OperationContext context, OperationMetadata metadata) {
             calls++;
-            return (T) result;
+            return result;
         }
 
         @Override

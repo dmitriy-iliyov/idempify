@@ -97,6 +97,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
+
         } finally {
             cachePut(idempotencyKey, fingerprint, metadata, wrappedResponse);
             wrappedResponse.copyBodyToResponse();

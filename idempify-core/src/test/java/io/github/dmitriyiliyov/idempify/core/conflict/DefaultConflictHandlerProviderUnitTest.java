@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.core.conflict;
 
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
 import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.TestClock;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
@@ -146,8 +147,8 @@ class DefaultConflictHandlerProviderUnitTest {
     private static ResultDeserializer deserializer() {
         return new ResultDeserializer() {
             @Override
-            public <T> T deserialize(String rawResult, Class<T> c) {
-                return c.cast(rawResult);
+            public Object deserialize(String rawResult, ResultType type) {
+                return rawResult;
             }
         };
     }

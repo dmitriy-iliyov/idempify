@@ -33,13 +33,13 @@ class AbstractIdempotentProcessorDecoratorUnitTest {
     void process_shouldPassCallStraightThroughToDelegate() {
         // given
         PassThroughDecorator tested = new PassThroughDecorator(delegate);
-        OperationContext<String> context = new DefaultOperationContext<>(String.class, () -> "fresh", KEY, null);
+        OperationContext context = new DefaultOperationContext(ResultType.ofClass(String.class), () -> "fresh", KEY, null);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         when(delegate.process(context, metadata)).thenReturn("from-delegate");
 
         // when
-        String result = tested.process(context, metadata);
+        Object result = tested.process(context, metadata);
 
         // then
         assertThat(result).isEqualTo("from-delegate");

@@ -11,8 +11,7 @@ public interface IdempotentInterceptor {
      * Processes the intercepted call.
      *
      * @param context what the aspect observed about the call.
-     * @param <T>     the type of the method's return value.
      * @return the value to return to the caller.
      */
-    <T> T intercept(InterceptContext<T> context);
+    Object intercept(InterceptContext context);
 }

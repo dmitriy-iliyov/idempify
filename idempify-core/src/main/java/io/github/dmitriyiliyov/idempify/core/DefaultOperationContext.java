@@ -4,15 +4,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class DefaultOperationContext<T> implements OperationContext<T> {
+public final class DefaultOperationContext implements OperationContext {
 
-    private final Class<T> operationResultType;
-    private final ExternalOperationCallback<T> operationCallback;
+    private final ResultType operationResultType;
+    private final ExternalOperationCallback operationCallback;
     private final UUID idempotencyKey;
     private final String fingerprint;
 
-    public DefaultOperationContext(Class<T> operationResultType,
-                                   ExternalOperationCallback<T> operationCallback,
+    public DefaultOperationContext(ResultType operationResultType,
+                                   ExternalOperationCallback operationCallback,
                                    UUID idempotencyKey,
                                    String fingerprint) {
         this.operationResultType = Objects.requireNonNull(operationResultType, "operationResultType cannot be null");
@@ -22,12 +22,12 @@ public final class DefaultOperationContext<T> implements OperationContext<T> {
     }
 
     @Override
-    public Class<T> getOperationResultType() {
+    public ResultType getOperationResultType() {
         return operationResultType;
     }
 
     @Override
-    public ExternalOperationCallback<T> getOperationCallback() {
+    public ExternalOperationCallback getOperationCallback() {
         return operationCallback;
     }
 
@@ -46,7 +46,7 @@ public final class DefaultOperationContext<T> implements OperationContext<T> {
         if (this == o) {
             return true;
         }
-        if (!(o instanceof DefaultOperationContext<?> that)) {
+        if (!(o instanceof DefaultOperationContext that)) {
             return false;
         }
         return Objects.equals(operationResultType, that.operationResultType)

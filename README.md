@@ -45,9 +45,11 @@ under the same key is rejected rather than silently answered from the store.
   cache stores the *HTTP response* (status, content type, bytes). They are filled at different levels, expire
   independently and are never reconciled, so a replay through the repository loses the status code and
   `Location` while a replay from the cache keeps them.
-- **`Class<T>` as the result type descriptor.** Generic return types - `List<Order>`, `Optional<X>`,
-  `ResponseEntity<Order>` - do not survive erasure, and `void` has no sensible descriptor at all. Only
-  concrete, non-generic return types are supported today.
+- **`void` and primitive return types.** The result type travels as a `ResultType`, which keeps type
+  arguments, so `List<Order>` and `Map<String, Order>` replay correctly. What it does not settle is a method
+  returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
+  the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
+  Jackson cannot rebuild its status and headers - so it is not replayable either.
 - **No automatic table creation** - the DDL is applied by hand.
 
 ## Quick Start
@@ -327,16 +329,24 @@ Jackson-backed implementation, auto-configured from the application's `ObjectMap
 
 ```java
 public interface ResultSerializer {
-    <T> String serialize(T result);
+    String serialize(Object result);
 }
 
 public interface ResultDeserializer {
-    <T> T deserialize(String rawResult, Class<T> c);
+    Object deserialize(String rawResult, ResultType type);
 }
 ```
 
-The type descriptor is a plain `Class<T>` taken from the method signature, so generic return types do not
-survive erasure - see [Limitations](#limitations).
+`ResultType` carries a `java.lang.reflect.Type`, not a `Class`, and that is the whole point: a generic return
+type is written into the class file and read back with `Method#getGenericReturnType()`, so `List<Order>`
+reaches the deserializer intact. **Implementations should read `resultType.getType()`** - a Jackson-backed one
+turns it into a `JavaType` with `mapper.getTypeFactory().constructType(type)`, and other libraries take a
+`Type` directly too.
+
+Both sides deal in `Object` rather than a type parameter. The library wraps arbitrary methods, so the concrete
+return type is known only at runtime; a `<T>` here would be inferred as `Object` at the one entry point that
+matters and would promise a guarantee nobody can keep. A caller that does know its type - an entry point of
+your own rather than the `@Idempotent` aspect - casts once at its own boundary.
 
 ### Storage
 

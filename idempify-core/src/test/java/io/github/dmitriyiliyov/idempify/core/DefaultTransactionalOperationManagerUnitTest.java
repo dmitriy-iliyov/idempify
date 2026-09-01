@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DefaultTransactionalOperationManagerUnitTest {
 
+    private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant NOW = TestClock.EPOCH;
     private static final Duration TTL = Duration.ofHours(24);
@@ -113,7 +114,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the key is seen for the first time should hand back an operation nobody has completed")
     void startOrReply_whenKeyIsSeenForFirstTime_shouldHandBackOperationNobodyHasCompleted() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation inserted = operation(OperationStatus.IN_PROCESS, true, null);
 
@@ -121,7 +122,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.saveIfAbsent(inserted)).thenReturn(inserted);
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
@@ -134,7 +135,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the key is claimed should hand back a detail with no expiry yet")
     void startOrReply_whenKeyIsClaimed_shouldHandBackDetailWithNoExpiryYet() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation claimed = operation(OperationStatus.IN_PROCESS, true, null);
 
@@ -142,7 +143,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.saveIfAbsent(claimed)).thenReturn(claimed);
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getExpiresAt()).isNull();
@@ -152,7 +153,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() should map the operation without an expiry of its own")
     void startOrReply_shouldMapOperationWithoutExpiryOfItsOwn() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation claimed = operation(OperationStatus.IN_PROCESS, true, null);
 
@@ -172,17 +173,17 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the operation is already processed should hand back its deserialized result")
     void startOrReply_whenOperationIsAlreadyProcessed_shouldHandBackItsDeserializedResult() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = operation(OperationStatus.PROCESSED, false, "raw");
 
         givenMapped(metadata, "fingerprint", toInsert);
         when(repository.saveIfAbsent(toInsert)).thenReturn(stored);
-        when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
+        when(resultDeserializer.deserialize("raw", RESULT_TYPE)).thenReturn("deserialized");
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
@@ -193,17 +194,17 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the operation is replayed should mark the detail replayed and carry the stored expiry")
     void startOrReply_whenOperationIsReplayed_shouldMarkDetailReplayedAndCarryStoredExpiry() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = operation(OperationStatus.PROCESSED, false, "raw");
 
         givenMapped(metadata, "fingerprint", toInsert);
         when(repository.saveIfAbsent(toInsert)).thenReturn(stored);
-        when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
+        when(resultDeserializer.deserialize("raw", RESULT_TYPE)).thenReturn("deserialized");
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.replayed()).isTrue();
@@ -215,17 +216,17 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the stored result is null should replay it instead of taking it for no result")
     void startOrReply_whenStoredResultIsNull_shouldReplayItInsteadOfTakingItForNoResult() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = operation(OperationStatus.PROCESSED, false, null);
 
         givenMapped(metadata, "fingerprint", toInsert);
         when(repository.saveIfAbsent(toInsert)).thenReturn(stored);
-        when(resultDeserializer.deserialize(null, String.class)).thenReturn(null);
+        when(resultDeserializer.deserialize(null, RESULT_TYPE)).thenReturn(null);
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
@@ -237,7 +238,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the stored row has expired should rewrite it and start over")
     void startOrReply_whenStoredRowHasExpired_shouldRewriteItAndStartOver() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation expired = new Operation(KEY, OperationStatus.PROCESSED, false, "stale", "old", NOW.minusSeconds(1), NOW.minusSeconds(10));
@@ -247,7 +248,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.update(toInsert, OperationStatus.PROCESSED)).thenReturn(toInsert);
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
@@ -260,14 +261,14 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the stored row is still live should not rewrite it")
     void startOrReply_whenStoredRowIsStillLive_shouldNotRewriteIt() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = operation(OperationStatus.PROCESSED, false, "raw");
 
         givenMapped(metadata, "fingerprint", toInsert);
         when(repository.saveIfAbsent(toInsert)).thenReturn(stored);
-        when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
+        when(resultDeserializer.deserialize("raw", RESULT_TYPE)).thenReturn("deserialized");
 
         // when
         tested.startOrReply(context, metadata);
@@ -280,7 +281,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the stored row is in process past its expiry should leave it alone")
     void startOrReply_whenStoredRowIsInProcessPastItsExpiry_shouldLeaveItAlone() {
         // given
-        OperationContext<String> context = context("fingerprint");
+        OperationContext context = context("fingerprint");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stale = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, "fingerprint", NOW.minusSeconds(1), NOW.minusSeconds(10));
@@ -289,7 +290,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(repository.saveIfAbsent(toInsert)).thenReturn(stale);
 
         // when
-        OperationDetail<String> detail = tested.startOrReply(context, metadata);
+        OperationDetail detail = tested.startOrReply(context, metadata);
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
@@ -301,7 +302,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when the context carries no fingerprint should map the operation without one")
     void startOrReply_whenContextCarriesNoFingerprint_shouldMapOperationWithoutOne() {
         // given
-        OperationContext<String> context = context(null);
+        OperationContext context = context(null);
         OperationMetadata metadata = metadata(false);
         Operation inserted = operation(OperationStatus.IN_PROCESS, true, null);
 
@@ -320,7 +321,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     void startOrReply_whenFingerprintingIsOnAndKeyRepeats_shouldCompareStoredFingerprintAgainstCurrentOne() {
         // given
         FingerprintPolicy policy = mock(FingerprintPolicy.class);
-        OperationContext<String> context = context("current");
+        OperationContext context = context("current");
         OperationMetadata metadata = metadata(policy);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, "stored", EXPIRES_AT, NOW);
@@ -339,7 +340,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when fingerprinting is on and the key repeats without a fingerprint should throw InvalidFingerprintException")
     void startOrReply_whenFingerprintingIsOnAndKeyRepeatsWithoutFingerprint_shouldThrowInvalidFingerprintException() {
         // given
-        OperationContext<String> context = context(null);
+        OperationContext context = context(null);
         OperationMetadata metadata = metadata(true);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, "stored", EXPIRES_AT, NOW);
@@ -359,7 +360,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when fingerprinting is on and the key is new should not compare anything")
     void startOrReply_whenFingerprintingIsOnAndKeyIsNew_shouldNotCompareAnything() {
         // given
-        OperationContext<String> context = context("current");
+        OperationContext context = context("current");
         OperationMetadata metadata = metadata(true);
         Operation inserted = operation(OperationStatus.IN_PROCESS, true, null);
 
@@ -377,7 +378,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when fingerprinting is off should not compare anything")
     void startOrReply_whenFingerprintingIsOff_shouldNotCompareAnything() {
         // given
-        OperationContext<String> context = context("current");
+        OperationContext context = context("current");
         OperationMetadata metadata = metadata(false);
         Operation toInsert = operation(OperationStatus.IN_PROCESS, true, null);
         Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, "stored", EXPIRES_AT, NOW);
@@ -400,7 +401,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         givenCompletionReturns(completedAt("raw", EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
+        OperationDetail detail = tested.complete(KEY, TTL, "result");
 
         // then
         assertThat(detail.getResult()).isEqualTo("result");
@@ -448,7 +449,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         givenCompletionReturns(completedAt("raw", storeSettledOn));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
+        OperationDetail detail = tested.complete(KEY, TTL, "result");
 
         // then
         assertThat(detail.getExpiresAt()).isEqualTo(storeSettledOn);
@@ -463,7 +464,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         givenCompletionReturns(completedAt("raw", EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, TTL, "result");
+        OperationDetail detail = tested.complete(KEY, TTL, "result");
 
         // then
         assertThat(detail.replayed()).isFalse();
@@ -479,7 +480,7 @@ class DefaultTransactionalOperationManagerUnitTest {
         givenCompletionReturns(completedAt(null, EXPIRES_AT));
 
         // when
-        OperationDetail<String> detail = tested.complete(KEY, TTL, null);
+        OperationDetail detail = tested.complete(KEY, TTL, null);
 
         // then
         assertThat(detail.getResult()).isNull();
@@ -521,8 +522,8 @@ class DefaultTransactionalOperationManagerUnitTest {
         when(mapper.toOperation(KEY, fingerprint, metadata, NOW)).thenReturn(mapped);
     }
 
-    private OperationContext<String> context(String fingerprint) {
-        return new DefaultOperationContext<>(String.class, () -> "fresh", KEY, fingerprint);
+    private OperationContext context(String fingerprint) {
+        return new DefaultOperationContext(ResultType.ofClass(String.class), () -> "fresh", KEY, fingerprint);
     }
 
     private OperationMetadata metadata(boolean useFingerprint) {

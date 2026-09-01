@@ -1,14 +1,16 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
+import io.github.dmitriyiliyov.idempify.core.ResultType;
+
 import java.util.Objects;
 import java.util.UUID;
 
-public final class DefaultConflictContext<T> implements ConflictContext<T> {
+public final class DefaultConflictContext implements ConflictContext {
 
     private final UUID idempotencyKey;
-    private final Class<T> operationResultType;
+    private final ResultType operationResultType;
 
-    public DefaultConflictContext(UUID idempotencyKey, Class<T> operationResultType) {
+    public DefaultConflictContext(UUID idempotencyKey, ResultType operationResultType) {
         this.idempotencyKey = idempotencyKey;
         this.operationResultType = operationResultType;
     }
@@ -19,7 +21,7 @@ public final class DefaultConflictContext<T> implements ConflictContext<T> {
     }
 
     @Override
-    public Class<T> getOperationResultType() {
+    public ResultType getOperationResultType() {
         return operationResultType;
     }
 
@@ -28,7 +30,7 @@ public final class DefaultConflictContext<T> implements ConflictContext<T> {
         if (this == o) {
             return true;
         }
-        if (!(o instanceof DefaultConflictContext<?> that)) {
+        if (!(o instanceof DefaultConflictContext that)) {
             return false;
         }
         return Objects.equals(idempotencyKey, that.idempotencyKey)

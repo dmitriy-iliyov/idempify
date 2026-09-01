@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -123,8 +124,8 @@ class IdempotentAdvisorUnitTest {
         tested.advice(jp, annotation("action"));
 
         // then
-        InterceptContext<?> context = capturedContext();
-        assertThat(context.getOperationResultType()).isEqualTo(String.class);
+        InterceptContext context = capturedContext();
+        assertThat(context.getOperationResultType()).isEqualTo(ResultType.ofClass(String.class));
         assertThat(context.getRequestContext()).isSameAs(requestContext);
         assertThat(context.getOperationMetadata()).isSameAs(operationMetadata);
     }
@@ -346,7 +347,6 @@ class IdempotentAdvisorUnitTest {
 
     private void stubAdvice(Method method, Object target) {
         when(jp.getSignature()).thenReturn(signature);
-        when(signature.getReturnType()).thenReturn(String.class);
         when(signature.getMethod()).thenReturn(method);
         when(jp.getTarget()).thenReturn(target);
         when(metadataResolver.resolve(method, target == null ? null : target.getClass()))
@@ -366,14 +366,13 @@ class IdempotentAdvisorUnitTest {
         when(jp.getArgs()).thenReturn(args);
     }
 
-    private InterceptContext<?> capturedContext() {
-        ArgumentCaptor<InterceptContext<?>> captor = interceptContextCaptor();
+    private InterceptContext capturedContext() {
+        ArgumentCaptor<InterceptContext> captor = interceptContextCaptor();
         verify(interceptor, times(1)).intercept(captor.capture());
         return captor.getValue();
     }
 
-    @SuppressWarnings("unchecked")
-    private ArgumentCaptor<InterceptContext<?>> interceptContextCaptor() {
+    private ArgumentCaptor<InterceptContext> interceptContextCaptor() {
         return ArgumentCaptor.forClass(InterceptContext.class);
     }
 

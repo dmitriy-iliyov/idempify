@@ -21,6 +21,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class WaitConflictHandlerUnitTest {
 
+    private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     @Mock
@@ -95,10 +96,10 @@ class WaitConflictHandlerUnitTest {
         WaitConflictHandler tested = handler(TestClock.standingStill());
 
         when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(operation(OperationStatus.PROCESSED)));
-        when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
+        when(resultDeserializer.deserialize("raw", RESULT_TYPE)).thenReturn("deserialized");
 
         // when
-        String result = tested.handle(new DefaultConflictContext<>(KEY, String.class));
+        Object result = tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class)));
 
         // then
         assertThat(result).isEqualTo("deserialized");
@@ -115,10 +116,10 @@ class WaitConflictHandlerUnitTest {
                 Optional.of(operation(OperationStatus.IN_PROCESS)),
                 Optional.of(operation(OperationStatus.PROCESSED))
         );
-        when(resultDeserializer.deserialize("raw", String.class)).thenReturn("deserialized");
+        when(resultDeserializer.deserialize("raw", RESULT_TYPE)).thenReturn("deserialized");
 
         // when
-        String result = tested.handle(new DefaultConflictContext<>(KEY, String.class));
+        Object result = tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class)));
 
         // then
         assertThat(result).isEqualTo("deserialized");
@@ -134,7 +135,7 @@ class WaitConflictHandlerUnitTest {
         when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
 
         // when / then
-        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext<>(KEY, String.class)))
+        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class))))
                 .isInstanceOf(OperationDisappearedException.class)
                 .hasMessageContaining(KEY.toString());
 
@@ -150,7 +151,7 @@ class WaitConflictHandlerUnitTest {
         when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(operation(OperationStatus.IN_PROCESS)));
 
         // when / then
-        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext<>(KEY, String.class)))
+        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class))))
                 .isInstanceOf(WaitAttemptsExhaustedException.class)
                 .hasMessageContaining(KEY.toString());
 
@@ -165,7 +166,7 @@ class WaitConflictHandlerUnitTest {
         WaitConflictHandler tested = handler(TestClock.steppingBy(Duration.ofSeconds(1)));
 
         // when / then
-        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext<>(KEY, String.class)))
+        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class))))
                 .isInstanceOf(WaitTimeoutException.class)
                 .hasMessageContaining(KEY.toString());
 
@@ -189,7 +190,7 @@ class WaitConflictHandlerUnitTest {
         try {
             Thread.currentThread().interrupt();
 
-            assertThatThrownBy(() -> tested.handle(new DefaultConflictContext<>(KEY, String.class)))
+            assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class))))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("Interrupted while waiting")
                     .hasCauseInstanceOf(InterruptedException.class);

@@ -96,6 +96,17 @@ final class ProblemFactory {
         );
     }
 
+    static ProblemDetail resultProcessingFailed(String detail, String instance, Instant timestamp) {
+        return problem(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                ProblemTypes.RESULT_PROCESSING_FAILED,
+                "Operation result processing failed",
+                detail,
+                instance,
+                timestamp
+        );
+    }
+
     private static ProblemDetail problem(HttpStatus status,
                                          URI type,
                                          String title,

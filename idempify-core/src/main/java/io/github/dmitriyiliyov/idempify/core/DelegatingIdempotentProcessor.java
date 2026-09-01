@@ -30,7 +30,7 @@ public class DelegatingIdempotentProcessor implements IdempotentProcessor {
     }
 
     @Override
-    public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
+    public Object process(OperationContext context, OperationMetadata metadata) {
         IdempotentProcessor processor = processors.get(metadata.getProcessorType());
         if (processor == null) {
             throw new IllegalStateException(

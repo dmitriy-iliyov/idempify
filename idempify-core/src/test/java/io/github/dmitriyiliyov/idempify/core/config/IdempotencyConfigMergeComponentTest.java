@@ -254,7 +254,7 @@ class IdempotencyConfigMergeComponentTest {
     private static final class TestConflictHandler implements ConflictHandler {
 
         @Override
-        public <T> T handle(ConflictContext<T> context) {
+        public Object handle(ConflictContext context) {
             return null;
         }
 

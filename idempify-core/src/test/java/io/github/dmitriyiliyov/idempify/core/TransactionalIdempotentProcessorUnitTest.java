@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -87,7 +88,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationIsAlreadyProcessed_shouldReturnStoredResultWithoutRunningOperation() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
-        OperationContext<String> context = context(callback);
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -95,7 +96,7 @@ class TransactionalIdempotentProcessorUnitTest {
                 .thenReturn(detail(OperationStatus.PROCESSED, true, "replayed"));
 
         // when
-        String result = tested.process(context, metadata);
+        Object result = tested.process(context, metadata);
 
         // then
         assertThat(result).isEqualTo("replayed");
@@ -108,7 +109,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationWasOnlyClaimed_shouldRunItAndCompleteIt() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
-        OperationContext<String> context = context(callback);
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -118,7 +119,7 @@ class TransactionalIdempotentProcessorUnitTest {
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
-        String result = tested.process(context, metadata);
+        Object result = tested.process(context, metadata);
 
         // then
         assertThat(result).isEqualTo("fresh");
@@ -130,7 +131,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation ran should count a success and not a duplicate")
     void process_whenOperationRan_shouldCountSuccessAndNotDuplicate() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -151,7 +152,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation is replayed should count a duplicate and not a success")
     void process_whenOperationIsReplayed_shouldCountDuplicateAndNotSuccess() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -171,7 +172,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationReturnedNull_shouldReplayThatNullWithoutRunningItAgain() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
-        OperationContext<String> context = context(callback);
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -179,7 +180,7 @@ class TransactionalIdempotentProcessorUnitTest {
                 .thenReturn(detail(OperationStatus.PROCESSED, true, null));
 
         // when
-        String result = tested.process(context, metadata);
+        Object result = tested.process(context, metadata);
 
         // then
         assertThat(result).isNull();
@@ -190,9 +191,9 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the transaction is through should publish what it recorded about the operation")
     void process_whenTransactionIsThrough_shouldPublishWhatItRecordedAboutOperation() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
-        OperationDetail<String> completed = detail(OperationStatus.PROCESSED, false, "fresh");
+        OperationDetail completed = detail(OperationStatus.PROCESSED, false, "fresh");
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
@@ -210,9 +211,9 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation is replayed should publish the replayed state too")
     void process_whenOperationIsReplayed_shouldPublishReplayedStateToo() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
-        OperationDetail<String> replayed = detail(OperationStatus.PROCESSED, true, "replayed");
+        OperationDetail replayed = detail(OperationStatus.PROCESSED, true, "replayed");
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata)).thenReturn(replayed);
@@ -229,7 +230,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationThrowsRuntimeException_shouldLetItOutUnchanged() {
         // given
         IllegalStateException thrown = new IllegalStateException("business blew up");
-        OperationContext<String> context = context(new ThrowingCallback(thrown));
+        OperationContext context = context(new ThrowingCallback(thrown));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -248,7 +249,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationThrowsCheckedException_shouldWrapItInIdempotentProcessingException() {
         // given
         Exception thrown = new Exception("checked blew up");
-        OperationContext<String> context = context(new ThrowingCallback(thrown));
+        OperationContext context = context(new ThrowingCallback(thrown));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -270,7 +271,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationManagerRejectsFingerprint_shouldLetMismatchOutWithoutRunningOperation() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
-        OperationContext<String> context = context(callback);
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder()
                 .fingerprintPolicy(mock(FingerprintPolicy.class))
                 .build();
@@ -291,7 +292,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation fails should tell the transport nothing")
     void process_whenOperationFails_shouldTellTransportNothing() {
         // given
-        OperationContext<String> context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
+        OperationContext context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -310,7 +311,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the transaction itself fails should report the failure and tell the transport nothing")
     void process_whenTransactionItselfFails_shouldReportFailureAndTellTransportNothing() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
         TransactionSystemException thrown = new TransactionSystemException("commit failed");
 
@@ -328,7 +329,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation throws should report the failure to the event listener")
     void process_whenOperationThrows_shouldReportFailureToEventListener() {
         // given
-        OperationContext<String> context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
+        OperationContext context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -349,7 +350,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_whenOperationManagerThrows_shouldReportFailureToEventListener() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
-        OperationContext<String> context = context(callback);
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -370,7 +371,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @DisplayName("UT process() when the operation is completed should report no failure")
     void process_whenOperationIsCompleted_shouldReportNoFailure() {
         // given
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
@@ -391,7 +392,7 @@ class TransactionalIdempotentProcessorUnitTest {
     void process_shouldCompleteOperationUnderCallSitesOwnTtl() {
         // given
         Duration callSiteTtl = Duration.ofMinutes(30);
-        OperationContext<String> context = context(new RecordingCallback("fresh"));
+        OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().ttl(callSiteTtl).build();
 
         runCallbackInTransaction();
@@ -401,27 +402,76 @@ class TransactionalIdempotentProcessorUnitTest {
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
-        String result = tested.process(context, metadata);
+        Object result = tested.process(context, metadata);
 
         // then
         assertThat(result).isEqualTo("fresh");
         verify(operationManager, times(1)).complete(KEY, callSiteTtl, "fresh");
     }
 
+    @Test
+    @DisplayName("UT process() when it joined somebody else's transaction should refuse instead of running")
+    void process_whenItJoinedSomebodyElsesTransaction_shouldRefuseInsteadOfRunning() {
+        // given
+        RecordingCallback callback = new RecordingCallback("fresh");
+        OperationContext context = context(callback);
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInJoinedTransaction();
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must own its transaction");
+
+        assertThat(callback.calls).isZero();
+        verifyNoInteractions(operationManager);
+    }
+
+    @Test
+    @DisplayName("UT process() when it joined somebody else's transaction should publish no state and count no success")
+    void process_whenItJoinedSomebodyElsesTransaction_shouldPublishNoStateAndCountNoSuccess() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInJoinedTransaction();
+
+        // when
+        assertThatThrownBy(() -> tested.process(context, metadata)).isInstanceOf(IllegalStateException.class);
+
+        // then
+        verifyNoInteractions(channel);
+        verify(eventListener, never()).onSuccess();
+        verify(eventListener, times(1)).onException();
+    }
+
     private void runCallbackInTransaction() {
+        runCallbackIn(new SimpleTransactionStatus(true));
+    }
+
+    /**
+     * The processor is handed a transaction it did not start - what happens when {@code @Idempotent} sits on
+     * a method already running inside somebody else's transaction.
+     */
+    private void runCallbackInJoinedTransaction() {
+        runCallbackIn(new SimpleTransactionStatus(false));
+    }
+
+    private void runCallbackIn(SimpleTransactionStatus status) {
         when(transactionTemplate.execute(any()))
-                .thenAnswer(invocation -> invocation.getArgument(0, TransactionCallback.class).doInTransaction(null));
+                .thenAnswer(invocation -> invocation.getArgument(0, TransactionCallback.class).doInTransaction(status));
     }
 
-    private OperationContext<String> context(ExternalOperationCallback<String> callback) {
-        return new DefaultOperationContext<>(String.class, callback, KEY, "fingerprint");
+    private OperationContext context(ExternalOperationCallback callback) {
+        return new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fingerprint");
     }
 
-    private OperationDetail<String> detail(OperationStatus status, boolean replayed, String result) {
-        return new DefaultOperationDetail<>(KEY, status, replayed, result, EXPIRES_AT);
+    private OperationDetail detail(OperationStatus status, boolean replayed, String result) {
+        return new DefaultOperationDetail(KEY, status, replayed, result, EXPIRES_AT);
     }
 
-    private static final class RecordingCallback implements ExternalOperationCallback<String> {
+    private static final class RecordingCallback implements ExternalOperationCallback {
 
         private final String result;
         private int calls;
@@ -437,7 +487,7 @@ class TransactionalIdempotentProcessorUnitTest {
         }
     }
 
-    private record ThrowingCallback(Throwable thrown) implements ExternalOperationCallback<String> {
+    private record ThrowingCallback(Throwable thrown) implements ExternalOperationCallback {
 
         @Override
         public String call() throws Throwable {

@@ -19,7 +19,6 @@ public interface ConflictHandler extends TransactionAffinity {
      * outcomes, and which one applies is the handler's whole decision.
      *
      * @param context the contended key and the type a replayed result would have.
-     * @param <T>     the type of the result.
      */
-    <T> T handle(ConflictContext<T> context);
+    Object handle(ConflictContext context);
 }

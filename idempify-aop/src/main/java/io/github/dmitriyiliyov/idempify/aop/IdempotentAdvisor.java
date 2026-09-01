@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.JoinPoint;
@@ -45,7 +46,6 @@ public class IdempotentAdvisor {
             value = "pointcut(annotation)",
             argNames = "jp,annotation"
     )
-    @SuppressWarnings("unchecked")
     public Object advice(ProceedingJoinPoint jp, Idempotent annotation) throws Throwable {
         UUID idempotencyKey = parseIdempotencyKey(jp, annotation);
 
@@ -59,7 +59,7 @@ public class IdempotentAdvisor {
         RequestContext requestContext = requestContextProvider.getContext();
         return interceptor.intercept(
                 buildContext(
-                        signature.getReturnType(),
+                        ResultType.ofMethod(signature.getMethod()),
                         jp,
                         idempotencyKey,
                         requestContext,
@@ -111,15 +111,14 @@ public class IdempotentAdvisor {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> InterceptContext<T> buildContext(Class<T> operationResultType,
-                                                 ProceedingJoinPoint jp,
-                                                 UUID idempotencyKey,
-                                                 RequestContext requestContext,
-                                                 OperationMetadata operationMetadata) {
-        return new DefaultInterceptContext<>(
+    private InterceptContext buildContext(ResultType operationResultType,
+                                          ProceedingJoinPoint jp,
+                                          UUID idempotencyKey,
+                                          RequestContext requestContext,
+                                          OperationMetadata operationMetadata) {
+        return new DefaultInterceptContext(
                 operationResultType,
-                () -> (T) jp.proceed(),
+                jp::proceed,
                 idempotencyKey,
                 requestContext,
                 operationMetadata

@@ -25,17 +25,29 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
         this.eventListener = Objects.requireNonNull(eventListener, "eventListener cannot be null");
     }
 
+    /**
+     * Publishing the state and reporting the events happen after {@code execute} returns, and have to stay
+     * there: until the transaction commits the operation does not exist, so a published expiry would
+     * describe a row that may never be.
+     */
     @Override
-    public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
+    public Object process(OperationContext context, OperationMetadata metadata) {
         try {
-            OperationDetail<T> operationDetail = transactionTemplate.execute(status -> {
-                OperationDetail<T> operation = operationManager.startOrReply(context, metadata);
+            OperationDetail operationDetail = transactionTemplate.execute(status -> {
+                if (!status.isNewTransaction()) {
+                    throw new IllegalStateException("""
+                        @Idempotent must own its transaction: it is meant for an entry point, 
+                        not for a method already running inside a transaction
+                    """);
+                }
+
+                OperationDetail operation = operationManager.startOrReply(context, metadata);
 
                 if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
                     return operation;
                 }
 
-                T result = IdempotentProcessorUtils.getResult(context.getOperationCallback());
+                Object result = IdempotentProcessorUtils.getResult(context.getOperationCallback());
                 operation = operationManager.complete(context.getIdempotencyKey(), metadata.getTtl(), result);
                 return operation;
             });

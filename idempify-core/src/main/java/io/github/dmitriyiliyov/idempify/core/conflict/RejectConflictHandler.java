@@ -5,7 +5,7 @@ import java.util.UUID;
 public class RejectConflictHandler implements ConflictHandler {
 
     @Override
-    public <T> T handle(ConflictContext<T> context) {
+    public Object handle(ConflictContext context) {
         UUID idempotencyKey = context.getIdempotencyKey();
         throw new IdempotencyConflictException(
                 "Operation (idempotencyKey=%s) is already in progress for another request".formatted(idempotencyKey)

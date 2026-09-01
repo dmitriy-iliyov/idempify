@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +18,7 @@ class RejectConflictHandlerUnitTest {
     @Test
     @DisplayName("UT handle() should throw IdempotencyConflictException naming the key")
     void handle_shouldThrowIdempotencyConflictExceptionNamingKey() {
-        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext<>(KEY, String.class)))
+        assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, ResultType.ofClass(String.class))))
                 .isInstanceOf(IdempotencyConflictException.class)
                 .hasMessageContaining(KEY.toString())
                 .hasMessageContaining("already in progress");

@@ -1,7 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessingException;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.*;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
@@ -192,6 +191,36 @@ class IdempifyControllerAdviceUnitTest {
         // then
         assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.IDEMPOTENT_PROCESSING_FAILED);
         assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("UT handleResultProcessingException() should answer 500 without exposing the internal message")
+    void handleResultProcessingException_shouldAnswer500WithoutExposingInternalMessage() {
+        // given
+        ResultProcessingException exception =
+                new ResultProcessingException("Cannot construct instance of ResponseEntity", new IllegalStateException());
+
+        // when
+        ProblemDetail detail = tested.handleResultProcessingException(exception, request);
+
+        // then
+        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
+        assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
+        assertThat(detail.getTitle()).isEqualTo("Operation result processing failed");
+    }
+
+    @Test
+    @DisplayName("UT handleResultProcessingException() should answer the same way for a failure on either side")
+    void handleResultProcessingException_shouldAnswerSameWayForFailureOnEitherSide() {
+        // given - the handler is declared on the group, so both sides have to reach it
+        ResultProcessingException read = new ResultDeserializationException("read failed", new IllegalStateException());
+        ResultProcessingException write = new ResultSerializationException("write failed", new IllegalStateException());
+
+        // when / then
+        assertProblem(tested.handleResultProcessingException(read, request),
+                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
+        assertProblem(tested.handleResultProcessingException(write, request),
+                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
     }
 
     @Test

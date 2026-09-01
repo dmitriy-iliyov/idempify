@@ -389,8 +389,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 .run(context -> {
                     IdempotentProcessor processor = context.getBean(IdempotentProcessor.class);
 
-                    String result = processor.process(
-                            new DefaultOperationContext<>(String.class, () -> "charged", KEY, null),
+                    Object result = processor.process(
+                            new DefaultOperationContext(ResultType.ofClass(String.class), () -> "charged", KEY, null),
                             TestOperationMetadata.builder().processorType(ProcessorType.LOCK_BASED).build()
                     );
 
@@ -749,8 +749,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     private static final class LockBasedTestProcessor implements TypeAwareIdempotentProcessor {
 
         @Override
-        public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
-            return context.getOperationResultType().cast("lock-based");
+        public Object process(OperationContext context, OperationMetadata metadata) {
+            return "lock-based";
         }
 
         @Override

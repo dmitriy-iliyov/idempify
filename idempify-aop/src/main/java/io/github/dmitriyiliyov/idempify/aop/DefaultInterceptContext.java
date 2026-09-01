@@ -2,21 +2,22 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 
 import java.util.Objects;
 import java.util.UUID;
 
-public class DefaultInterceptContext<T> implements InterceptContext<T> {
+public class DefaultInterceptContext implements InterceptContext {
 
-    private final Class<T> operationResultType;
-    private final ExternalOperationCallback<T> operationCallback;
+    private final ResultType operationResultType;
+    private final ExternalOperationCallback operationCallback;
     private final OperationMetadata operationMetadata;
     private final UUID idempotencyKey;
     private final RequestContext requestContext;
 
-    public DefaultInterceptContext(Class<T> operationResultType,
-                                   ExternalOperationCallback<T> operationCallback,
+    public DefaultInterceptContext(ResultType operationResultType,
+                                   ExternalOperationCallback operationCallback,
                                    UUID idempotencyKey,
                                    RequestContext requestContext,
                                    OperationMetadata operationMetadata) {
@@ -28,12 +29,12 @@ public class DefaultInterceptContext<T> implements InterceptContext<T> {
     }
 
     @Override
-    public Class<T> getOperationResultType() {
+    public ResultType getOperationResultType() {
         return operationResultType;
     }
 
     @Override
-    public ExternalOperationCallback<T> getOperationCallback() {
+    public ExternalOperationCallback getOperationCallback() {
         return operationCallback;
     }
 

@@ -11,7 +11,7 @@ public abstract class AbstractIdempotentProcessorDecorator implements Idempotent
     }
 
     @Override
-    public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
+    public Object process(OperationContext context, OperationMetadata metadata) {
         return delegate.process(context, metadata);
     }
 }

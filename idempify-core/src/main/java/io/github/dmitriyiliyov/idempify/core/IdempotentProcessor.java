@@ -6,6 +6,10 @@ package io.github.dmitriyiliyov.idempify.core;
  * <p>
  * Implementations differ in where the operation's record lives relative to the business transaction, which is
  * what {@link ProcessorType} names.
+ * <p>
+ * The result is an {@code Object} throughout this chain. What is wrapped is an arbitrary method, so its
+ * return type is known only at runtime; it travels beside the call as a {@link ResultType} instead of a type
+ * parameter, and a caller that does know the type casts once at its own entry point.
  */
 public interface IdempotentProcessor {
 
@@ -15,7 +19,6 @@ public interface IdempotentProcessor {
      *
      * @param context  what identifies this call and how to run it.
      * @param metadata the settings resolved for its call site.
-     * @param <T>      the type of the result.
      */
-    <T> T process(OperationContext<T> context, OperationMetadata metadata);
+    Object process(OperationContext context, OperationMetadata metadata);
 }

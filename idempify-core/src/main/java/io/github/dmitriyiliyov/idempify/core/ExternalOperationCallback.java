@@ -5,14 +5,12 @@ package io.github.dmitriyiliyov.idempify.core;
  * <p>
  * Declared to throw {@link Throwable} because it stands in for an arbitrary intercepted method, including one
  * that declares checked exceptions.
- *
- * @param <T> the type of the result.
  */
 @FunctionalInterface
-public interface ExternalOperationCallback<T> {
+public interface ExternalOperationCallback {
 
     /**
      * Runs the business operation and returns its result.
      */
-    T call() throws Throwable;
+    Object call() throws Throwable;
 }

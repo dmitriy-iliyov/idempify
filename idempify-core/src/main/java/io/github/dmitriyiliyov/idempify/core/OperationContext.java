@@ -8,20 +8,18 @@ import java.util.UUID;
  * <p>
  * Where {@link OperationMetadata} carries the settings that hold for a whole call site, this carries the
  * values that differ from one call to the next.
- *
- * @param <T> the type of the result.
  */
-public interface OperationContext<T> {
+public interface OperationContext {
 
     /**
      * Returns the type a stored result is deserialized back into when a duplicate call is replayed.
      */
-    Class<T> getOperationResultType();
+    ResultType getOperationResultType();
 
     /**
      * Returns the caller's business operation, to be run only when this call is the first attempt.
      */
-    ExternalOperationCallback<T> getOperationCallback();
+    ExternalOperationCallback getOperationCallback();
 
     /**
      * Returns the key this call is deduplicated by.

@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,18 +20,18 @@ import static org.mockito.Mockito.*;
 class DefaultInterceptContextUnitTest {
 
     @Mock
-    ExternalOperationCallback<String> operationCallback;
+    ExternalOperationCallback operationCallback;
 
     @Mock
     RequestContext requestContext;
 
-    Class<String> operationResultType = String.class;
+    ResultType operationResultType = ResultType.ofClass(String.class);
     OperationMetadata operationMetadata = TestOperationMetadata.builder().build();
 
     @Test
     @DisplayName("UT constructor when operationResultType is null should throw NullPointerException")
     void constructor_whenOperationResultTypeIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(null, operationCallback, UUID.randomUUID(), requestContext, operationMetadata))
+        assertThatThrownBy(() -> new DefaultInterceptContext(null, operationCallback, UUID.randomUUID(), requestContext, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationResultType cannot be null");
     }
@@ -38,7 +39,7 @@ class DefaultInterceptContextUnitTest {
     @Test
     @DisplayName("UT constructor when operationCallback is null should throw NullPointerException")
     void constructor_whenOperationCallbackIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, null, UUID.randomUUID(), requestContext, operationMetadata))
+        assertThatThrownBy(() -> new DefaultInterceptContext(operationResultType, null, UUID.randomUUID(), requestContext, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationCallback cannot be null");
     }
@@ -46,7 +47,7 @@ class DefaultInterceptContextUnitTest {
     @Test
     @DisplayName("UT constructor when requestContext is null should throw NullPointerException")
     void constructor_whenRequestContextIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, operationCallback, UUID.randomUUID(), null, operationMetadata))
+        assertThatThrownBy(() -> new DefaultInterceptContext(operationResultType, operationCallback, UUID.randomUUID(), null, operationMetadata))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("requestContext cannot be null");
     }
@@ -54,7 +55,7 @@ class DefaultInterceptContextUnitTest {
     @Test
     @DisplayName("UT constructor when operationMetadata is null should throw NullPointerException")
     void constructor_whenOperationMetadataIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultInterceptContext<>(operationResultType, operationCallback, UUID.randomUUID(), requestContext, null))
+        assertThatThrownBy(() -> new DefaultInterceptContext(operationResultType, operationCallback, UUID.randomUUID(), requestContext, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationMetadata cannot be null");
     }
@@ -63,7 +64,7 @@ class DefaultInterceptContextUnitTest {
     @DisplayName("UT constructor when idempotencyKey is null should create context")
     void constructor_whenIdempotencyKeyIsNull_shouldCreateContext() {
         // when
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+        DefaultInterceptContext tested = new DefaultInterceptContext(
                 operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         // then
@@ -77,7 +78,7 @@ class DefaultInterceptContextUnitTest {
         UUID idempotencyKey = UUID.randomUUID();
 
         // when
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+        DefaultInterceptContext tested = new DefaultInterceptContext(
                 operationResultType, operationCallback, idempotencyKey, requestContext, operationMetadata);
 
         // then
@@ -92,11 +93,11 @@ class DefaultInterceptContextUnitTest {
     @DisplayName("UT getOperationCallback() when called should return the callback without running it")
     void getOperationCallback_whenCalled_shouldReturnCallbackWithoutRunningIt() {
         // given
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+        DefaultInterceptContext tested = new DefaultInterceptContext(
                 operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         // when
-        ExternalOperationCallback<String> result = tested.getOperationCallback();
+        ExternalOperationCallback result = tested.getOperationCallback();
 
         // then
         assertThat(result).isSameAs(operationCallback);
@@ -108,13 +109,13 @@ class DefaultInterceptContextUnitTest {
     void getOperationCallback_whenReturnedCallbackIsCalled_shouldInvokeUnderlyingOperation() throws Throwable {
         // given
         String response = "response";
-        DefaultInterceptContext<String> tested = new DefaultInterceptContext<>(
+        DefaultInterceptContext tested = new DefaultInterceptContext(
                 operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         when(operationCallback.call()).thenReturn(response);
 
         // when
-        String result = tested.getOperationCallback().call();
+        Object result = tested.getOperationCallback().call();
 
         // then
         assertThat(result).isEqualTo(response);

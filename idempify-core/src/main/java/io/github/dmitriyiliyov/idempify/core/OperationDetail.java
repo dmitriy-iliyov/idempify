@@ -12,7 +12,7 @@ import java.util.UUID;
  * method is allowed to return {@code null} and an absent value would then be indistinguishable from a stored
  * one. Here the status carries it and the result carries nothing but itself.
  */
-public interface OperationDetail<T> extends OperationState {
+public interface OperationDetail extends OperationState {
 
     UUID getIdempotencyKey();
 
@@ -26,5 +26,5 @@ public interface OperationDetail<T> extends OperationState {
      * The result of the operation - replayed from the store or just produced, depending on how this detail
      * was obtained. {@code null} is a legal result and never means "no result"; the status answers that.
      */
-    T getResult();
+    Object getResult();
 }

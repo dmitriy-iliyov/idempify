@@ -360,20 +360,19 @@ class IdempifyAopComponentTest {
      */
     static class RecordingIdempotentProcessor implements IdempotentProcessor {
 
-        OperationContext<?> capturedContext;
+        OperationContext capturedContext;
         OperationMetadata capturedMetadata;
         Object replay;
         int processCalls;
 
         @Override
-        @SuppressWarnings("unchecked")
-        public <T> T process(OperationContext<T> context, OperationMetadata metadata) {
+        public Object process(OperationContext context, OperationMetadata metadata) {
             processCalls++;
             capturedContext = context;
             capturedMetadata = metadata;
 
             if (replay != null) {
-                return (T) replay;
+                return replay;
             }
 
             try {

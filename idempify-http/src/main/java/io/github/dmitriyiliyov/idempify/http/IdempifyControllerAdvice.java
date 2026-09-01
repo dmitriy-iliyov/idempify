@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.http;
 
 import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessingException;
+import io.github.dmitriyiliyov.idempify.core.ResultProcessingException;
 import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
 import io.github.dmitriyiliyov.idempify.core.conflict.OperationDisappearedException;
 import io.github.dmitriyiliyov.idempify.core.conflict.WaitAbortedException;
@@ -68,5 +69,11 @@ public class IdempifyControllerAdvice {
     public ProblemDetail handleIdempotentProcessingException(IdempotentProcessingException e, HttpServletRequest request) {
         log.error("Idempotent processing failed", e);
         return ProblemFactory.idempotentProcessingFailed(FAILED_DETAIL, request.getRequestURI(), clock.instant());
+    }
+
+    @ExceptionHandler(ResultProcessingException.class)
+    public ProblemDetail handleResultProcessingException(ResultProcessingException e, HttpServletRequest request) {
+        log.error("Result processing exception", e);
+        return ProblemFactory.resultProcessingFailed(FAILED_DETAIL, request.getRequestURI(), clock.instant());
     }
 }

@@ -1,9 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
-import io.github.dmitriyiliyov.idempify.core.OperationContext;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
@@ -39,7 +36,7 @@ class DefaultIdempotentInterceptorUnitTest {
     RequestContext requestContext;
 
     @Mock
-    ExternalOperationCallback<String> operationCallback;
+    ExternalOperationCallback operationCallback;
 
     @InjectMocks
     DefaultIdempotentInterceptor tested;
@@ -65,8 +62,8 @@ class DefaultIdempotentInterceptorUnitTest {
     void intercept_whenContextCarriesIdempotencyKey_shouldUseItWithoutCallingKeyExtractor() {
         // given
         UUID idempotencyKey = UUID.randomUUID();
-        InterceptContext<String> context = interceptContext(idempotencyKey, fingerprintingMetadata());
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(idempotencyKey, fingerprintingMetadata());
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
 
@@ -85,8 +82,8 @@ class DefaultIdempotentInterceptorUnitTest {
         // given
         UUID extractedKey = UUID.randomUUID();
         OperationMetadata metadata = fingerprintingMetadata();
-        InterceptContext<String> context = interceptContext(null, metadata);
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(null, metadata);
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         when(keyExtractor.extract(metadata.getHeaderName(), requestContext)).thenReturn(extractedKey);
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
@@ -105,8 +102,8 @@ class DefaultIdempotentInterceptorUnitTest {
     void intercept_whenKeyComesFromExpression_shouldNotLookForItInRequest() {
         // given
         UUID idempotencyKey = UUID.randomUUID();
-        InterceptContext<String> context = interceptContext(idempotencyKey, expressionKeyedMetadata());
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(idempotencyKey, expressionKeyedMetadata());
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         // when
         tested.intercept(context);
@@ -121,7 +118,7 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when the expression supplied no key should refuse rather than fall back to the request")
     void intercept_whenExpressionSuppliedNoKey_shouldRefuseRatherThanFallBackToRequest() {
         // given
-        InterceptContext<String> context = interceptContext(null, expressionKeyedMetadata());
+        InterceptContext context = interceptContext(null, expressionKeyedMetadata());
 
         // when / then
         assertThatThrownBy(() -> tested.intercept(context))
@@ -135,8 +132,8 @@ class DefaultIdempotentInterceptorUnitTest {
     void intercept_whenMetadataUsesFingerprint_shouldGenerateItWithMetadataPolicy() {
         // given
         String fingerprint = "fingerprint";
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn(fingerprint);
 
@@ -153,8 +150,8 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when metadata does not use fingerprint should pass an empty fingerprint")
     void intercept_whenMetadataDoesNotUseFingerprint_shouldPassEmptyFingerprint() {
         // given
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), plainMetadata());
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(UUID.randomUUID(), plainMetadata());
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         // when
         tested.intercept(context);
@@ -169,7 +166,7 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when the fingerprint policy returns null should throw NullPointerException")
     void intercept_whenFingerprintPolicyReturnsNull_shouldThrowNullPointerException() {
         // given
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn(null);
 
@@ -184,7 +181,7 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when the fingerprint policy returns a blank value should throw IllegalArgumentException")
     void intercept_whenFingerprintPolicyReturnsBlankValue_shouldThrowIllegalArgumentException() {
         // given
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("   ");
 
@@ -199,8 +196,8 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when called should pass the result type and the callback through untouched")
     void intercept_whenCalled_shouldPassResultTypeAndCallbackThroughUntouched() {
         // given
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
-        ArgumentCaptor<OperationContext<String>> captor = operationContextCaptor();
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        ArgumentCaptor<OperationContext> captor = operationContextCaptor();
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
 
@@ -209,7 +206,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
         // then
         verify(processor, times(1)).process(captor.capture(), any(OperationMetadata.class));
-        assertThat(captor.getValue().getOperationResultType()).isEqualTo(String.class);
+        assertThat(captor.getValue().getOperationResultType()).isEqualTo(ResultType.ofClass(String.class));
         assertThat(captor.getValue().getOperationCallback()).isSameAs(operationCallback);
     }
 
@@ -218,7 +215,7 @@ class DefaultIdempotentInterceptorUnitTest {
     void intercept_whenCalled_shouldPassContextMetadataToProcessor() {
         // given
         OperationMetadata metadata = fingerprintingMetadata();
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), metadata);
+        InterceptContext context = interceptContext(UUID.randomUUID(), metadata);
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
 
@@ -234,13 +231,13 @@ class DefaultIdempotentInterceptorUnitTest {
     void intercept_whenProcessorReturnsResult_shouldReturnItToCaller() {
         // given
         String response = "response";
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
         when(processor.process(any(), any())).thenReturn(response);
 
         // when
-        String result = tested.intercept(context);
+        Object result = tested.intercept(context);
 
         // then
         assertThat(result).isEqualTo(response);
@@ -250,7 +247,7 @@ class DefaultIdempotentInterceptorUnitTest {
     @DisplayName("UT intercept() when processor throws should let the exception through")
     void intercept_whenProcessorThrows_shouldLetExceptionThrough() {
         // given
-        InterceptContext<String> context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("fingerprint");
         when(processor.process(any(), any())).thenThrow(new IllegalStateException("boom"));
@@ -261,9 +258,9 @@ class DefaultIdempotentInterceptorUnitTest {
                 .hasMessage("boom");
     }
 
-    private InterceptContext<String> interceptContext(UUID idempotencyKey, OperationMetadata metadata) {
-        return new DefaultInterceptContext<>(
-                String.class,
+    private InterceptContext interceptContext(UUID idempotencyKey, OperationMetadata metadata) {
+        return new DefaultInterceptContext(
+                ResultType.ofClass(String.class),
                 operationCallback,
                 idempotencyKey,
                 requestContext,
@@ -291,8 +288,7 @@ class DefaultIdempotentInterceptorUnitTest {
                 .build();
     }
 
-    @SuppressWarnings("unchecked")
-    private ArgumentCaptor<OperationContext<String>> operationContextCaptor() {
+    private ArgumentCaptor<OperationContext> operationContextCaptor() {
         return ArgumentCaptor.forClass(OperationContext.class);
     }
 }

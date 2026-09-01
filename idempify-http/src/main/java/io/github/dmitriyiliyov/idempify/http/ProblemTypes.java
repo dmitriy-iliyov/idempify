@@ -32,5 +32,7 @@ public final class ProblemTypes {
 
     public static final URI IDEMPOTENT_PROCESSING_FAILED = URI.create(BASE + "idempotent-processing-failed");
 
+    public static final URI RESULT_PROCESSING_FAILED = URI.create(BASE + "result-processing-failed");
+
     private ProblemTypes() {}
 }

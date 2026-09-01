@@ -20,13 +20,12 @@ public interface TransactionalOperationManager {
      *
      * @param context  what identifies the current call.
      * @param metadata the resolved settings of the call site.
-     * @param <T>      the type of the result.
      * @return what the store holds for this key, never {@code null}: a {@link OperationStatus#PROCESSED}
      *         operation whose result is there to be replayed, or one this call has just claimed and
      *         therefore must run itself. A claim carries no expiry yet - that is
      *         {@link #complete}'s to write.
      */
-    <T> OperationDetail<T> startOrReply(OperationContext<T> context, OperationMetadata metadata);
+    OperationDetail startOrReply(OperationContext context, OperationMetadata metadata);
 
     /**
      * Records the result of an operation the caller has just run, moving it out of the in-process state and
@@ -40,9 +39,8 @@ public interface TransactionalOperationManager {
      * @param idempotencyKey the key of the operation to complete.
      * @param ttl            how long the stored result stays replayable, counted from now.
      * @param result         the result to store.
-     * @param <T>            the type of the result.
      * @return the completed operation, never {@code null} - the same result, plus what the store decided
      *         about it, its expiry above all.
      */
-    <T> OperationDetail<T> complete(UUID idempotencyKey, Duration ttl, T result);
+    OperationDetail complete(UUID idempotencyKey, Duration ttl, Object result);
 }

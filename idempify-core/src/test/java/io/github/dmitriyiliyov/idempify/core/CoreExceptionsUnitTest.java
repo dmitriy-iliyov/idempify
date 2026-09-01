@@ -37,6 +37,43 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
+    @DisplayName("UT ResultDeserializationException should belong to the group a caller catches")
+    void resultDeserializationException_shouldBelongToGroupCallerCatches() {
+        // given - the transport catches ResultProcessingException to answer a problem response; a failure
+        // that skips the group reaches the container as a bare error instead
+        assertThat(ResultProcessingException.class)
+                .isAssignableFrom(ResultDeserializationException.class);
+    }
+
+    @Test
+    @DisplayName("UT ResultSerializationException should belong to the group a caller catches")
+    void resultSerializationException_shouldBelongToGroupCallerCatches() {
+        assertThat(ResultProcessingException.class)
+                .isAssignableFrom(ResultSerializationException.class);
+    }
+
+    @Test
+    @DisplayName("UT ResultProcessingException should be unchecked like every other exception of the core")
+    void resultProcessingException_shouldBeUncheckedLikeEveryOtherExceptionOfCore() {
+        assertThat(RuntimeException.class).isAssignableFrom(ResultProcessingException.class);
+    }
+
+    @Test
+    @DisplayName("UT result exceptions should keep the cause they wrap so the real failure stays readable")
+    void resultExceptions_shouldKeepCauseTheyWrapSoRealFailureStaysReadable() {
+        // given
+        Exception cause = new IllegalStateException("no creators");
+
+        // then
+        assertThat(new ResultDeserializationException("read failed", cause))
+                .hasMessage("read failed")
+                .hasCause(cause);
+        assertThat(new ResultSerializationException("write failed", cause))
+                .hasMessage("write failed")
+                .hasCause(cause);
+    }
+
+    @Test
     @DisplayName("UT IdempotencyKeyException should carry the message it was given")
     void idempotencyKeyException_shouldCarryMessageItWasGiven() {
         // when

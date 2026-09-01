@@ -66,7 +66,7 @@ class IdempifyCoreComponentTest {
         RecordingOperation operation = new RecordingOperation("charged");
 
         // when
-        String result = call(KEY, request("body"), metadata(false), operation);
+        Object result = call(KEY, request("body"), metadata(false), operation);
 
         // then
         assertThat(result).isEqualTo("charged");
@@ -85,7 +85,7 @@ class IdempifyCoreComponentTest {
         call(KEY, request("body"), metadata(false), operation);
 
         // when
-        String result = call(KEY, request("body"), metadata(false), operation);
+        Object result = call(KEY, request("body"), metadata(false), operation);
 
         // then
         assertThat(result).isEqualTo("charged");
@@ -129,7 +129,7 @@ class IdempifyCoreComponentTest {
         call(KEY, request("body"), metadata(true), operation);
 
         // when
-        String result = call(KEY, request("body"), metadata(true), operation);
+        Object result = call(KEY, request("body"), metadata(true), operation);
 
         // then
         assertThat(result).isEqualTo("charged");
@@ -172,7 +172,7 @@ class IdempifyCoreComponentTest {
         call(KEY, request("body"), metadata(false), operation);
 
         // when
-        String result = call(KEY, request("other body"), metadata(false), operation);
+        Object result = call(KEY, request("other body"), metadata(false), operation);
 
         // then
         assertThat(result).isEqualTo("charged");
@@ -188,7 +188,7 @@ class IdempifyCoreComponentTest {
 
         // when
         clock.advance(Duration.ofHours(25));
-        String result = call(KEY, request("body"), metadata(false), operation);
+        Object result = call(KEY, request("body"), metadata(false), operation);
 
         // then
         assertThat(result).isEqualTo("charged");
@@ -204,7 +204,7 @@ class IdempifyCoreComponentTest {
 
         // when
         call(KEY, request("body"), metadata(false), slow);
-        String replayed = call(KEY, request("body"), metadata(false), slow);
+        Object replayed = call(KEY, request("body"), metadata(false), slow);
 
         // then
         assertThat(replayed).isEqualTo("charged");
@@ -232,7 +232,7 @@ class IdempifyCoreComponentTest {
     void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() {
         // given
         List<Operation> seenMidFlight = new ArrayList<>();
-        ExternalOperationCallback<String> peeking = () -> {
+        ExternalOperationCallback peeking = () -> {
             seenMidFlight.add(repository.findByIdempotencyKey(KEY).orElseThrow());
             return "charged";
         };
@@ -329,17 +329,35 @@ class IdempifyCoreComponentTest {
         assertThat(repository.findByIdempotencyKey(KEY)).isEmpty();
     }
 
+    @Test
+    @DisplayName("CT request when the processor joined somebody else's transaction should refuse and touch nothing")
+    void request_whenProcessorJoinedSomebodyElsesTransaction_shouldRefuseAndTouchNothing() {
+        // given
+        transactionManager.joinsExistingTransaction = true;
+        RecordingOperation operation = new RecordingOperation("charged");
+
+        // when / then
+        assertThatThrownBy(() -> call(KEY, request("body"), metadata(false), operation))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must own its transaction");
+
+        assertThat(operation.calls).isZero();
+        assertThat(repository.findByIdempotencyKey(KEY)).isEmpty();
+        assertThat(channel.consume()).isNull();
+        assertThat(eventListener.successes).isZero();
+    }
+
     /**
      * Mimics what an entry-point module (aop, http) does per call: turn the request into a fingerprint and hand
      * the whole thing to the processor.
      */
-    private String call(UUID idempotencyKey,
+    private Object call(UUID idempotencyKey,
                         RequestContext request,
                         OperationMetadata metadata,
-                        ExternalOperationCallback<String> operation) {
+                        ExternalOperationCallback operation) {
         String fingerprint = request == null ? null : fingerprintPolicy.generate(request);
         return processor.process(
-                new DefaultOperationContext<>(String.class, operation, idempotencyKey, fingerprint),
+                new DefaultOperationContext(ResultType.ofClass(String.class), operation, idempotencyKey, fingerprint),
                 metadata
         );
     }
@@ -423,13 +441,13 @@ class IdempifyCoreComponentTest {
     private static final class PassThroughResultSerializer implements ResultSerializer, ResultDeserializer {
 
         @Override
-        public <T> String serialize(T result) {
+        public String serialize(Object result) {
             return (String) result;
         }
 
         @Override
-        public <T> T deserialize(String rawResult, Class<T> type) {
-            return type.cast(rawResult);
+        public Object deserialize(String rawResult, ResultType type) {
+            return rawResult;
         }
     }
 
@@ -461,10 +479,11 @@ class IdempifyCoreComponentTest {
 
         private int commits;
         private int rollbacks;
+        private boolean joinsExistingTransaction;
 
         @Override
         public TransactionStatus getTransaction(TransactionDefinition definition) {
-            return new SimpleTransactionStatus();
+            return new SimpleTransactionStatus(!joinsExistingTransaction);
         }
 
         @Override
@@ -506,7 +525,7 @@ class IdempifyCoreComponentTest {
         }
     }
 
-    private static final class RecordingOperation implements ExternalOperationCallback<String> {
+    private static final class RecordingOperation implements ExternalOperationCallback {
 
         private final String result;
         private int calls;
@@ -526,7 +545,7 @@ class IdempifyCoreComponentTest {
      * An operation that takes time: it moves the clock forward before returning, which is how the expiry
      * being counted from completion rather than from the claim becomes observable at all.
      */
-    private static final class SlowOperation implements ExternalOperationCallback<String> {
+    private static final class SlowOperation implements ExternalOperationCallback {
 
         private final String result;
         private final TestClock clock;
@@ -547,7 +566,7 @@ class IdempifyCoreComponentTest {
         }
     }
 
-    private record FailingOperation(Throwable thrown) implements ExternalOperationCallback<String> {
+    private record FailingOperation(Throwable thrown) implements ExternalOperationCallback {
 
         @Override
         public String call() throws Throwable {

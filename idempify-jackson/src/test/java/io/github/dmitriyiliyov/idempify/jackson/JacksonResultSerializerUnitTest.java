@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.dmitriyiliyov.idempify.core.ResultSerializationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,8 +42,8 @@ public class JacksonResultSerializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT serialize() when mapper throws JsonProcessingException should throw RuntimeException")
-    void serialize_whenMapperThrowsJsonProcessingException_shouldThrowRuntimeException() throws Exception {
+    @DisplayName("UT serialize() when mapper throws JsonProcessingException should throw ResultSerializationException")
+    void serialize_whenMapperThrowsJsonProcessingException_shouldThrowResultSerializationException() throws Exception {
         // given
         ObjectMapper mapper = mock(ObjectMapper.class);
         JacksonResultSerializer tested = new JacksonResultSerializer(mapper);
@@ -56,7 +57,7 @@ public class JacksonResultSerializerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.serialize(response))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResultSerializationException.class)
                 .hasMessageContaining("Error when serializing operation result")
                 .hasCause(exception);
 

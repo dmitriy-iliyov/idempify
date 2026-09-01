@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 
 import java.util.UUID;
@@ -13,21 +14,19 @@ import java.util.UUID;
  * settings resolved for its call site. The key is the one place where "not known yet" is allowed: the aspect
  * only fills it in when the annotation names it, leaving the interceptor to extract it from the request
  * otherwise.
- *
- * @param <T> the type of the method return value.
  */
-public interface InterceptContext<T> {
+public interface InterceptContext {
 
     /**
      * Returns the declared return type of the intercepted method, which a replayed result is deserialized
      * back into.
      */
-    Class<T> getOperationResultType();
+    ResultType getOperationResultType();
 
     /**
      * Returns the caller's business operation to run when this is the first attempt.
      */
-    ExternalOperationCallback<T> getOperationCallback();
+    ExternalOperationCallback getOperationCallback();
 
     /**
      * Returns the key named by {@code @Idempotent(idempotencyKey = ...)}, or {@code null} when the annotation

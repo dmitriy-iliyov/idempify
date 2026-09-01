@@ -36,7 +36,7 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
     }
 
     @Override
-    public <T> OperationDetail<T> startOrReply(OperationContext<T> context, OperationMetadata metadata) {
+    public OperationDetail startOrReply(OperationContext context, OperationMetadata metadata) {
         Operation operation = saveOrFetch(context, metadata);
 
         if (metadata.useFingerprint() && !operation.isFirstAttempt()) {
@@ -54,14 +54,14 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
         }
 
         boolean replayed = false;
-        T result = null;
+        Object result = null;
 
         if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
             replayed = true;
             result = resultDeserializer.deserialize(operation.getResult(), context.getOperationResultType());
         }
 
-        return new DefaultOperationDetail<>(
+        return new DefaultOperationDetail(
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
                 replayed,
@@ -70,7 +70,7 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
         );
     }
 
-    protected <T> Operation saveOrFetch(OperationContext<T> context, OperationMetadata metadata) {
+    protected Operation saveOrFetch(OperationContext context, OperationMetadata metadata) {
         String fingerprint = context.getFingerprint().isEmpty() ? null : context.getFingerprint().get();
         Operation toSave = mapper.toOperation(
                 context.getIdempotencyKey(),
@@ -109,7 +109,7 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
 //    }
 
     @Override
-    public <T> OperationDetail<T> complete(UUID idempotencyKey, Duration ttl, T result) {
+    public OperationDetail complete(UUID idempotencyKey, Duration ttl, Object result) {
         Instant expiresAt = clock.instant().plus(ttl);
         Operation operation = repository.saveResultAndUpdateStatus(
                 resultSerializer.serialize(result),
@@ -118,7 +118,7 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
                 idempotencyKey,
                 OperationStatus.IN_PROCESS
         );
-        return new DefaultOperationDetail<>(
+        return new DefaultOperationDetail(
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
                 false,

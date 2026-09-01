@@ -39,7 +39,7 @@ public class WaitConflictHandler implements ConflictHandler {
     }
 
     @Override
-    public <T> T handle(ConflictContext<T> context) {
+    public Object handle(ConflictContext context) {
         UUID idempotencyKey = context.getIdempotencyKey();
         Instant start = clock.instant();
 
