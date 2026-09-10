@@ -1,7 +1,12 @@
 package io.github.dmitriyiliyov.idempify.cache.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.dmitriyiliyov.idempify.core.response.*;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheEventListener;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.response.DefaultRawResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -14,34 +19,48 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+/**
+ * The module hands out a wrapper, not a store: what gets asserted is that the wrapper exists, that it nests
+ * the redis decorator around whatever it is given, and under which conditions it is registered at all.
+ */
 class IdempifyRedisCacheAutoConfigurationIntegrationTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-            .withPropertyValues("idempify.cache.enabled=true")
+            .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
             .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+            .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+            .withBean(Clock.class, () -> Clock.fixed(NOW, java.time.ZoneOffset.UTC))
             .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"));
 
     @Test
-    @DisplayName("IT context when all required beans exist should register template and response cache")
-    void context_whenAllRequiredBeansExist_shouldRegisterTemplateAndResponseCache() {
+    @DisplayName("IT context when all required beans exist should register template and cache wrapper")
+    void context_whenAllRequiredBeansExist_shouldRegisterTemplateAndCacheWrapper() {
         // when / then
         runner.run(context -> {
-            assertThat(context).hasSingleBean(ResponseCache.class);
-            assertThat(context).hasSingleBean(RedisResponseCache.class);
+            assertThat(context).hasSingleBean(ResponseRepositoryWrapper.class);
             assertThat(context).hasBean("idempifyRedisTemplate");
         });
+    }
+
+    @Test
+    @DisplayName("IT context when the registered wrapper is asked to wrap should hand back the redis decorator")
+    void context_whenRegisteredWrapperIsAskedToWrap_shouldHandBackRedisDecorator() {
+        // when / then
+        runner.run(context -> assertThat(
+                context.getBean(ResponseRepositoryWrapper.class).wrap(mock(ResponseRepository.class)))
+                .isInstanceOf(RedisCacheResponseRepositoryDecorator.class));
     }
 
     @Test
@@ -56,35 +75,23 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when template is registered should read back the response it writes")
-    void context_whenTemplateIsRegistered_shouldReadBackTheResponseItWrites() {
+    @DisplayName("IT context when the template is registered should read back the record it writes")
+    void context_whenTemplateIsRegistered_shouldReadBackRecordItWrites() {
         // when / then
         runner.run(context -> {
             RedisTemplate<?, ?> template = context.getBean("idempifyRedisTemplate", RedisTemplate.class);
             @SuppressWarnings("unchecked")
             RedisSerializer<Object> serializer = (RedisSerializer<Object>) template.getValueSerializer();
-            CachedResponse written = cachedResponse();
+            RawResponseContainer written = container();
 
             Object read = serializer.deserialize(serializer.serialize(written));
 
-            assertThat(read).isInstanceOf(CachedResponse.class);
-            CachedResponse readResponse = (CachedResponse) read;
-            assertThat(readResponse.getStatus()).isEqualTo(written.getStatus());
-            assertThat(readResponse.getBody()).isEqualTo(written.getBody());
-            assertThat(readResponse.getContentType()).isEqualTo(written.getContentType());
-            assertThat(readResponse.getFingerprint()).isEqualTo(written.getFingerprint());
+            assertThat(read).isInstanceOf(RawResponseContainer.class);
+            RawResponseContainer readContainer = (RawResponseContainer) read;
+            assertThat(readContainer.getResponse()).isEqualTo(written.getResponse());
+            assertThat(readContainer.getFingerprint()).isEqualTo(written.getFingerprint());
+            assertThat(readContainer.getExpiresAt()).isEqualTo(written.getExpiresAt());
         });
-    }
-
-    @Test
-    @DisplayName("IT context when existing ResponseCache bean should not register RedisResponseCache")
-    void context_whenExistingResponseCacheBean_shouldNotRegisterRedisResponseCache() {
-        // when / then
-        runner.withUserConfiguration(UserResponseCacheConfiguration.class)
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ResponseCache.class);
-                    assertThat(context).doesNotHaveBean(RedisResponseCache.class);
-                });
     }
 
     @Test
@@ -102,10 +109,10 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     @DisplayName("IT context when no CachePropertiesHolder exists should fail to start")
     void context_whenNoCachePropertiesHolderExists_shouldFailToStart() {
         // when / then
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-                .withPropertyValues("idempify.cache.enabled=true")
+        bareRunner()
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+                .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+                .withBean(Clock.class, () -> Clock.systemUTC())
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -113,10 +120,10 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     @DisplayName("IT context when no RedisConnectionFactory exists should fail to start")
     void context_whenNoRedisConnectionFactoryExists_shouldFailToStart() {
         // when / then
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-                .withPropertyValues("idempify.cache.enabled=true")
+        bareRunner()
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
+                .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+                .withBean(Clock.class, () -> Clock.systemUTC())
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -124,10 +131,10 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     @DisplayName("IT context when cacheName is null should fail to start")
     void context_whenCacheNameIsNull_shouldFailToStart() {
         // when / then
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-                .withPropertyValues("idempify.cache.enabled=true")
+        bareRunner()
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+                .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+                .withBean(Clock.class, () -> Clock.systemUTC())
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(null))
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -139,8 +146,10 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+                .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+                .withBean(Clock.class, () -> Clock.systemUTC())
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
-                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
     }
 
     @Test
@@ -148,7 +157,15 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     void context_whenCacheIsSwitchedOff_shouldRegisterNothing() {
         // when / then
         runner.withPropertyValues("idempify.cache.enabled=false")
-                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
+    }
+
+    @Test
+    @DisplayName("IT context when the cache type is in-memory should register no redis wrapper")
+    void context_whenCacheTypeIsInMemory_shouldRegisterNoRedisWrapper() {
+        // when / then
+        runner.withPropertyValues("idempify.cache.type=IN_MEMORY")
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
     }
 
     @Test
@@ -156,7 +173,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     void context_whenRedisTemplateClassIsMissing_shouldRegisterNothing() {
         // when / then
         runner.withClassLoader(new FilteredClassLoader(RedisTemplate.class))
-                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
     }
 
     @Test
@@ -164,42 +181,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     void context_whenObjectMapperClassIsMissing_shouldRegisterNothing() {
         // when / then
         runner.withClassLoader(new FilteredClassLoader(ObjectMapper.class))
-                .run(context -> assertThat(context).doesNotHaveBean(ResponseCache.class));
-    }
-
-    @Test
-    @DisplayName("IT context when nobody wraps the cache should register the redis one unwrapped")
-    void context_whenNobodyWrapsCache_shouldRegisterRedisOneUnwrapped() {
-        // when / then
-        runner.run(context -> assertThat(context.getBean(ResponseCache.class)).isInstanceOf(RedisResponseCache.class));
-    }
-
-    @Test
-    @DisplayName("IT context when a wrapper is registered should hand out the wrapped cache instead")
-    void context_whenWrapperIsRegistered_shouldHandOutWrappedCacheInstead() {
-        // when / then
-        runner.withBean("counting", ResponseCacheWrapper.class, () -> namingWrapper("counting", 0))
-                .run(context -> {
-                    ResponseCache cache = context.getBean(ResponseCache.class);
-
-                    assertThat(cache).isInstanceOf(NamingDecorator.class);
-                    assertThat(nesting(cache)).containsExactly("counting");
-                    assertThat(innermost(cache)).isInstanceOf(RedisResponseCache.class);
-                });
-    }
-
-    @Test
-    @DisplayName("IT context when several wrappers are registered should nest them by priority around redis")
-    void context_whenSeveralWrappersAreRegistered_shouldNestThemByPriorityAroundRedis() {
-        // when / then
-        runner.withBean("low", ResponseCacheWrapper.class, () -> namingWrapper("low", 1))
-                .withBean("high", ResponseCacheWrapper.class, () -> namingWrapper("high", 100))
-                .run(context -> {
-                    ResponseCache cache = context.getBean(ResponseCache.class);
-
-                    assertThat(nesting(cache)).containsExactly("low", "high");
-                    assertThat(innermost(cache)).isInstanceOf(RedisResponseCache.class);
-                });
+                .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
     }
 
     @Test
@@ -208,8 +190,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         // when / then
         runner.withPropertyValues("idempify.enabled=false")
                 .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    assertThat(context).doesNotHaveBean(ResponseCache.class);
+                    assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class);
                     assertThat(context).doesNotHaveBean("idempifyRedisTemplate");
                 });
     }
@@ -220,94 +201,27 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         // when / then
         runner.withPropertyValues("idempify.enabled=true")
                 .run(context -> {
-                    assertThat(context).hasSingleBean(RedisResponseCache.class);
+                    assertThat(context).hasSingleBean(ResponseRepositoryWrapper.class);
                     assertThat(context).hasBean("idempifyRedisTemplate");
                 });
     }
 
-    private static ResponseCacheWrapper namingWrapper(String name, int priority) {
-        return new ResponseCacheWrapper() {
-
-            @Override
-            public ResponseCache wrap(ResponseCache responseCache) {
-                return new NamingDecorator(responseCache, name);
-            }
-
-            @Override
-            public int getPriority() {
-                return priority;
-            }
-        };
+    private static ApplicationContextRunner bareRunner() {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED");
     }
 
-    private static List<String> nesting(ResponseCache cache) {
-        List<String> names = new ArrayList<>();
-        ResponseCache current = cache;
-        while (current instanceof NamingDecorator decorator) {
-            names.add(decorator.name);
-            current = decorator.next;
-        }
-        return names;
-    }
-
-    private static ResponseCache innermost(ResponseCache cache) {
-        ResponseCache current = cache;
-        while (current instanceof NamingDecorator decorator) {
-            current = decorator.next;
-        }
-        return current;
-    }
-
-    private CachedResponse cachedResponse() {
-        return new DefaultCachedResponse(
-                201,
-                "{\"id\":1}".getBytes(StandardCharsets.UTF_8),
-                "application/json",
-                "fingerprint"
-        );
-    }
-
-    /**
-     * Keeps the cache it wraps within reach under a name, so a test reads the nesting order off the chain
-     * itself. Nothing here calls the delegate: the connection factory is a stand-in, and no test may reach
-     * redis to learn how the wrappers were ordered.
-     */
-    private static final class NamingDecorator extends AbstractResponseCacheDecorator {
-
-        private final String name;
-        private final ResponseCache next;
-
-        private NamingDecorator(ResponseCache delegate, String name) {
-            super(delegate);
-            this.name = name;
-            this.next = delegate;
-        }
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    static class UserResponseCacheConfiguration {
-
-        @Bean
-        ResponseCache userResponseCache() {
-            return new ResponseCache() {
-
-                @Override
-                public CachedResponse findByIdempotencyKey(UUID idempotencyKey) {
-                    return null;
-                }
-
-                @Override
-                public void save(UUID idempotencyKey, CachedResponse response, Duration ttl) { }
-            };
-        }
+    private static RawResponseContainer container() {
+        return new DefaultRawResponseContainer("raw-response", "fingerprint", NOW.plus(Duration.ofHours(1)));
     }
 
     @Configuration(proxyBeanMethods = false)
     static class UserRedisTemplateConfiguration {
 
         @Bean
-        RedisTemplate<String, CachedResponse> userRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
-            RedisTemplate<String, CachedResponse> redisTemplate = new RedisTemplate<>();
+        RedisTemplate<String, RawResponseContainer> userRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
+            RedisTemplate<String, RawResponseContainer> redisTemplate = new RedisTemplate<>();
             redisTemplate.setConnectionFactory(redisConnectionFactory);
             return redisTemplate;
         }

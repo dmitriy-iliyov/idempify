@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.cache.redis;
 
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
 
 /**
  * Stands in for whoever holds the {@code idempify.cache.*} properties - the redis backend only ever asks it
@@ -15,12 +15,12 @@ final class TestCachePropertiesHolder implements CachePropertiesHolder {
     }
 
     @Override
-    public String getCacheName() {
+    public String getName() {
         return cacheName;
     }
 
     @Override
-    public int getInMemoryCacheCapacity() {
+    public int getCacheCapacity() {
         return 100;
     }
 }

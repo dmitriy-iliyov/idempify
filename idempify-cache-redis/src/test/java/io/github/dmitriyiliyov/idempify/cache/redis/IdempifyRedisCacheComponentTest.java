@@ -1,9 +1,11 @@
 package io.github.dmitriyiliyov.idempify.cache.redis;
 
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.response.CachedResponse;
-import io.github.dmitriyiliyov.idempify.core.response.DefaultCachedResponse;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheEventListener;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.response.DefaultRawResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,22 +13,23 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The module against a real Redis: live auto-configuration, live template with its own serializers, live
- * {@link RedisResponseCache}. Only {@link CachePropertiesHolder} is stood in for - it belongs to the core.
+ * {@link RedisCacheResponseRepositoryDecorator}. Only what belongs to the core is stood in for - the
+ * repository behind the cache and the holder of the {@code idempify.cache.*} properties.
  * <p>
  * Needs Docker, like the postgres integration test.
  */
@@ -36,6 +39,7 @@ class IdempifyRedisCacheComponentTest {
     private static final String CACHE_NAME = "idempify";
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID OTHER_IDEMPOTENCY_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
 
     @Container
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -43,8 +47,10 @@ class IdempifyRedisCacheComponentTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
-            .withPropertyValues("idempify.cache.enabled=true")
+            .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
             .withBean(RedisConnectionFactory.class, IdempifyRedisCacheComponentTest::connectionFactory)
+            .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
+            .withBean(Clock.class, () -> Clock.fixed(NOW, ZoneOffset.UTC))
             .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(CACHE_NAME));
 
     @BeforeEach
@@ -53,82 +59,54 @@ class IdempifyRedisCacheComponentTest {
     }
 
     @Test
-    @DisplayName("CT save() then findByIdempotencyKey() with the same key should return the stored response")
-    void save_thenFindByIdempotencyKey_shouldReturnStoredResponse() {
-        // given
-        CachedResponse stored = cachedResponse(201, "{\"id\":1}");
-
+    @DisplayName("CT findByIdempotencyKey() when the key repeats should answer from redis without reaching the repository")
+    void findByIdempotencyKey_whenKeyRepeats_shouldAnswerFromRedisWithoutReachingRepository() {
         // when / then
         runner.run(context -> {
-            ResponseCache tested = context.getBean(ResponseCache.class);
-            tested.save(IDEMPOTENCY_KEY, stored, Duration.ofMinutes(10));
+            RecordingRepository repository = new RecordingRepository(container(IDEMPOTENCY_KEY, "raw-response"));
+            ResponseRepository tested = context.getBean(ResponseRepositoryWrapper.class).wrap(repository);
 
-            CachedResponse replayed = tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+            tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+            Optional<RawResponseContainer> replayed = tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
 
-            assertThat(replayed).isNotNull();
-            assertThat(replayed.getStatus()).isEqualTo(201);
-            assertThat(replayed.getBody()).isEqualTo(stored.getBody());
-            assertThat(replayed.getContentType()).isEqualTo("application/json");
-            assertThat(replayed.getFingerprint()).isEqualTo("fingerprint");
+            assertThat(replayed).isPresent();
+            assertThat(replayed.get().getResponse()).isEqualTo("raw-response");
+            assertThat(replayed.get().getFingerprint()).isEqualTo("fingerprint");
+            assertThat(replayed.get().getExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
+            assertThat(repository.keys).containsExactly(IDEMPOTENCY_KEY);
         });
     }
 
     @Test
-    @DisplayName("CT findByIdempotencyKey() when nothing was stored should return null")
-    void findByIdempotencyKey_whenNothingWasStored_shouldReturnNull() {
+    @DisplayName("CT findByIdempotencyKey() when the repository has nothing should keep answering empty")
+    void findByIdempotencyKey_whenRepositoryHasNothing_shouldKeepAnsweringEmpty() {
         // when / then
         runner.run(context -> {
-            ResponseCache tested = context.getBean(ResponseCache.class);
+            RecordingRepository repository = new RecordingRepository();
+            ResponseRepository tested = context.getBean(ResponseRepositoryWrapper.class).wrap(repository);
 
-            assertThat(tested.findByIdempotencyKey(UUID.randomUUID())).isNull();
+            assertThat(tested.findByIdempotencyKey(IDEMPOTENCY_KEY)).isEmpty();
+            assertThat(tested.findByIdempotencyKey(IDEMPOTENCY_KEY)).isEmpty();
+            assertThat(repository.keys).containsExactly(IDEMPOTENCY_KEY, IDEMPOTENCY_KEY);
         });
     }
 
     @Test
-    @DisplayName("CT save() should let the entry expire with the given ttl")
-    void save_shouldLetTheEntryExpireWithGivenTtl() {
+    @DisplayName("CT findByIdempotencyKey() with two keys should answer each under its own key")
+    void findByIdempotencyKey_withTwoKeys_shouldAnswerEachUnderItsOwnKey() {
         // when / then
         runner.run(context -> {
-            ResponseCache tested = context.getBean(ResponseCache.class);
-            @SuppressWarnings("unchecked")
-            RedisTemplate<String, CachedResponse> template =
-                    context.getBean("idempifyRedisTemplate", RedisTemplate.class);
-            tested.save(IDEMPOTENCY_KEY, cachedResponse(201, "{\"id\":1}"), Duration.ofMinutes(10));
+            RecordingRepository repository = new RecordingRepository(
+                    container(IDEMPOTENCY_KEY, "one"), container(OTHER_IDEMPOTENCY_KEY, "two"));
+            ResponseRepository tested = context.getBean(ResponseRepositoryWrapper.class).wrap(repository);
 
-            Long expire = template.getExpire("%s:%s".formatted(CACHE_NAME, IDEMPOTENCY_KEY), TimeUnit.SECONDS);
+            tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+            tested.findByIdempotencyKey(OTHER_IDEMPOTENCY_KEY);
 
-            assertThat(expire).isNotNull().isPositive().isLessThanOrEqualTo(600);
-        });
-    }
-
-    @Test
-    @DisplayName("CT save() with two keys should replay each response under its own key")
-    void save_withTwoKeys_shouldReplayEachResponseUnderItsOwnKey() {
-        // given
-        CachedResponse first = cachedResponse(201, "{\"id\":1}");
-        CachedResponse second = cachedResponse(202, "{\"id\":2}");
-
-        // when / then
-        runner.run(context -> {
-            ResponseCache tested = context.getBean(ResponseCache.class);
-            tested.save(IDEMPOTENCY_KEY, first, Duration.ofMinutes(10));
-            tested.save(OTHER_IDEMPOTENCY_KEY, second, Duration.ofMinutes(10));
-
-            assertThat(tested.findByIdempotencyKey(IDEMPOTENCY_KEY).getStatus()).isEqualTo(201);
-            assertThat(tested.findByIdempotencyKey(OTHER_IDEMPOTENCY_KEY).getStatus()).isEqualTo(202);
-        });
-    }
-
-    @Test
-    @DisplayName("CT save() when ttl is zero should store nothing")
-    void save_whenTtlIsZero_shouldStoreNothing() {
-        // when / then
-        runner.run(context -> {
-            ResponseCache tested = context.getBean(ResponseCache.class);
-
-            tested.save(IDEMPOTENCY_KEY, cachedResponse(201, "{\"id\":1}"), Duration.ZERO);
-
-            assertThat(tested.findByIdempotencyKey(IDEMPOTENCY_KEY)).isNull();
+            assertThat(tested.findByIdempotencyKey(IDEMPOTENCY_KEY).orElseThrow().getResponse())
+                    .isEqualTo("one");
+            assertThat(tested.findByIdempotencyKey(OTHER_IDEMPOTENCY_KEY).orElseThrow().getResponse())
+                    .isEqualTo("two");
         });
     }
 
@@ -139,12 +117,40 @@ class IdempifyRedisCacheComponentTest {
         return connectionFactory;
     }
 
-    private CachedResponse cachedResponse(int status, String body) {
-        return new DefaultCachedResponse(
-                status,
-                body.getBytes(StandardCharsets.UTF_8),
-                "application/json",
-                "fingerprint"
-        );
+    private static RawResponseContainer container(UUID idempotencyKey, String response) {
+        return new DefaultRawResponseContainer(response, "fingerprint", NOW.plus(Duration.ofHours(1)));
+    }
+
+    /**
+     * Stands in for the store the cache sits in front of, writing down every key that reached it so a test
+     * can tell a redis hit from a trip to the database.
+     */
+    private static final class RecordingRepository implements ResponseRepository {
+
+        private final Map<UUID, RawResponseContainer> containers = new LinkedHashMap<>();
+        private final List<UUID> keys = new ArrayList<>();
+
+        private RecordingRepository(RawResponseContainer... containers) {
+            UUID[] under = {IDEMPOTENCY_KEY, OTHER_IDEMPOTENCY_KEY};
+            for (int i = 0; i < containers.length; i++) {
+                if (containers[i] != null) {
+                    this.containers.put(under[i], containers[i]);
+                }
+            }
+        }
+
+        @Override
+        public RawResponseContainer save(UUID idempotencyKey, String response) {
+            RawResponseContainer saved =
+                    new DefaultRawResponseContainer(response, "fingerprint", NOW.plus(Duration.ofHours(1)));
+            containers.put(idempotencyKey, saved);
+            return saved;
+        }
+
+        @Override
+        public Optional<RawResponseContainer> findByIdempotencyKey(UUID idempotencyKey) {
+            keys.add(idempotencyKey);
+            return Optional.ofNullable(containers.get(idempotencyKey));
+        }
     }
 }
