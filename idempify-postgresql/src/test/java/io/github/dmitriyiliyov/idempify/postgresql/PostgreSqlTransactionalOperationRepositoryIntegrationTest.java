@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
-import io.github.dmitriyiliyov.idempify.core.Operation;
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
 import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
+import io.github.dmitriyiliyov.idempify.core.RawOperation;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +24,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * The guarantees this store owes the core are the ones a mock cannot have: the claim is atomic and
+ * first-writer-wins, both updates are conditional on the row's current status, and the expiry exists on a
+ * completed operation and nowhere else. All of it is judged against a real Postgres.
+ * <p>
+ * The repository deals in rows only - no serializer takes part here, so what is written is what comes back.
+ */
 @Testcontainers
 class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
 
@@ -32,6 +39,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
 
     private static JdbcClient jdbcClient;
     private PostgreSqlTransactionalOperationRepository tested;
+    private PostgreSqlOperationRepository reader;
 
     @BeforeAll
     static void setUpDatabase() {
@@ -42,7 +50,8 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         dataSource.setPassword(postgres.getPassword());
         jdbcClient = JdbcClient.create(dataSource);
         try {
-            jdbcClient.sql(new ClassPathResource("idempotent_operations_table.sql").getContentAsString(StandardCharsets.UTF_8)).update();
+            jdbcClient.sql(new ClassPathResource("idempotent_operations_table.sql")
+                    .getContentAsString(StandardCharsets.UTF_8)).update();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -51,184 +60,165 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
     @BeforeEach
     void setUp() {
         tested = new PostgreSqlTransactionalOperationRepository(jdbcClient);
+        reader = new PostgreSqlOperationRepository(jdbcClient);
         jdbcClient.sql("DELETE FROM idempotent_operations").update();
     }
 
     @Test
-    @DisplayName("IT saveIfAbsent() when key does not exist should insert and return operation with isFirstAttempt true")
-    void saveIfAbsent_whenKeyDoesNotExist_shouldInsertAndReturnWithIsFirstAttemptTrue() {
+    @DisplayName("IT saveIfAbsent() when the key is free should insert the row and call it a first attempt")
+    void saveIfAbsent_whenKeyIsFree_shouldInsertRowAndCallItFirstAttempt() {
         // given
         UUID key = UUID.randomUUID();
-        Operation operation = buildOperation(key);
 
         // when
-        Operation result = tested.saveIfAbsent(operation);
+        RawOperation result = tested.saveIfAbsent(claim(key));
 
         // then
-        assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(result.idempotencyKey()).isEqualTo(key);
+        assertThat(result.status()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(result.isFirstAttempt()).isTrue();
-        assertThat(result.getResult()).isNull();
-        assertThat(result.getFingerprint()).isEqualTo("fingerprint");
+        assertThat(result.result()).isNull();
+        assertThat(result.fingerprint()).isEqualTo("fingerprint");
     }
 
     @Test
-    @DisplayName("IT saveIfAbsent() when key already exists should return existing operation with isFirstAttempt false")
-    void saveIfAbsent_whenKeyAlreadyExists_shouldReturnExistingWithIsFirstAttemptFalse() {
+    @DisplayName("IT saveIfAbsent() when the key is taken should hand back the stored row and call it a repeat")
+    void saveIfAbsent_whenKeyIsTaken_shouldHandBackStoredRowAndCallItRepeat() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
+        tested.saveIfAbsent(claim(key));
 
         // when
-        Operation result = tested.saveIfAbsent(buildOperation(key));
+        RawOperation result = tested.saveIfAbsent(claim(key));
 
         // then
-        assertThat(result.getIdempotencyKey()).isEqualTo(key);
+        assertThat(result.idempotencyKey()).isEqualTo(key);
         assertThat(result.isFirstAttempt()).isFalse();
     }
 
     @Test
-    @DisplayName("IT saveIfAbsent() when key already exists should not overwrite existing status and result")
-    void saveIfAbsent_whenKeyAlreadyExists_shouldNotOverwriteExistingStatusAndResult() {
+    @DisplayName("IT saveIfAbsent() when the key is taken should not overwrite the status or the result it found")
+    void saveIfAbsent_whenKeyIsTaken_shouldNotOverwriteStatusOrResultItFound() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        tested.saveResultAndUpdateStatus("original-result", OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.IN_PROCESS);
+        tested.saveIfAbsent(claim(key));
+        tested.saveResultAndUpdateStatus(
+                key, "original-result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
 
         // when
-        Operation result = tested.saveIfAbsent(buildOperation(key));
+        RawOperation result = tested.saveIfAbsent(claim(key));
 
         // then
-        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(result.getResult()).isEqualTo("original-result");
-        assertThat(result.isFirstAttempt()).isFalse();
+        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.result()).isEqualTo("original-result");
     }
 
     @Test
-    @DisplayName("IT update() when status matches onStatus should update all fields and return updated operation")
-    void update_whenStatusMatchesOnStatus_shouldUpdateAndReturnUpdatedOperation() {
+    @DisplayName("IT saveIfAbsent() when the key is claimed should leave the expiry and the response empty")
+    void saveIfAbsent_whenKeyIsClaimed_shouldLeaveExpiryAndResponseEmpty() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-
-        Operation toUpdate = new Operation(
-                key,
-                OperationStatus.PROCESSED,
-                true,
-                "result-payload",
-                "fp-hash",
-                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
-                Instant.now().truncatedTo(ChronoUnit.MICROS)
-        );
 
         // when
-        Operation result = tested.update(toUpdate, OperationStatus.IN_PROCESS);
+        RawOperation result = tested.saveIfAbsent(claim(key));
 
         // then
-        assertThat(result.getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(result.getResult()).isEqualTo("result-payload");
-        assertThat(result.getFingerprint()).isEqualTo("fp-hash");
+        assertThat(result.expiresAt()).isNull();
+        assertThat(result.response()).isNull();
     }
 
     @Test
-    @DisplayName("IT update() when status does not match onStatus should throw OperationStatusMismatchException")
-    void update_whenStatusDoesNotMatchOnStatus_shouldThrowOperationStatusMismatchException() {
+    @DisplayName("IT update() when the status matches should rewrite every column and hand the row back")
+    void update_whenStatusMatches_shouldRewriteEveryColumnAndHandRowBack() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        Operation toUpdate = updateFor(key);
+        tested.saveIfAbsent(claim(key));
+        RawOperation rewritten = completed(key);
+
+        // when
+        RawOperation result = tested.update(rewritten, OperationStatus.IN_PROCESS);
+
+        // then
+        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.result()).isEqualTo("new-result");
+        assertThat(result.fingerprint()).isEqualTo("new-fingerprint");
+        assertThat(result.expiresAt()).isEqualTo(rewritten.expiresAt());
+    }
+
+    @Test
+    @DisplayName("IT update() when the status does not match should throw OperationStatusMismatchException")
+    void update_whenStatusDoesNotMatch_shouldThrowOperationStatusMismatchException() {
+        // given
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(claim(key));
+        RawOperation rewritten = completed(key);
 
         // when / then
-        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
+        assertThatThrownBy(() -> tested.update(rewritten, OperationStatus.PROCESSED))
                 .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(key.toString());
     }
 
     @Test
-    @DisplayName("IT update() when status does not match onStatus should leave the stored operation alone")
-    void update_whenStatusDoesNotMatchOnStatus_shouldLeaveStoredOperationAlone() {
+    @DisplayName("IT update() when the status does not match should leave the stored row exactly as it was")
+    void update_whenStatusDoesNotMatch_shouldLeaveStoredRowExactlyAsItWas() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        Operation toUpdate = updateFor(key);
+        RawOperation claimed = tested.saveIfAbsent(claim(key));
 
         // when
-        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
+        assertThatThrownBy(() -> tested.update(completed(key), OperationStatus.PROCESSED))
                 .isInstanceOf(OperationStatusMismatchException.class);
 
         // then
-        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(stored -> {
-            assertThat(stored.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-            assertThat(stored.getResult()).isNull();
-            assertThat(stored.getFingerprint()).isEqualTo("fingerprint");
-        });
+        assertThat(reader.findByIdempotencyKey(key)).contains(claimed);
     }
 
     @Test
-    @DisplayName("IT update() when no operation is stored under the key should throw OperationStatusMismatchException")
-    void update_whenNoOperationIsStoredUnderKey_shouldThrowOperationStatusMismatchException() {
+    @DisplayName("IT update() when no row is stored under the key should throw OperationStatusMismatchException")
+    void update_whenNoRowIsStoredUnderKey_shouldThrowOperationStatusMismatchException() {
         // given
         UUID key = UUID.randomUUID();
-        Operation toUpdate = updateFor(key);
 
         // when / then
-        assertThatThrownBy(() -> tested.update(toUpdate, OperationStatus.PROCESSED))
-                .isInstanceOf(OperationStatusMismatchException.class)
-                .hasMessageContaining(key.toString());
+        assertThatThrownBy(() -> tested.update(completed(key), OperationStatus.IN_PROCESS))
+                .isInstanceOf(OperationStatusMismatchException.class);
     }
 
     @Test
-    @DisplayName("IT saveResultAndUpdateStatus() when status matches onStatus should update result and status")
-    void saveResultAndUpdateStatus_whenStatusMatchesOnStatus_shouldUpdateResultAndStatus() {
-        // given
+    @DisplayName("IT update() when an expired row is reclaimed should clear the expiry and the response it inherited")
+    void update_whenExpiredRowIsReclaimed_shouldClearExpiryAndResponseItInherited() {
+        // given - a completed row that has outlived its expiry and still carries the answer it replayed
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        String result = "serialized-result";
+        tested.saveIfAbsent(claim(key));
+        tested.saveResultAndUpdateStatus(
+                key, "stale-result", OperationStatus.PROCESSED, anHourAgo(), OperationStatus.IN_PROCESS);
+        givenStoredResponse(key);
 
         // when
-        tested.saveResultAndUpdateStatus(result, OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.IN_PROCESS);
+        RawOperation result = tested.update(claim(key), OperationStatus.PROCESSED);
 
         // then
-        Optional<Operation> updated = tested.findByIdempotencyKey(key);
-        assertThat(updated).isPresent();
-        assertThat(updated.get().getResult()).isEqualTo(result);
-        assertThat(updated.get().getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.status()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(result.expiresAt()).isNull();
+        assertThat(result.response()).isNull();
+        assertThat(result.result()).isNull();
     }
 
     @Test
-    @DisplayName("IT saveResultAndUpdateStatus() when status does not match onStatus should throw and leave the operation untouched")
-    void saveResultAndUpdateStatus_whenStatusDoesNotMatchOnStatus_shouldThrowAndLeaveOperationUntouched() {
+    @DisplayName("IT saveResultAndUpdateStatus() when the status matches should store the result and the new status")
+    void saveResultAndUpdateStatus_whenStatusMatches_shouldStoreResultAndNewStatus() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
+        tested.saveIfAbsent(claim(key));
 
         // when
-        assertThatThrownBy(() -> tested.saveResultAndUpdateStatus("new-result", OperationStatus.PROCESSED, anHourFromNow(), key, OperationStatus.PROCESSED))
-                .isInstanceOf(OperationStatusMismatchException.class)
-                .hasMessageContaining(key.toString())
-                .hasMessageContaining(OperationStatus.PROCESSED.name());
+        RawOperation result = tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
 
         // then
-        Optional<Operation> notUpdated = tested.findByIdempotencyKey(key);
-        assertThat(notUpdated).isPresent();
-        assertThat(notUpdated.get().getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-        assertThat(notUpdated.get().getResult()).isNull();
-    }
-
-    @Test
-    @DisplayName("IT saveIfAbsent() when the key is claimed should store a row that carries no expiry")
-    void saveIfAbsent_whenKeyIsClaimed_shouldStoreRowThatCarriesNoExpiry() {
-        // given
-        UUID key = UUID.randomUUID();
-
-        // when
-        Operation claimed = tested.saveIfAbsent(buildOperation(key));
-
-        // then
-        assertThat(claimed.getExpiresAt()).isNull();
-        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
-                stored -> assertThat(stored.getExpiresAt()).isNull());
+        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.result()).isEqualTo("result");
     }
 
     @Test
@@ -236,17 +226,48 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
     void saveResultAndUpdateStatus_shouldBeWhatPutsExpiryOnRowThatHadNone() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
+        assertThat(tested.saveIfAbsent(claim(key)).expiresAt()).isNull();
         Instant expiresAt = anHourFromNow();
 
         // when
-        Operation completed = tested.saveResultAndUpdateStatus(
-                "serialized-result", OperationStatus.PROCESSED, expiresAt, key, OperationStatus.IN_PROCESS);
+        RawOperation result = tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, expiresAt, OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(completed.getExpiresAt()).isEqualTo(expiresAt);
-        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
-                stored -> assertThat(stored.getExpiresAt()).isEqualTo(expiresAt));
+        assertThat(result.expiresAt()).isEqualTo(expiresAt);
+    }
+
+    @Test
+    @DisplayName("IT saveResultAndUpdateStatus() should not touch the response the row carries")
+    void saveResultAndUpdateStatus_shouldNotTouchResponseRowCarries() {
+        // given - the answer is written by its own update, after the operation committed
+        UUID key = UUID.randomUUID();
+        tested.saveIfAbsent(claim(key));
+        givenStoredResponse(key);
+
+        // when
+        RawOperation result = tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
+
+        // then
+        assertThat(result.response()).isEqualTo("raw-response");
+    }
+
+    @Test
+    @DisplayName("IT saveResultAndUpdateStatus() when the status does not match should throw and leave the row untouched")
+    void saveResultAndUpdateStatus_whenStatusDoesNotMatch_shouldThrowAndLeaveRowUntouched() {
+        // given
+        UUID key = UUID.randomUUID();
+        RawOperation claimed = tested.saveIfAbsent(claim(key));
+
+        // when
+        assertThatThrownBy(() -> tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.PROCESSED))
+                .isInstanceOf(OperationStatusMismatchException.class)
+                .hasMessageContaining(key.toString());
+
+        // then
+        assertThat(reader.findByIdempotencyKey(key)).contains(claimed);
     }
 
     @Test
@@ -254,83 +275,53 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
     void saveResultAndUpdateStatus_whenSameKeyCompletesAgain_shouldReplacePreviousExpiry() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        Instant firstExpiry = anHourFromNow();
-        tested.saveResultAndUpdateStatus("first", OperationStatus.PROCESSED, firstExpiry, key, OperationStatus.IN_PROCESS);
-        Instant secondExpiry = Instant.now().plus(9, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
+        tested.saveIfAbsent(claim(key));
+        tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
+        tested.update(claim(key), OperationStatus.PROCESSED);
+        Instant later = Instant.now().plus(5, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
 
         // when
-        tested.saveResultAndUpdateStatus("second", OperationStatus.PROCESSED, secondExpiry, key, OperationStatus.PROCESSED);
+        RawOperation result = tested.saveResultAndUpdateStatus(
+                key, "result", OperationStatus.PROCESSED, later, OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(tested.findByIdempotencyKey(key)).hasValueSatisfying(
-                stored -> assertThat(stored.getExpiresAt()).isEqualTo(secondExpiry));
+        assertThat(result.expiresAt()).isEqualTo(later);
     }
 
     @Test
-    @DisplayName("IT update() when an expired row is reclaimed should clear the expiry it inherited")
-    void update_whenExpiredRowIsReclaimed_shouldClearExpiryItInherited() {
+    @DisplayName("IT findByIdempotencyKey() when the row exists should return every column it holds")
+    void findByIdempotencyKey_whenRowExists_shouldReturnEveryColumnItHolds() {
         // given
         UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-        Instant staleExpiry = Instant.now().minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
-        tested.saveResultAndUpdateStatus("stale", OperationStatus.PROCESSED, staleExpiry, key, OperationStatus.IN_PROCESS);
+        RawOperation claimed = tested.saveIfAbsent(claim(key));
 
         // when
-        Operation reclaimed = tested.update(buildOperation(key), OperationStatus.PROCESSED);
+        Optional<RawOperation> result = reader.findByIdempotencyKey(key);
 
         // then
-        assertThat(reclaimed.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-        assertThat(reclaimed.getExpiresAt()).isNull();
-        assertThat(reclaimed.getResult()).isNull();
+        assertThat(result).contains(claimed);
     }
 
     @Test
-    @DisplayName("IT findByIdempotencyKey() when operation exists should return optional with operation")
-    void findByIdempotencyKey_whenOperationExists_shouldReturnOptionalWithOperation() {
-        // given
-        UUID key = UUID.randomUUID();
-        tested.saveIfAbsent(buildOperation(key));
-
-        // when
-        Optional<Operation> result = tested.findByIdempotencyKey(key);
-
-        // then
-        assertThat(result).isPresent();
-        assertThat(result.get().getIdempotencyKey()).isEqualTo(key);
-        assertThat(result.get().getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+    @DisplayName("IT findByIdempotencyKey() when no row is stored under the key should return an empty optional")
+    void findByIdempotencyKey_whenNoRowIsStoredUnderKey_shouldReturnEmptyOptional() {
+        // when / then
+        assertThat(reader.findByIdempotencyKey(UUID.randomUUID())).isEmpty();
     }
 
-    @Test
-    @DisplayName("IT findByIdempotencyKey() when operation does not exist should return empty optional")
-    void findByIdempotencyKey_whenOperationDoesNotExist_shouldReturnEmptyOptional() {
-        // given
-        UUID nonExistentKey = UUID.randomUUID();
-
-        // when
-        Optional<Operation> result = tested.findByIdempotencyKey(nonExistentKey);
-
-        // then
-        assertThat(result).isEmpty();
+    private void givenStoredResponse(UUID idempotencyKey) {
+        jdbcClient.sql("UPDATE idempotent_operations SET response = ? WHERE idempotency_key = ?")
+                .params("raw-response", idempotencyKey)
+                .update();
     }
 
-    private Operation updateFor(UUID key) {
-        return new Operation(
-                key,
-                OperationStatus.PROCESSED,
-                true,
-                "new-result",
-                "new-fp",
-                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
-                Instant.now().truncatedTo(ChronoUnit.MICROS)
-        );
-    }
-
-    private Operation buildOperation(UUID key) {
-        return new Operation(
-                key,
+    private static RawOperation claim(UUID idempotencyKey) {
+        return new RawOperation(
+                idempotencyKey,
                 OperationStatus.IN_PROCESS,
                 true,
+                null,
                 null,
                 "fingerprint",
                 null,
@@ -338,7 +329,24 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         );
     }
 
-    private Instant anHourFromNow() {
+    private static RawOperation completed(UUID idempotencyKey) {
+        return new RawOperation(
+                idempotencyKey,
+                OperationStatus.PROCESSED,
+                true,
+                "new-result",
+                null,
+                "new-fingerprint",
+                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
+    }
+
+    private static Instant anHourFromNow() {
         return Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
+    }
+
+    private static Instant anHourAgo() {
+        return Instant.now().minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
     }
 }
