@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class MicrometerIdempotencyEventListenerUnitTest {
+class MetricsIdempotencyEventListenerUnitTest {
 
     private static final String METER = "idempify.operations";
     private static final String TAG = "outcome";
@@ -26,7 +26,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT constructor() when registry is null should throw NullPointerException")
     void constructor_whenRegistryIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new MicrometerIdempotencyEventListener(null))
+        assertThatThrownBy(() -> new MetricsIdempotencyEventListener(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("registry cannot be null");
     }
@@ -35,7 +35,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT constructor() should register every outcome before the first one arrives")
     void constructor_shouldRegisterEveryOutcomeBeforeFirstOneArrives() {
         // when
-        new MicrometerIdempotencyEventListener(registry);
+        new MetricsIdempotencyEventListener(registry);
 
         // then
         assertThat(registry.get(METER).counters()).hasSize(5);
@@ -48,7 +48,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT constructor() should keep every outcome in one meter named under the library")
     void constructor_shouldKeepEveryOutcomeInOneMeterNamedUnderLibrary() {
         // when
-        new MicrometerIdempotencyEventListener(registry);
+        new MetricsIdempotencyEventListener(registry);
 
         // then
         assertThat(METER).startsWith("idempify.");
@@ -62,7 +62,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onDuplicate() should count the duplicate and nothing else")
     void onDuplicate_shouldCountDuplicateAndNothingElse() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onDuplicate();
@@ -76,7 +76,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onConflict() should count the conflict and nothing else")
     void onConflict_shouldCountConflictAndNothingElse() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onConflict();
@@ -90,7 +90,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onFingerprintMismatch() should count the mismatch and nothing else")
     void onFingerprintMismatch_shouldCountMismatchAndNothingElse() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onFingerprintMismatch();
@@ -104,7 +104,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onException() should count the exception and nothing else")
     void onException_shouldCountExceptionAndNothingElse() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onException();
@@ -118,7 +118,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onSuccess() should count the success and nothing else")
     void onSuccess_shouldCountSuccessAndNothingElse() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onSuccess();
@@ -132,7 +132,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT onSuccess() when the same outcome comes back should add up rather than replace")
     void onSuccess_whenSameOutcomeComesBack_shouldAddUpRatherThanReplace() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onSuccess();
@@ -147,7 +147,7 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT increments() when outcomes differ should add up across the meter as well as within it")
     void increments_whenOutcomesDiffer_shouldAddUpAcrossMeterAsWellAsWithinIt() {
         // given
-        IdempotencyEventListener tested = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
         tested.onSuccess();
@@ -163,8 +163,8 @@ class MicrometerIdempotencyEventListenerUnitTest {
     @DisplayName("UT constructor() when a second listener shares the registry should reuse the series already there")
     void constructor_whenSecondListenerSharesRegistry_shouldReuseSeriesAlreadyThere() {
         // given
-        IdempotencyEventListener first = new MicrometerIdempotencyEventListener(registry);
-        IdempotencyEventListener second = new MicrometerIdempotencyEventListener(registry);
+        IdempotencyEventListener first = new MetricsIdempotencyEventListener(registry);
+        IdempotencyEventListener second = new MetricsIdempotencyEventListener(registry);
 
         // when
         first.onSuccess();

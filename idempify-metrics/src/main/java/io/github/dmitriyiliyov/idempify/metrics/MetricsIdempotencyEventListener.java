@@ -6,7 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 import java.util.Objects;
 
-public class MicrometerIdempotencyEventListener implements IdempotencyEventListener {
+public class MetricsIdempotencyEventListener implements IdempotencyEventListener {
 
     private static final String OPERATIONS_METER = "idempify.operations";
     private static final String OUTCOME_TAG = "outcome";
@@ -17,7 +17,7 @@ public class MicrometerIdempotencyEventListener implements IdempotencyEventListe
     private final Counter exceptionCounter;
     private final Counter successCounter;
 
-    public MicrometerIdempotencyEventListener(MeterRegistry registry) {
+    public MetricsIdempotencyEventListener(MeterRegistry registry) {
         Objects.requireNonNull(registry, "registry cannot be null");
         this.duplicateCounter = outcomeCounter(registry, "duplicate");
         this.conflictCounter = outcomeCounter(registry, "conflict");

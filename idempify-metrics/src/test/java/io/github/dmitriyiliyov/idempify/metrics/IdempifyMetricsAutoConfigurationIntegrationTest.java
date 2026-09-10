@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.metrics;
 
 import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheEventListener;
 import io.github.dmitriyiliyov.idempify.core.config.*;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizer;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizerCreator;
@@ -8,10 +9,11 @@ import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
-import io.github.dmitriyiliyov.idempify.core.response.CachedResponse;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCacheWrapper;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseDeserializer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -57,8 +59,8 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
     void context_whenMetricsAreAskedFor_shouldRegisterEveryDefaultBeanOfModule() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(IdempotencyEventListener.class);
-            assertThat(context).hasSingleBean(MicrometerIdempotencyEventListener.class);
-            assertThat(context).hasSingleBean(ResponseCacheWrapper.class);
+            assertThat(context).hasSingleBean(MetricsIdempotencyEventListener.class);
+            assertThat(context).hasSingleBean(CacheEventListener.class);
         });
     }
 
@@ -77,64 +79,46 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .withBean(IdempotencyEventListener.class, () -> IdempotencyEventListener.NOOP)
                 .run(context -> {
                     assertThat(context).hasSingleBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(MicrometerIdempotencyEventListener.class);
+                    assertThat(context).doesNotHaveBean(MetricsIdempotencyEventListener.class);
                 });
     }
 
     @Test
-    @DisplayName("IT context when the application brings a cache wrapper of its own should not register the metrics one")
-    void context_whenApplicationBringsCacheWrapperOfItsOwn_shouldNotRegisterMetricsOne() {
-        // given
-        ResponseCacheWrapper own = new PassThroughWrapper();
-
-        // when / then
-        contextRunner
-                .withBean(ResponseCacheWrapper.class, () -> own)
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ResponseCacheWrapper.class);
-                    assertThat(context.getBean(ResponseCacheWrapper.class)).isSameAs(own);
-                    assertThat(context.getBean(ResponseCacheWrapper.class).wrap(mock(ResponseCache.class)))
-                            .isNotInstanceOf(MetricsResponseCacheDecorator.class);
-                });
-    }
-
-    @Test
-    @DisplayName("IT context when the registered wrapper is asked to wrap should hand back a counting cache")
-    void context_whenRegisteredWrapperIsAskedToWrap_shouldHandBackCountingCache() {
+    @DisplayName("IT context when metrics are on should register the counting cache listener")
+    void context_whenMetricsAreOn_shouldRegisterCountingCacheListener() {
         contextRunner.run(context -> {
-            ResponseCacheWrapper wrapper = context.getBean(ResponseCacheWrapper.class);
-            MeterRegistry registry = context.getBean(MeterRegistry.class);
-
-            ResponseCache wrapped = wrapper.wrap(mock(ResponseCache.class));
-            wrapped.findByIdempotencyKey(UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
-
-            assertThat(wrapped).isInstanceOf(MetricsResponseCacheDecorator.class);
-            assertThat(registry.get("idempify.cache.gets").tag("result", "miss").counter().count()).isEqualTo(1.0);
+            assertThat(context).hasSingleBean(CacheEventListener.class);
+            assertThat(context.getBean(CacheEventListener.class)).isInstanceOf(MetricsCacheEventListener.class);
         });
     }
 
     @Test
-    @DisplayName("IT context when the registered wrapper is registered should sit closest to the cache")
-    void context_whenRegisteredWrapperIsRegistered_shouldSitClosestToCache() {
-        contextRunner.run(context -> assertThat(context.getBean(ResponseCacheWrapper.class).getPriority())
-                .isEqualTo(Integer.MAX_VALUE));
+    @DisplayName("IT context when the application brings a cache listener of its own should not register the metrics one")
+    void context_whenApplicationBringsCacheListenerOfItsOwn_shouldNotRegisterMetricsOne() {
+        // given
+        CacheEventListener own = CacheEventListener.NOOP;
+
+        // when / then
+        contextRunner
+                .withBean(CacheEventListener.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(CacheEventListener.class);
+                    assertThat(context.getBean(CacheEventListener.class)).isSameAs(own);
+                    assertThat(context).doesNotHaveBean(MetricsCacheEventListener.class);
+                });
     }
 
     @Test
-    @DisplayName("IT context when the registered wrapper delegates should leave saving uncounted")
-    void context_whenRegisteredWrapperDelegates_shouldLeaveSavingUncounted() {
+    @DisplayName("IT context when the registered listener is told about a miss should count it")
+    void context_whenRegisteredListenerIsToldAboutMiss_shouldCountIt() {
         contextRunner.run(context -> {
-            ResponseCacheWrapper wrapper = context.getBean(ResponseCacheWrapper.class);
+            CacheEventListener listener = context.getBean(CacheEventListener.class);
             MeterRegistry registry = context.getBean(MeterRegistry.class);
 
-            wrapper.wrap(mock(ResponseCache.class)).save(
-                    UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                    mock(CachedResponse.class),
-                    Duration.ofMinutes(1)
-            );
+            listener.onMiss();
 
+            assertThat(registry.get("idempify.cache.gets").tag("result", "miss").counter().count()).isEqualTo(1.0);
             assertThat(registry.get("idempify.cache.gets").tag("result", "hit").counter().count()).isZero();
-            assertThat(registry.get("idempify.cache.gets").tag("result", "miss").counter().count()).isZero();
         });
     }
 
@@ -146,7 +130,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(ResponseCacheWrapper.class);
+                    assertThat(context).doesNotHaveBean(CacheEventListener.class);
                 });
     }
 
@@ -158,7 +142,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(ResponseCacheWrapper.class);
+                    assertThat(context).doesNotHaveBean(CacheEventListener.class);
                 });
     }
 
@@ -170,7 +154,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(ResponseCacheWrapper.class);
+                    assertThat(context).doesNotHaveBean(CacheEventListener.class);
                 });
     }
 
@@ -182,7 +166,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(ResponseCacheWrapper.class);
+                    assertThat(context).doesNotHaveBean(CacheEventListener.class);
                 });
     }
 
@@ -191,7 +175,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
     void context_whenCoreIsLoadedTooAndMetricsAreAskedFor_shouldLetMicrometerAnswerHook() {
         withCore().withPropertyValues("idempify.metrics.enabled=true").run(context -> {
             assertThat(context).hasSingleBean(IdempotencyEventListener.class);
-            assertThat(context).hasSingleBean(MicrometerIdempotencyEventListener.class);
+            assertThat(context).hasSingleBean(MetricsIdempotencyEventListener.class);
             assertThat(context.getBean(IdempotencyEventListener.class))
                     .isNotSameAs(IdempotencyEventListener.NOOP);
         });
@@ -204,7 +188,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .withPropertyValues("idempify.metrics.enabled=false")
                 .run(context -> {
                     assertThat(context).hasSingleBean(IdempotencyEventListener.class);
-                    assertThat(context).doesNotHaveBean(MicrometerIdempotencyEventListener.class);
+                    assertThat(context).doesNotHaveBean(MetricsIdempotencyEventListener.class);
                     assertThat(context.getBean(IdempotencyEventListener.class))
                             .isSameAs(IdempotencyEventListener.NOOP);
                 });
@@ -215,7 +199,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
     void context_whenCoreIsLoadedTooAndNothingNamesProperty_shouldLetNoOpAnswerHook() {
         withCore().run(context -> {
             assertThat(context).hasSingleBean(IdempotencyEventListener.class);
-            assertThat(context).doesNotHaveBean(MicrometerIdempotencyEventListener.class);
+            assertThat(context).doesNotHaveBean(MetricsIdempotencyEventListener.class);
             assertThat(context.getBean(IdempotencyEventListener.class)).isSameAs(IdempotencyEventListener.NOOP);
         });
     }
@@ -243,6 +227,10 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .withBean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME, IdempotencyConfig.class,
                         IdempifyMetricsAutoConfigurationIntegrationTest::globalConfig)
                 .withBean(TransactionalOperationRepository.class, () -> mock(TransactionalOperationRepository.class))
+                .withBean(OperationRepository.class, () -> mock(OperationRepository.class))
+                .withBean(ResponseRepository.class, () -> mock(ResponseRepository.class))
+                .withBean(ResponseSerializer.class, () -> mock(ResponseSerializer.class))
+                .withBean(ResponseDeserializer.class, () -> mock(ResponseDeserializer.class))
                 .withBean(ResultSerializer.class, () -> mock(ResultSerializer.class))
                 .withBean(ResultDeserializer.class, () -> mock(ResultDeserializer.class))
                 .withBean(OperationStateChannel.class, () -> mock(OperationStateChannel.class))
@@ -259,7 +247,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
     }
 
@@ -289,16 +277,4 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
         }
     }
 
-    private static final class PassThroughWrapper implements ResponseCacheWrapper {
-
-        @Override
-        public ResponseCache wrap(ResponseCache responseCache) {
-            return responseCache;
-        }
-
-        @Override
-        public int getPriority() {
-            return 0;
-        }
-    }
 }
