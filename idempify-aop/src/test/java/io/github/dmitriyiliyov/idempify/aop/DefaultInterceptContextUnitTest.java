@@ -2,8 +2,8 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

@@ -2,7 +2,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 
@@ -16,7 +16,7 @@ final class TestOperationMetadata implements OperationMetadata {
     private final ConflictHandler conflictHandler;
     private final boolean useFingerprint;
     private final FingerprintPolicy fingerprintPolicy;
-    private final ResponseCacheConfig responseCacheConfig;
+    private final ResponseConfig responseConfig;
 
     private TestOperationMetadata(Builder builder) {
         this.headerName = builder.headerName;
@@ -25,7 +25,7 @@ final class TestOperationMetadata implements OperationMetadata {
         this.conflictHandler = builder.conflictHandler;
         this.useFingerprint = builder.useFingerprint;
         this.fingerprintPolicy = builder.fingerprintPolicy;
-        this.responseCacheConfig = builder.responseCacheConfig;
+        this.responseConfig = builder.responseConfig;
     }
 
     @Override
@@ -59,8 +59,8 @@ final class TestOperationMetadata implements OperationMetadata {
     }
 
     @Override
-    public ResponseCacheConfig getResponseCacheConfig() {
-        return responseCacheConfig;
+    public ResponseConfig getResponseConfig() {
+        return responseConfig;
     }
 
     static Builder builder() {
@@ -75,7 +75,7 @@ final class TestOperationMetadata implements OperationMetadata {
         private ConflictHandler conflictHandler;
         private boolean useFingerprint;
         private FingerprintPolicy fingerprintPolicy;
-        private ResponseCacheConfig responseCacheConfig = ResponseCacheConfig.defaults();
+        private ResponseConfig responseConfig = ResponseConfig.defaults();
 
         private Builder() {}
 
@@ -109,8 +109,8 @@ final class TestOperationMetadata implements OperationMetadata {
             return this;
         }
 
-        Builder responseCacheConfig(ResponseCacheConfig responseCacheConfig) {
-            this.responseCacheConfig = responseCacheConfig;
+        Builder responseCacheConfig(ResponseConfig responseConfig) {
+            this.responseConfig = responseConfig;
             return this;
         }
 

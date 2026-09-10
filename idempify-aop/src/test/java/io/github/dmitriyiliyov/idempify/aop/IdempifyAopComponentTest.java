@@ -159,7 +159,6 @@ class IdempifyAopComponentTest {
             assertThat(raw.getTtl()).isEqualTo(Duration.ofHours(48));
             assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
             assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
-            assertThat(raw.getCacheToggle()).isEqualTo(Toggle.ENABLE);
             assertThat(raw.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
             assertThat(raw.getCache5xxToggle()).isEqualTo(Toggle.DISABLE);
         });
@@ -309,7 +308,6 @@ class IdempifyAopComponentTest {
                 timeUnit = TimeUnit.HOURS,
                 onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                useCache = Toggle.ENABLE,
                 cache4xx = Toggle.DISABLE,
                 cache5xx = Toggle.DISABLE
         )
@@ -376,7 +374,7 @@ class IdempifyAopComponentTest {
             }
 
             try {
-                return context.getOperationCallback().call();
+                return context.getCallback().call();
             } catch (RuntimeException re) {
                 throw re;
             } catch (Throwable t) {

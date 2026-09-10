@@ -1,9 +1,13 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
+import io.github.dmitriyiliyov.idempify.core.OperationContext;
+import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -206,8 +210,8 @@ class DefaultIdempotentInterceptorUnitTest {
 
         // then
         verify(processor, times(1)).process(captor.capture(), any(OperationMetadata.class));
-        assertThat(captor.getValue().getOperationResultType()).isEqualTo(ResultType.ofClass(String.class));
-        assertThat(captor.getValue().getOperationCallback()).isSameAs(operationCallback);
+        assertThat(captor.getValue().getResultType()).isEqualTo(ResultType.ofClass(String.class));
+        assertThat(captor.getValue().getCallback()).isSameAs(operationCallback);
     }
 
     @Test
