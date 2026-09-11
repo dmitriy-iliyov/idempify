@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;

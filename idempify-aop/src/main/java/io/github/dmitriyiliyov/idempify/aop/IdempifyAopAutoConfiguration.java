@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;

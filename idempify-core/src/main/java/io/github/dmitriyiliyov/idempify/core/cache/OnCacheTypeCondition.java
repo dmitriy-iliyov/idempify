@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.cache;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
 import org.springframework.context.annotation.ConditionContext;

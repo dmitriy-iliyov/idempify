@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
 import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.context.properties.bind.DefaultValue;

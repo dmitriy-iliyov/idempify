@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import io.github.dmitriyiliyov.idempify.core.config.*;

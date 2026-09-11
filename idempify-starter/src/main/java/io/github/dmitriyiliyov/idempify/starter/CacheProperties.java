@@ -1,9 +1,9 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
 import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.util.Objects;
@@ -61,7 +61,7 @@ public final class CacheProperties implements CachePropertiesHolder {
         } else {
             this.type = null;
             this.name = null;
-            this.capacity = null;
+            this.capacity = 0;
         }
     }
 

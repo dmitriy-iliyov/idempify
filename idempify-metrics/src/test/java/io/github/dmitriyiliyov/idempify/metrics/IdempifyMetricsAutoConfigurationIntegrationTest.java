@@ -204,6 +204,23 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
         });
     }
 
+    @Test
+    @DisplayName("IT context when core is loaded too and micrometer is absent should fail naming micrometer")
+    void context_whenCoreIsLoadedTooAndMicrometerIsAbsent_shouldFailNamingMicrometer() {
+        coreDependencies()
+                .withConfiguration(AutoConfigurations.of(
+                        IdempifyMetricsAutoConfiguration.class,
+                        IdempifyCoreAutoConfiguration.class))
+                .withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                .withPropertyValues("idempify.metrics.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context).getFailure()
+                            .hasStackTraceContaining("idempify.metrics.enabled")
+                            .hasStackTraceContaining("io.micrometer.core.instrument.MeterRegistry");
+                });
+    }
+
     /**
      * Loads core alongside this module, because the question these three tests ask - which of the two listeners
      * an application ends up with - is decided by auto-configuration order, and order does not exist inside a

@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
 
 import java.util.ArrayList;

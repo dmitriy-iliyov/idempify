@@ -529,6 +529,51 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when metrics are asked for but no module answers should fail naming the property")
+    void context_whenMetricsAreAskedForButNoModuleAnswers_shouldFailNamingProperty() {
+        contextRunner
+                .withPropertyValues("idempify.metrics.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context).getFailure()
+                            .hasStackTraceContaining("idempify.metrics.enabled")
+                            .hasStackTraceContaining("MetricsIdempotencyEventListener");
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when metrics are asked for and the application answers the hook should keep that listener")
+    void context_whenMetricsAreAskedForAndApplicationAnswersHook_shouldKeepThatListener() {
+        // given
+        IdempotencyEventListener own = new RecordingEventListener();
+
+        // when / then
+        contextRunner
+                .withPropertyValues("idempify.metrics.enabled=true")
+                .withBean(IdempotencyEventListener.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(IdempotencyEventListener.class)).isSameAs(own);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when the application answers one hook should let the other one still refuse to start")
+    void context_whenApplicationAnswersOneHook_shouldLetOtherOneStillRefuseToStart() {
+        // given
+        IdempotencyEventListener own = new RecordingEventListener();
+
+        // when / then
+        contextRunner
+                .withPropertyValues("idempify.metrics.enabled=true", "idempify.cache.enabled=true")
+                .withBean(IdempotencyEventListener.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context).getFailure().hasStackTraceContaining("idempify.metrics.enabled");
+                });
+    }
+
+    @Test
     @DisplayName("IT context when the application brings a listener of its own should not register the no-op one")
     void context_whenApplicationBringsListenerOfItsOwn_shouldNotRegisterNoOpOne() {
         // given

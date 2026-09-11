@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseProvidePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

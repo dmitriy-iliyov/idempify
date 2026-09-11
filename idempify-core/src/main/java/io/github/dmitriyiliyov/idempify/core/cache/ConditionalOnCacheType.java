@@ -12,7 +12,7 @@ import java.lang.annotation.*;
  * nothing until it is chosen. A value naming no known type is refused outright rather than quietly leaving
  * the cache out.
  */
-@Target(ElementType.METHOD)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @Conditional(OnCacheTypeCondition.class)
 @Documented

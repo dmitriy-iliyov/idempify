@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.DefaultFingerprintMatcher;

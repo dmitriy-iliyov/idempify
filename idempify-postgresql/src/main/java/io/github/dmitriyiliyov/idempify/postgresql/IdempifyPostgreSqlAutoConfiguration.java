@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
 import io.github.dmitriyiliyov.idempify.core.TransactionalOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapperUtils;

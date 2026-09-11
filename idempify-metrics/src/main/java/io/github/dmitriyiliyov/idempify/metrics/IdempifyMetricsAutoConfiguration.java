@@ -1,9 +1,9 @@
 package io.github.dmitriyiliyov.idempify.metrics;
 
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
-import io.github.dmitriyiliyov.idempify.core.IdempifyCoreAutoConfiguration;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyEventListener;
 import io.github.dmitriyiliyov.idempify.core.cache.CacheEventListener;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyCoreAutoConfiguration;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;

@@ -1,9 +1,7 @@
-package io.github.dmitriyiliyov.idempify.core;
+package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.cache.*;
-import io.github.dmitriyiliyov.idempify.core.config.DefaultIdempotencyConfigRegistry;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigRegistry;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerProvider;
 import io.github.dmitriyiliyov.idempify.core.conflict.DefaultConflictHandlerProvider;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
@@ -15,7 +13,6 @@ import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -70,35 +67,22 @@ public class IdempifyCoreAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(
-            prefix = "idempify.metrics",
-            name = "enabled",
-            havingValue = "false",
-            matchIfMissing = true
-    )
     @ConditionalOnMissingBean
+    @ConditionalOnMetricsDisabled
     public IdempotencyEventListener idempifyIdempotencyEventListener() {
         return IdempotencyEventListener.NOOP;
     }
 
     @Bean
-    @ConditionalOnProperty(
-            prefix = "idempify.metrics",
-            name = "enabled",
-            havingValue = "false",
-            matchIfMissing = true
-    )
+    @ConditionalOnCacheEnabled
     @ConditionalOnMissingBean
+    @ConditionalOnMetricsDisabled
     public CacheEventListener idempifyCacheEventListener() {
         return CacheEventListener.NOOP;
     }
 
     @Bean
-    @ConditionalOnProperty(
-            prefix = "idempify.cache",
-            name = "enabled",
-            havingValue = "true"
-    )
+    @ConditionalOnCacheEnabled
     @ConditionalOnCacheType(type = CacheType.IN_MEMORY)
     public ResponseRepositoryWrapper idempifyInMemoryCacheResponseRepositoryWrapper(
             CachePropertiesHolder cachePropertiesHolder,

@@ -1,4 +1,4 @@
-package io.github.dmitriyiliyov.idempify.core;
+package io.github.dmitriyiliyov.idempify.core.config;
 
 import java.time.Duration;
 

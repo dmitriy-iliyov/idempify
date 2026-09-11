@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigProvider;
 import org.junit.jupiter.api.DisplayName;

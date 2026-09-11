@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizerCreator;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseDeserializer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseSerializer;

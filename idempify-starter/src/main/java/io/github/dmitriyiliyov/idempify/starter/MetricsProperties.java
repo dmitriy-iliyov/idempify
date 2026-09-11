@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.util.Objects;

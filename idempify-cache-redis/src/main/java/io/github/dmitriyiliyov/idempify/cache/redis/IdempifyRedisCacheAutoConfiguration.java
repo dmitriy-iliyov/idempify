@@ -3,20 +3,16 @@ package io.github.dmitriyiliyov.idempify.cache.redis;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
-import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
-import io.github.dmitriyiliyov.idempify.core.IdempifyCoreAutoConfiguration;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
-import io.github.dmitriyiliyov.idempify.core.cache.CacheEventListener;
-import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
-import io.github.dmitriyiliyov.idempify.core.cache.ConditionalOnCacheType;
+import io.github.dmitriyiliyov.idempify.core.cache.*;
+import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyCoreAutoConfiguration;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -29,11 +25,8 @@ import java.time.Clock;
 @AutoConfiguration(after = RedisAutoConfiguration.class, before = IdempifyCoreAutoConfiguration.class)
 @ConditionalOnIdempifyEnabled
 @ConditionalOnClass({RedisTemplate.class, ObjectMapper.class})
-@ConditionalOnProperty(
-        prefix = "idempify.cache",
-        name = "enabled",
-        havingValue = "true"
-)
+@ConditionalOnCacheEnabled
+@ConditionalOnCacheType(type = CacheType.DISTRIBUTED)
 public class IdempifyRedisCacheAutoConfiguration {
 
     @Bean
@@ -53,7 +46,6 @@ public class IdempifyRedisCacheAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnCacheType(type = CacheType.DISTRIBUTED)
     public ResponseRepositoryWrapper idempifyRedisCacheResponseRepositoryWrapper(
             RedisTemplate<String, RawResponseContainer> redisTemplate,
             CachePropertiesHolder holder,

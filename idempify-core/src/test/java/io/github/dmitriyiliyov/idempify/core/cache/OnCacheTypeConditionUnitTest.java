@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.cache;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.condition.ConditionOutcome;

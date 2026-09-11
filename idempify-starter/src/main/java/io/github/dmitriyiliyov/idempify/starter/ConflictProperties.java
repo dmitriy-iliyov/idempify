@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;

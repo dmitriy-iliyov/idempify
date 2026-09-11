@@ -1,12 +1,8 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
-import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
-import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigProvider;
+import io.github.dmitriyiliyov.idempify.core.config.*;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.context.properties.bind.DefaultValue;
