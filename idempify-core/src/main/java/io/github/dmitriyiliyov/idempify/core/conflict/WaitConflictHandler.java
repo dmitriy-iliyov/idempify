@@ -1,10 +1,10 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.Operation;
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
-import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.RawOperation;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +34,7 @@ public class WaitConflictHandler implements ConflictHandler {
             );
         }
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
-        this.resultDeserializer = Objects.requireNonNull(resultDeserializer, "responseDeserializer cannot be null");
+        this.resultDeserializer = Objects.requireNonNull(resultDeserializer, "resultDeserializer cannot be null");
         this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
@@ -49,17 +49,16 @@ public class WaitConflictHandler implements ConflictHandler {
                 throw new WaitTimeoutException(idempotencyKey);
             }
 
-            Optional<Operation> nullableOperation = repository.findByIdempotencyKey(idempotencyKey);
+            Optional<RawOperation> nullableOperation = repository.findByIdempotencyKey(idempotencyKey);
             if (nullableOperation.isEmpty()) {
                 throw new OperationDisappearedException(idempotencyKey);
             }
 
-            Operation operation = nullableOperation.get();
-            if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
-                return resultDeserializer.deserialize(
-                        operation.getResult(),
-                        context.getOperationResultType()
-                );
+            RawOperation operation = nullableOperation.get();
+            if (OperationStatus.PROCESSED.equals(operation.status())) {
+                return operation.result() == null
+                        ? null
+                        : resultDeserializer.deserialize(operation.result(), context.getOperationResultType());
             } else {
                 backoff(config.getDelay(), config.getMultiplier(), i, idempotencyKey);
             }

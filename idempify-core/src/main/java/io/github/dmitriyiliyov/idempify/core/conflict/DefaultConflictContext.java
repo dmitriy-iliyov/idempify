@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.ResultType;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -27,12 +27,9 @@ public final class DefaultConflictContext implements ConflictContext {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof DefaultConflictContext that)) {
-            return false;
-        }
+        if (this == o) return true;
+        if (o == null || this.getClass() != o.getClass()) return false;
+        DefaultConflictContext that = (DefaultConflictContext) o;
         return Objects.equals(idempotencyKey, that.idempotencyKey)
                 && Objects.equals(operationResultType, that.operationResultType);
     }

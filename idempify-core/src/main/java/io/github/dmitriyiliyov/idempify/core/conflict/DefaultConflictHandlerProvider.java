@@ -1,10 +1,10 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictHandlerConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 
 import java.time.Clock;
 import java.util.Objects;

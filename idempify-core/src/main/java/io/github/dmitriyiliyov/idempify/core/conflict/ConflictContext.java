@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.ResultType;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 
 import java.util.UUID;
 
@@ -10,13 +10,7 @@ import java.util.UUID;
  */
 public interface ConflictContext {
 
-    /**
-     * Returns the key another request is already processing.
-     */
     UUID getIdempotencyKey();
 
-    /**
-     * Returns the type a replayed result is deserialized back into.
-     */
     ResultType getOperationResultType();
 }

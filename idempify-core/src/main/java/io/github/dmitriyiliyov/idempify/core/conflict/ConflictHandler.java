@@ -9,6 +9,9 @@ import io.github.dmitriyiliyov.idempify.core.TransactionAffinity;
  * Reachable only where the operation's record is kept outside the business transaction. In the transactional
  * branch a duplicate never reaches a handler: it blocks on the insert until the first request commits and
  * then replays what it stored.
+ * <p>
+ * A handler that answers with a stored result decodes it itself: the store hands back rows, and the type to
+ * decode into arrives on the context rather than from the row.
  *
  * @see ConflictHandleStrategy
  */

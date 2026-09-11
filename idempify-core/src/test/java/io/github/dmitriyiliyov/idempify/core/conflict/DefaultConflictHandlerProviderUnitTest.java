@@ -1,11 +1,10 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
-import io.github.dmitriyiliyov.idempify.core.ResultType;
 import io.github.dmitriyiliyov.idempify.core.TestClock;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +25,7 @@ class DefaultConflictHandlerProviderUnitTest {
     @Test
     @DisplayName("UT constructor when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(null, deserializer(), clock()))
+        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(null, resultDeserializer(), clock()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("repository cannot be null");
     }
@@ -42,7 +41,7 @@ class DefaultConflictHandlerProviderUnitTest {
     @Test
     @DisplayName("UT constructor when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(repository(), deserializer(), null))
+        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(repository(), resultDeserializer(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clock cannot be null");
     }
@@ -137,20 +136,15 @@ class DefaultConflictHandlerProviderUnitTest {
     }
 
     private static DefaultConflictHandlerProvider tested() {
-        return new DefaultConflictHandlerProvider(repository(), deserializer(), clock());
+        return new DefaultConflictHandlerProvider(repository(), resultDeserializer(), clock());
     }
 
     private static OperationRepository repository() {
         return idempotencyKey -> Optional.empty();
     }
 
-    private static ResultDeserializer deserializer() {
-        return new ResultDeserializer() {
-            @Override
-            public Object deserialize(String rawResult, ResultType type) {
-                return rawResult;
-            }
-        };
+    private static ResultDeserializer resultDeserializer() {
+        return (rawResult, type) -> rawResult;
     }
 
     private static Clock clock() {
