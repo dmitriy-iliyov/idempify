@@ -30,7 +30,7 @@ public final class IdempotencyConfig {
     private final ProcessorType processorType;
     private final ConflictConfig conflictConfig;
     private final FingerprintConfig fingerprintConfig;
-    private final ResponseCacheConfig responseCacheConfig;
+    private final ResponseConfig responseConfig;
 
     private IdempotencyConfig(Builder builder) {
         this.headerName = builder.headerName;
@@ -38,9 +38,24 @@ public final class IdempotencyConfig {
         this.processorType = builder.processorType;
         this.conflictConfig = builder.conflictConfig;
         this.fingerprintConfig = builder.fingerprintConfig;
-        this.responseCacheConfig = builder.responseCacheConfig;
+        this.responseConfig = builder.responseConfig;
     }
 
+    /**
+     * Refuses a resolved config whose sections contradict the processor it chose, rather than hand a
+     * processor settings it would have to ignore.
+     * <p>
+     * Both refusals concern {@link ProcessorType#TRANSACTIONAL}, which keeps the operation's record inside
+     * the business transaction. A conflict handler has nothing to handle there: a duplicate waits on the
+     * store's own insert instead of arriving at a conflict. And keeping an error response is checked against
+     * the same constraint, the response being written in the operation's own transaction.
+     * <p>
+     * Called after a merge rather than from {@link Builder#build()}: a single layer is allowed to be partial,
+     * so only the resolved config is worth judging.
+     *
+     * @throws IllegalStateException if a section contradicts the chosen processor.
+     * @throws NullPointerException if no layer decided the processor type.
+     */
     public void validate() {
         Objects.requireNonNull(processorType, "processorType cannot be null");
         if (ProcessorType.TRANSACTIONAL.equals(processorType)) {
@@ -48,13 +63,17 @@ public final class IdempotencyConfig {
                 throw new IllegalStateException("conflictConfig cannot be enabled if processorType is %s".formatted(processorType));
             }
 
-            if (responseCacheConfig != null && Boolean.TRUE.equals(responseCacheConfig.isEnabled())) {
-                throw new IllegalStateException("responseCacheConfig cannot be enabled if processorType is %s".formatted(processorType));
+            if (responseConfig != null && shouldCache4xxOr5xx()) {
+                throw new IllegalStateException("response with 4xx or 5xx cannot be cached if processorType is %s".formatted(processorType));
             }
         }
         if (conflictConfig != null) {
             conflictConfig.validate();
         }
+    }
+
+    private boolean shouldCache4xxOr5xx() {
+        return Boolean.TRUE.equals(responseConfig.shouldCache4xx()) || Boolean.TRUE.equals(responseConfig.shouldCache5xx());
     }
 
     public String getHeaderName() {
@@ -77,8 +96,8 @@ public final class IdempotencyConfig {
         return fingerprintConfig;
     }
 
-    public ResponseCacheConfig getResponseCacheConfig() {
-        return responseCacheConfig;
+    public ResponseConfig getResponseConfig() {
+        return responseConfig;
     }
 
     public boolean notEmpty() {
@@ -87,7 +106,7 @@ public final class IdempotencyConfig {
                 && processorType != null
                 && conflictConfig != null
                 && fingerprintConfig != null
-                && responseCacheConfig != null;
+                && responseConfig != null;
     }
 
     @Override
@@ -98,7 +117,7 @@ public final class IdempotencyConfig {
                 ", processorType=" + processorType +
                 ", conflictConfig=" + conflictConfig +
                 ", fingerprintConfig=" + fingerprintConfig +
-                ", responseCacheConfig=" + responseCacheConfig +
+                ", responseConfig=" + responseConfig +
                 '}';
     }
 
@@ -152,12 +171,12 @@ public final class IdempotencyConfig {
             );
         }
 
-        ResponseCacheConfig responseCacheConfig = target.getResponseCacheConfig();
-        if (responseCacheConfig != null && !responseCacheConfig.equals(reference.getResponseCacheConfig())) {
-            ResponseCacheConfig referenceResponseCacheConfig = reference.getResponseCacheConfig();
-            mergedConfigBuilder.responseCache(referenceResponseCacheConfig == null
-                    ? responseCacheConfig
-                    : ResponseCacheConfig.merge(referenceResponseCacheConfig, responseCacheConfig)
+        ResponseConfig responseConfig = target.getResponseConfig();
+        if (responseConfig != null && !responseConfig.equals(reference.getResponseConfig())) {
+            ResponseConfig referenceResponseConfig = reference.getResponseConfig();
+            mergedConfigBuilder.response(referenceResponseConfig == null
+                    ? responseConfig
+                    : ResponseConfig.merge(referenceResponseConfig, responseConfig)
             );
         }
 
@@ -173,7 +192,7 @@ public final class IdempotencyConfig {
         private ProcessorType processorType;
         private ConflictConfig conflictConfig;
         private FingerprintConfig fingerprintConfig;
-        private ResponseCacheConfig responseCacheConfig;
+        private ResponseConfig responseConfig;
 
         private Builder() {}
 
@@ -183,7 +202,7 @@ public final class IdempotencyConfig {
             this.processorType = config.processorType;
             this.conflictConfig = config.conflictConfig;
             this.fingerprintConfig = config.fingerprintConfig;
-            this.responseCacheConfig = config.responseCacheConfig;
+            this.responseConfig = config.responseConfig;
         }
 
         public Builder headerName(String headerName) {
@@ -225,16 +244,16 @@ public final class IdempotencyConfig {
             return this;
         }
 
-        public Builder responseCache(ResponseCacheConfig responseCacheConfig) {
-            this.responseCacheConfig = Objects.requireNonNull(responseCacheConfig, "responseCacheConfig cannot be null");
+        public Builder response(ResponseConfig responseConfig) {
+            this.responseConfig = Objects.requireNonNull(responseConfig, "responseConfig cannot be null");
             return this;
         }
 
-        public Builder responseCache(Consumer<ResponseCacheConfig.Builder> builderConsumer) {
+        public Builder response(Consumer<ResponseConfig.Builder> builderConsumer) {
             Objects.requireNonNull(builderConsumer, "builderConsumer cannot be null");
-            ResponseCacheConfig.Builder builder = ResponseCacheConfig.builder();
+            ResponseConfig.Builder builder = ResponseConfig.builder();
             builderConsumer.accept(builder);
-            this.responseCacheConfig = builder.build();
+            this.responseConfig = builder.build();
             return this;
         }
 

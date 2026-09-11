@@ -104,8 +104,7 @@ public final class WaitConflictHandlerConfig implements ConflictHandlerConfig {
 
     /**
      * Layers {@code target} over {@code reference}: a setting the target decided wins, one it left {@code null}
-     * keeps the reference's value. A zero delay is a decision like any other and overrides - which is exactly
-     * what reading "untouched" off the {@code DEFAULT_*} constants could not express.
+     * keeps the reference's value. A zero delay is a decision like any other and overrides.
      * <p>
      * Bounds are not re-checked here: a value only ever reaches a config through a builder setter, which
      * rejects an invalid one on the spot.

@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Resolves a call site's named config against the global one through the whole nested tree at once —
  * {@link IdempotencyConfig} over {@link ConflictConfig} over {@link WaitConflictHandlerConfig},
- * {@link FingerprintConfig} over {@link BodyCanonicalizerConfig}, and {@link ResponseCacheConfig}. Nothing is
+ * {@link FingerprintConfig} over {@link BodyCanonicalizerConfig}, and {@link ResponseConfig}. Nothing is
  * stubbed: these are the value types a consuming application builds itself, and what is under test is how they
  * layer, including the combinations the merge must refuse.
  */
@@ -35,7 +35,7 @@ class IdempotencyConfigMergeComponentTest {
                 .fingerprint(FingerprintConfig.builder()
                         .bodyCanonicalizerConfig(builder -> builder.includedFields("amount", "currency"))
                         .build())
-                .responseCache(ResponseCacheConfig.builder().shouldCache4xx(false).build())
+                .response(ResponseConfig.builder().shouldCache4xx(false).build())
                 .build();
 
         // when
@@ -59,9 +59,8 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(canonicalizer.getIncludedFields()).containsExactlyInAnyOrder("amount", "currency");
         assertThat(canonicalizer.getExcludedFields()).isEmpty();
 
-        assertThat(result.getResponseCacheConfig().isEnabled()).isTrue();
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
     }
 
     @Test
@@ -79,7 +78,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(result.getProcessorType()).isEqualTo(global.getProcessorType());
         assertThat(result.getConflictConfig()).isEqualTo(global.getConflictConfig());
         assertThat(result.getFingerprintConfig()).isEqualTo(global.getFingerprintConfig());
-        assertThat(result.getResponseCacheConfig()).isEqualTo(global.getResponseCacheConfig());
+        assertThat(result.getResponseConfig()).isEqualTo(global.getResponseConfig());
     }
 
     @Test
@@ -89,7 +88,7 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig callSite = IdempotencyConfig.builder()
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.disabled())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
 
         // when
@@ -100,7 +99,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
         assertThat(result.getConflictConfig().isEnabled()).isFalse();
         assertThat(result.getFingerprintConfig().isEnabled()).isFalse();
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
     }
 
     @Test
@@ -134,7 +133,7 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig global = global();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
                 .ttl(Duration.ofMinutes(15))
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
 
         // when
@@ -145,7 +144,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(first.getTtl()).isEqualTo(second.getTtl());
         assertThat(first.getConflictConfig()).isEqualTo(second.getConflictConfig());
         assertThat(first.getFingerprintConfig()).isEqualTo(second.getFingerprintConfig());
-        assertThat(first.getResponseCacheConfig()).isEqualTo(second.getResponseCacheConfig());
+        assertThat(first.getResponseConfig()).isEqualTo(second.getResponseConfig());
     }
 
     @Test
@@ -181,8 +180,8 @@ class IdempotencyConfigMergeComponentTest {
     }
 
     @Test
-    @DisplayName("CT resolution when the call site asks a global that caches nothing to cache should leave caching off")
-    void resolution_whenCallSiteAsksGlobalThatCachesNothingToCache_shouldLeaveCachingOff() {
+    @DisplayName("CT resolution when the call site asks a transactional global to keep failures should refuse to resolve")
+    void resolution_whenCallSiteAsksTransactionalGlobalToKeepFailures_shouldRefuseToResolve() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
@@ -190,17 +189,16 @@ class IdempotencyConfigMergeComponentTest {
                 .processorType(ProcessorType.TRANSACTIONAL)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
-                .responseCache(ResponseCacheConfig.all())
+                .response(ResponseConfig.all())
                 .build();
 
-        // when
-        IdempotencyConfig result = IdempotencyConfig.merge(global, callSite);
-
-        // then
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
+        // when / then
+        assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be cached if processorType is TRANSACTIONAL");
     }
 
     @Test
@@ -247,7 +245,7 @@ class IdempotencyConfigMergeComponentTest {
                         .maxDuration(4_000)
                         .build()))
                 .fingerprint(fingerprintConfig)
-                .responseCache(ResponseCacheConfig.all())
+                .response(ResponseConfig.all())
                 .build();
     }
 

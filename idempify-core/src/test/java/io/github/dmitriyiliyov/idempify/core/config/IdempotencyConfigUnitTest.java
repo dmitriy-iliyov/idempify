@@ -26,7 +26,7 @@ class IdempotencyConfigUnitTest {
         assertThat(result.getTtl()).isNull();
         assertThat(result.getConflictConfig()).isNull();
         assertThat(result.getFingerprintConfig()).isNull();
-        assertThat(result.getResponseCacheConfig()).isNull();
+        assertThat(result.getResponseConfig()).isNull();
     }
 
     @Test
@@ -35,7 +35,7 @@ class IdempotencyConfigUnitTest {
         // given
         ConflictConfig conflictConfig = ConflictConfig.reject();
         FingerprintConfig fingerprintConfig = FingerprintConfig.defaults();
-        ResponseCacheConfig responseCacheConfig = ResponseCacheConfig.disabled();
+        ResponseConfig responseConfig = ResponseConfig.disabled();
 
         // when
         IdempotencyConfig result = IdempotencyConfig.builder()
@@ -43,7 +43,7 @@ class IdempotencyConfigUnitTest {
                 .ttl(Duration.ofHours(1))
                 .conflict(conflictConfig)
                 .fingerprint(fingerprintConfig)
-                .responseCache(responseCacheConfig)
+                .response(responseConfig)
                 .build();
 
         // then
@@ -51,7 +51,7 @@ class IdempotencyConfigUnitTest {
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(1));
         assertThat(result.getConflictConfig()).isSameAs(conflictConfig);
         assertThat(result.getFingerprintConfig()).isSameAs(fingerprintConfig);
-        assertThat(result.getResponseCacheConfig()).isSameAs(responseCacheConfig);
+        assertThat(result.getResponseConfig()).isSameAs(responseConfig);
     }
 
     @Test
@@ -110,12 +110,12 @@ class IdempotencyConfigUnitTest {
     void responseCache_whenBuiltFromConsumer_shouldCarryWhatConsumerSet() {
         // when
         IdempotencyConfig result = IdempotencyConfig.builder()
-                .responseCache(builder -> builder.shouldCache4xx(false).shouldCache5xx(true))
+                .response(builder -> builder.shouldCache4xx(false).shouldCache5xx(true))
                 .build();
 
         // then
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
     }
 
     @Test
@@ -151,7 +151,7 @@ class IdempotencyConfigUnitTest {
                 .ttl(Duration.ofHours(24))
                 .processorType(ProcessorType.LOCK_BASED)
                 .conflict(ConflictConfig.reject())
-                .responseCache(ResponseCacheConfig.defaults())
+                .response(ResponseConfig.defaults())
                 .build();
 
         // when / then
@@ -167,7 +167,7 @@ class IdempotencyConfigUnitTest {
                 .ttl(Duration.ofHours(24))
                 .processorType(ProcessorType.LOCK_BASED)
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.defaults())
+                .response(ResponseConfig.defaults())
                 .build();
 
         // when / then
@@ -272,7 +272,7 @@ class IdempotencyConfigUnitTest {
         assertThat(result.getProcessorType()).isEqualTo(reference.getProcessorType());
         assertThat(result.getConflictConfig()).isEqualTo(reference.getConflictConfig());
         assertThat(result.getFingerprintConfig()).isEqualTo(reference.getFingerprintConfig());
-        assertThat(result.getResponseCacheConfig()).isEqualTo(reference.getResponseCacheConfig());
+        assertThat(result.getResponseConfig()).isEqualTo(reference.getResponseConfig());
     }
 
     @Test
@@ -306,18 +306,18 @@ class IdempotencyConfigUnitTest {
     void merge_whenTargetTunesSection_shouldLayerItOverReferenceSection() {
         // given
         IdempotencyConfig reference = full()
-                .responseCache(ResponseCacheConfig.all())
+                .response(ResponseConfig.all())
                 .build();
         IdempotencyConfig target = IdempotencyConfig.builder()
-                .responseCache(builder -> builder.shouldCache4xx(false))
+                .response(builder -> builder.shouldCache4xx(false))
                 .build();
 
         // when
         IdempotencyConfig result = IdempotencyConfig.merge(reference, target);
 
         // then
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
     }
 
     @Test
@@ -381,12 +381,26 @@ class IdempotencyConfigUnitTest {
     @DisplayName("UT validate() when a transactional config caches responses should throw IllegalStateException")
     void validate_whenTransactionalConfigCachesResponses_shouldThrowIllegalStateException() {
         // given
-        IdempotencyConfig config = transactional().responseCache(ResponseCacheConfig.all()).build();
+        IdempotencyConfig config = transactional().response(ResponseConfig.all()).build();
 
         // when / then
         assertThatThrownBy(config::validate)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("responseCacheConfig cannot be enabled if processorType is TRANSACTIONAL");
+                .hasMessageContaining("response with 4xx or 5xx cannot be cached if processorType is TRANSACTIONAL");
+    }
+
+    @Test
+    @DisplayName("UT validate() when a transactional config keeps 4xx alone should throw IllegalStateException")
+    void validate_whenTransactionalConfigKeeps4xxAlone_shouldThrowIllegalStateException() {
+        // given
+        IdempotencyConfig config = transactional()
+                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(false).build())
+                .build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("response with 4xx or 5xx cannot be cached if processorType is TRANSACTIONAL");
     }
 
     @Test
@@ -436,15 +450,15 @@ class IdempotencyConfigUnitTest {
     @Test
     @DisplayName("UT responseCache() when the section is null should throw NullPointerException")
     void responseCache_whenSectionIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> IdempotencyConfig.builder().responseCache((ResponseCacheConfig) null))
+        assertThatThrownBy(() -> IdempotencyConfig.builder().response((ResponseConfig) null))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("responseCacheConfig cannot be null");
+                .hasMessageContaining("responseConfig cannot be null");
     }
 
     @Test
     @DisplayName("UT responseCache() when the consumer is null should throw NullPointerException")
     void responseCache_whenConsumerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> IdempotencyConfig.builder().responseCache((Consumer<ResponseCacheConfig.Builder>) null))
+        assertThatThrownBy(() -> IdempotencyConfig.builder().response((Consumer<ResponseConfig.Builder>) null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("builderConsumer cannot be null");
     }
@@ -487,7 +501,7 @@ class IdempotencyConfigUnitTest {
                 .processorType(ProcessorType.LOCK_BASED)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.disabled())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
 
         // when
@@ -498,7 +512,7 @@ class IdempotencyConfigUnitTest {
         assertThat(result.getTtl()).isEqualTo(reference.getTtl());
         assertThat(result.getProcessorType()).isEqualTo(reference.getProcessorType());
         assertThat(result.getConflictConfig()).isEqualTo(reference.getConflictConfig());
-        assertThat(result.getResponseCacheConfig()).isEqualTo(reference.getResponseCacheConfig());
+        assertThat(result.getResponseConfig()).isEqualTo(reference.getResponseConfig());
     }
 
     @Test
@@ -528,7 +542,7 @@ class IdempotencyConfigUnitTest {
         assertThat(result.getProcessorType()).isNull();
         assertThat(result.getConflictConfig()).isNull();
         assertThat(result.getFingerprintConfig()).isNull();
-        assertThat(result.getResponseCacheConfig()).isNull();
+        assertThat(result.getResponseConfig()).isNull();
         assertThat(result.notEmpty()).isFalse();
     }
 
@@ -555,7 +569,7 @@ class IdempotencyConfigUnitTest {
                 .ttl(Duration.ofHours(24))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.defaults())
+                .response(ResponseConfig.defaults())
                 .build();
 
         // when / then
@@ -573,7 +587,7 @@ class IdempotencyConfigUnitTest {
                 .processorType(ProcessorType.LOCK_BASED)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.defaults());
+                .response(ResponseConfig.defaults());
     }
 
     private static IdempotencyConfig.Builder transactional() {
@@ -583,6 +597,6 @@ class IdempotencyConfigUnitTest {
                 .processorType(ProcessorType.TRANSACTIONAL)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.disabled());
+                .response(ResponseConfig.disabled());
     }
 }
