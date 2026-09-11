@@ -15,9 +15,6 @@ final class GenericJacksonDeserializer {
     }
 
     Object deserialize(String rawResult, Class<?> c) {
-        if (rawResult == null) {
-            return null;
-        }
         try {
             return mapper.readValue(rawResult, c);
         } catch (JsonProcessingException jpe) {

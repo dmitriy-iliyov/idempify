@@ -17,7 +17,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * Every column of the row is written here, so what is judged is that nothing is dropped on the way out and
@@ -89,21 +90,15 @@ class DefaultOperationSerializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT serialize() when a claim carries neither result nor response should pass both on as null")
-    void serialize_whenClaimCarriesNeitherResultNorResponse_shouldPassBothOnAsNull() {
-        // given
-        when(resultSerializer.serialize(null)).thenReturn(null);
-        when(responseSerializer.serialize(null)).thenReturn(null);
-        DefaultOperationSerializer tested = tested();
-
+    @DisplayName("UT serialize() when a claim carries neither result nor response should leave both columns empty")
+    void serialize_whenClaimCarriesNeitherResultNorResponse_shouldLeaveBothColumnsEmpty() {
         // when
-        RawOperation result = tested.serialize(operation(null, null));
+        RawOperation result = tested().serialize(operation(null, null));
 
         // then
         assertThat(result.result()).isNull();
         assertThat(result.response()).isNull();
-        verify(resultSerializer).serialize(null);
-        verify(responseSerializer).serialize(null);
+        verifyNoInteractions(resultSerializer, responseSerializer);
     }
 
     private DefaultOperationSerializer tested() {

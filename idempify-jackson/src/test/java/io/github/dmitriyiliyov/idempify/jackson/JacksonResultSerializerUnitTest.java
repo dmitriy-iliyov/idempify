@@ -66,19 +66,4 @@ public class JacksonResultSerializerUnitTest {
 
         verifyNoMoreInteractions(mapper);
     }
-
-    @Test
-    @DisplayName("UT serialize() when the result is null should answer null so the column stays empty")
-    void serialize_whenResultIsNull_shouldAnswerNullSoColumnStaysEmpty() {
-        // given
-        ObjectMapper mapper = mock(ObjectMapper.class);
-        JacksonResultSerializer tested = new JacksonResultSerializer(mapper);
-
-        // when
-        String result = tested.serialize(null);
-
-        // then
-        assertThat(result).isNull();
-        verifyNoInteractions(mapper);
-    }
 }

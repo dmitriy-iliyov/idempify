@@ -15,9 +15,6 @@ final class GenericJacksonSerializer {
     }
 
     String serialize(Object obj) {
-        if (obj == null) {
-            return null;
-        }
         try {
             return mapper.writeValueAsString(obj);
         } catch (JsonProcessingException jpe) {

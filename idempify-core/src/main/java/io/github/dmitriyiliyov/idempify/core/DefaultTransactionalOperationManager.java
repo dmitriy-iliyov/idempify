@@ -99,33 +99,13 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
         return exists;
     }
 
-//    protected <T> OperationPropagation<T> handleConflict(OperationContext<T> context, OperationMetadata metadata) {
-//        log.debug("Concurrent operation (idempotencyKey={}) execution conflict", context.getIdempotencyKey());
-//
-//        eventListener.onConflict();
-//
-//        ConflictHandler conflictHandler = metadata.getConflictHandler();
-//
-//        ConflictContext<T> conflictContext = new DefaultConflictContext<>(
-//                context.getIdempotencyKey(),
-//                context.getOperationResultType()
-//        );
-//
-//        return DefaultOperationPropagation.ofCallback(
-//                new DefaultOperationPropagation.DefaultCallback<>(
-//                        () -> conflictHandler.handle(conflictContext),
-//                        conflictHandler.requiresTransaction()
-//                )
-//        );
-//    }
-
     @Override
     public OperationDetail complete(UUID idempotencyKey, Object result, ResultType resultType, Duration ttl) {
         Instant expiresAt = clock.instant().plus(ttl);
         Operation operation = deserializer.deserialize(
                 repository.saveResultAndUpdateStatus(
                         idempotencyKey,
-                        resultSerializer.serialize(result),
+                        result == null ? null : resultSerializer.serialize(result),
                         OperationStatus.PROCESSED,
                         expiresAt,
                         OperationStatus.IN_PROCESS

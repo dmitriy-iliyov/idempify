@@ -33,13 +33,6 @@ class GenericJacksonDeserializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT deserialize() when the column is empty should answer null without asking the mapper")
-    void deserialize_whenColumnIsEmpty_shouldAnswerNullWithoutAskingMapper() {
-        // when / then
-        assertThat(tested.deserialize(null, String.class)).isNull();
-    }
-
-    @Test
     @DisplayName("UT deserialize() when the text is not the type it was given should throw DeserializationException")
     void deserialize_whenTextIsNotTypeItWasGiven_shouldThrowDeserializationException() {
         // when / then

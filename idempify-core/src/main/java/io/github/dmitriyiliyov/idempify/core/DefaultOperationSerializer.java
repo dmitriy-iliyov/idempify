@@ -25,8 +25,8 @@ public class DefaultOperationSerializer implements OperationSerializer {
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
                 operation.isFirstAttempt(),
-                resultSerializer.serialize(operation.getResult()),
-                responseSerializer.serialize(operation.getResponse()),
+                operation.getResult() == null ? null : resultSerializer.serialize(operation.getResult()),
+                operation.getResponse() == null ? null : responseSerializer.serialize(operation.getResponse()),
                 operation.getFingerprint(),
                 operation.getExpiresAt(),
                 operation.getCreatedAt()

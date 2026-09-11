@@ -8,5 +8,13 @@ package io.github.dmitriyiliyov.idempify.core.response;
  * than {@link Response} declares.
  */
 public interface ResponseDeserializer {
+
+    /**
+     * Deserializes a stored response.
+     *
+     * @param rawResponse what {@link ResponseSerializer} wrote for this operation; never {@code null} - an
+     *                    empty column is read back as no response, without asking a deserializer.
+     * @return the response the serializer was given; never {@code null}.
+     */
     Response deserialize(String rawResponse);
 }

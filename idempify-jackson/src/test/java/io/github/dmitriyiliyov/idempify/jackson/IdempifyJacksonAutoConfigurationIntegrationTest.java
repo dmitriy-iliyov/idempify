@@ -160,11 +160,4 @@ class IdempifyJacksonAutoConfigurationIntegrationTest {
             assertThat(result.getHeaders()).containsEntry("Location", "/1");
         });
     }
-
-    @Test
-    @DisplayName("IT the registered ResponseDeserializer when the column is empty should answer nothing")
-    void registeredResponseDeserializer_whenColumnIsEmpty_shouldAnswerNothing() {
-        contextRunner.run(context ->
-                assertThat(context.getBean(ResponseDeserializer.class).deserialize(null)).isNull());
-    }
 }

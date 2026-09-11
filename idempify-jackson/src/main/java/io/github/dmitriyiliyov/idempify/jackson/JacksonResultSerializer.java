@@ -15,9 +15,6 @@ public class JacksonResultSerializer implements ResultSerializer {
 
     @Override
     public String serialize(Object result) {
-        if (result == null) {
-            return null;
-        }
         try {
             return mapper.writeValueAsString(result);
         } catch (JsonProcessingException jpe) {

@@ -117,13 +117,5 @@ class JacksonResultDeserializerUnitTest {
         }
     }
 
-    @Test
-    @DisplayName("UT deserialize() when the column is empty should answer null without reading anything")
-    void deserialize_whenColumnIsEmpty_shouldAnswerNullWithoutReadingAnything() {
-        // when / then
-        assertThat(new JacksonResultDeserializer(new ObjectMapper())
-                .deserialize(null, ResultType.ofClass(Order.class))).isNull();
-    }
-
     private record Order(String value) {}
 }

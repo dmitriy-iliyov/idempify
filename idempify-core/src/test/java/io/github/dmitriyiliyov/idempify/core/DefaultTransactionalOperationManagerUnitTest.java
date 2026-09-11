@@ -512,7 +512,7 @@ class DefaultTransactionalOperationManagerUnitTest {
 
         @Override
         public String serialize(Object result) {
-            return result == null ? null : "raw-" + result;
+            return "raw-" + result;
         }
     }
 }

@@ -16,8 +16,9 @@ public interface ResultSerializer {
     /**
      * Serializes a result for storage.
      *
-     * @param result the value the business operation returned; may be {@code null} if the method legitimately
-     *               returns none.
+     * @param result the value the business operation returned; never {@code null} - an operation with no
+     *               result to keep is written as an empty column, without asking a serializer.
+     * @return the text to store; never {@code null}.
      */
     String serialize(Object result);
 }

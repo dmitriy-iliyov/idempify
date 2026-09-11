@@ -36,13 +36,6 @@ class GenericJacksonSerializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT serialize() when the object is null should answer null without asking the mapper")
-    void serialize_whenObjectIsNull_shouldAnswerNullWithoutAskingMapper() {
-        // when / then
-        assertThat(tested.serialize(null)).isNull();
-    }
-
-    @Test
     @DisplayName("UT serialize() when Jackson cannot walk the object should throw SerializationException")
     void serialize_whenJacksonCannotWalkObject_shouldThrowSerializationException() {
         // when / then

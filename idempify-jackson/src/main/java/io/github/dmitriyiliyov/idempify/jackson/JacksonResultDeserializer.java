@@ -17,9 +17,6 @@ public class JacksonResultDeserializer implements ResultDeserializer {
 
     @Override
     public Object deserialize(String rawResult, ResultType type) {
-        if (rawResult == null) {
-            return null;
-        }
         try {
             JavaType javaType = mapper.getTypeFactory().constructType(type.getType());
             return mapper.readValue(rawResult, javaType);

@@ -15,8 +15,10 @@ public interface ResultDeserializer {
     /**
      * Deserializes a stored result.
      *
-     * @param rawResult what {@link ResultSerializer} wrote for this operation.
+     * @param rawResult what {@link ResultSerializer} wrote for this operation; never {@code null} - an empty
+     *                  column is read back as no result, without asking a deserializer.
      * @param type      the declared return type of the intercepted method.
+     * @return the value the serializer was given; never {@code null}.
      */
     Object deserialize(String rawResult, ResultType type);
 }

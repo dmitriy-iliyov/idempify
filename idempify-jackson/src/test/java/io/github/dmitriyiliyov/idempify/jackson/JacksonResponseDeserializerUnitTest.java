@@ -57,13 +57,6 @@ class JacksonResponseDeserializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT deserialize() when the column is empty should answer null")
-    void deserialize_whenColumnIsEmpty_shouldAnswerNull() {
-        // when / then
-        assertThat(tested.deserialize(null)).isNull();
-    }
-
-    @Test
     @DisplayName("UT deserialize() when the text is not a response should throw DeserializationException")
     void deserialize_whenTextIsNotResponse_shouldThrowDeserializationException() {
         // when / then
