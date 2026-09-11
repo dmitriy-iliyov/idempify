@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
 import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
 import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
@@ -9,7 +10,6 @@ import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.CanonicalizeStrategy;
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -48,10 +48,10 @@ class IdempifyStarterComponentTest {
             assertThat(config.getFingerprintConfig().getBodyCanonicalizerConfig())
                     .isEqualTo(BodyCanonicalizerConfig.defaults());
 
-            assertThat(config.getResponseCacheConfig().isEnabled())
-                    .describedAs("caching is off until an application asks for it by name")
+            assertThat(context.getBean(CachePropertiesHolder.class).getName()).isNull();
+            assertThat(context.getBean(IdempifyProperties.class).getCache().isEnabled())
+                    .describedAs("no cache stands in front of the store until an application asks for one")
                     .isFalse();
-            assertThat(context.getBean(CachePropertiesHolder.class).getCacheName()).isNull();
         });
     }
 
@@ -76,9 +76,9 @@ class IdempifyStarterComponentTest {
                         "idempify.fingerprint.canonicalizer.strategy=LEXICOGRAPHICAL",
                         "idempify.fingerprint.canonicalizer.excluded-fields=timestamp,traceId",
                         "idempify.cache.enabled=true",
-                        "idempify.cache.cache-name=orders",
-                        "idempify.cache.should-cache4xx=true",
-                        "idempify.cache.should-cache5xx=true"
+                        "idempify.cache.name=orders",
+                        "idempify.response.should-cache-4xx=true",
+                        "idempify.response.should-cache-5xx=true"
                 )
                 .run(context -> {
                     IdempotencyConfig config = configOf(context);
@@ -103,14 +103,31 @@ class IdempifyStarterComponentTest {
                             .describedAs("NOOP leaves a body-less request to path and method alone")
                             .isEmpty();
 
-                    assertThat(config.getResponseCacheConfig().isEnabled()).isTrue();
-                    assertThat(config.getResponseCacheConfig().shouldCache4xx()).isTrue();
-                    assertThat(config.getResponseCacheConfig().shouldCache5xx()).isTrue();
-                    assertThat(context.getBean(CachePropertiesHolder.class).getCacheName()).isEqualTo("orders");
+                    assertThat(config.getResponseConfig().shouldCache4xx()).isTrue();
+                    assertThat(config.getResponseConfig().shouldCache5xx()).isTrue();
+                    assertThat(context.getBean(CachePropertiesHolder.class).getName()).isEqualTo("orders");
 
                     assertThat(config.notEmpty())
                             .describedAs("the global layer answers everything a narrower one may fall back on")
                             .isTrue();
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when it names response headers should carry both sets to the core")
+    void application_whenItNamesResponseHeaders_shouldCarryBothSetsToCore() {
+        contextRunner
+                .withPropertyValues(
+                        "idempify.response.included-headers=Location,ETag",
+                        "idempify.response.excluded-headers=Set-Cookie"
+                )
+                .run(context -> {
+                    IdempotencyConfig config = configOf(context);
+
+                    assertThat(config.getResponseConfig().getIncludedHeaders())
+                            .describedAs("a header name travels lowercased, the way a response is matched")
+                            .containsExactlyInAnyOrder("location", "etag");
+                    assertThat(config.getResponseConfig().getExcludedHeaders()).containsExactly("set-cookie");
                 });
     }
 
@@ -225,7 +242,7 @@ class IdempifyStarterComponentTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .rootCause()
-                            .hasMessageContaining("idempify.conflict.enabled must be false");
+                            .hasMessageContaining("'idempify.conflict.enabled' must be false");
                 });
     }
 
@@ -236,14 +253,13 @@ class IdempifyStarterComponentTest {
                 .withPropertyValues(
                         "idempify.processor-type=TRANSACTIONAL",
                         "idempify.conflict.enabled=false",
-                        "idempify.cache.enabled=true",
-                        "idempify.cache.cache-name=orders"
+                        "idempify.response.should-cache-4xx=true"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .rootCause()
-                            .hasMessageContaining("idempify.cache.enabled must be false");
+                            .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false");
                 });
     }
 
@@ -260,7 +276,6 @@ class IdempifyStarterComponentTest {
 
                     assertThat(config.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
                     assertThat(config.getConflictConfig().isEnabled()).isFalse();
-                    assertThat(config.getResponseCacheConfig().isEnabled()).isFalse();
                     config.validate();
                 });
     }
@@ -269,13 +284,13 @@ class IdempifyStarterComponentTest {
     @DisplayName("CT application when caching is asked for without a name should refuse to start naming both ways out")
     void application_whenCachingIsAskedForWithoutName_shouldRefuseToStartNamingBothWaysOut() {
         contextRunner
-                .withPropertyValues("idempify.cache.enabled=true")
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .rootCause()
-                            .hasMessageContaining("idempify.cache.cache-name")
-                            .hasMessageContaining("idempify.cache.enabled");
+                            .hasMessageContaining("'idempify.cache.name'")
+                            .hasMessageContaining("'idempify.cache.enabled'");
                 });
     }
 

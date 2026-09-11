@@ -11,15 +11,15 @@ import java.time.Duration;
  * same string, so the two cannot say different things.
  * <p>
  * The config classes read these strings for their own {@code DEFAULT_*} constants, so a default is written
- * here once and answered the same way from both sides; that the two agree is what
- * {@code PropertyDefaultsUnitTest} checks. Keeping an error response is the one answer that is a plain "no":
- * neither a 4xx nor a 5xx stays on the record unless an application asks for it.
+ * here once and answered the same way from both sides. Two of the answers are a plain "no": no error response
+ * stays on the record, neither a 4xx nor a 5xx, and no cache stands in front of the store - both wait to be
+ * asked for.
  */
 public final class IdempifyDefaults {
 
-    public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
-
     public static final String ENABLED_VALUE = "true";
+
+    public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
 
     public static final String HEADER_NAME = "Idempotency-Key";
 
@@ -44,7 +44,7 @@ public final class IdempifyDefaults {
     public static final String RESPONSE_CACHE_4XX_VALUE = "false";
     public static final String RESPONSE_CACHE_5XX_VALUE = "false";
 
-    public static final String CACHE_ENABLED_VALUE = "true";
+    public static final String CACHE_ENABLED_VALUE = "false";
     public static final String CACHE_TYPE_VALUE = "IN_MEMORY";
     public static final String IN_MEMORY_CACHE_CAPACITY_VALUE = "100";
 

@@ -98,10 +98,27 @@ public final class FingerprintProperties {
                 '}';
     }
 
+    /**
+     * Names an {@code EmptyBodyFallback} in YAML, where an instance cannot be named: a request with no body
+     * has nothing to fingerprint, and this is what decides whether that is refused or let through.
+     * <p>
+     * {@code THROWING} refuses the request; {@code NOOP} fingerprints what is left of it - the path and the
+     * method - so two bodiless requests under one key look alike.
+     */
     public enum EmptyBodyFallbackStrategy {
         THROWING, NOOP
     }
 
+    /**
+     * Holds the {@code idempify.fingerprint.canonicalizer.*} properties - the format a body is read as, and
+     * how a body of that format is reduced before it is hashed.
+     * <p>
+     * Only {@link BodyHandleStrategy#CANONICALIZED_BODY_HASH} has a canonicalizer to configure, so naming
+     * this block under any other strategy is refused rather than ignored.
+     * <p>
+     * The config is built while the properties bind, which is what makes a value the canonicalizer rejects
+     * fail the application's startup instead of its first fingerprint.
+     */
     public static final class BodyCanonicalizerProperties {
 
         private final BodyFormat format;

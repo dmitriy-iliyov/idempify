@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
@@ -87,7 +88,7 @@ class IdempifyPropertiesUnitTest {
         // when / then
         assertThatThrownBy(tested::provide)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("idempify.enabled is false");
+                .hasMessageContaining("'idempify.enabled' is false");
     }
 
     @Test
@@ -163,6 +164,15 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
+    @DisplayName("UT constructor() when the response block is null should throw NullPointerException")
+    void constructor_whenResponseBlockIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> properties().response(null).build())
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("response cannot be null");
+    }
+
+    @Test
     @DisplayName("UT constructor() when the cache block is null should throw NullPointerException")
     void constructor_whenCacheBlockIsNull_shouldThrowNullPointerException() {
         // when / then
@@ -180,22 +190,36 @@ class IdempifyPropertiesUnitTest {
                 .conflict(conflictProperties(true))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("idempify.conflict.enabled must be false")
-                .hasMessageContaining("idempify.processor-type is TRANSACTIONAL");
+                .hasMessageContaining("'idempify.conflict.enabled' must be false")
+                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
     }
 
     @Test
-    @DisplayName("UT constructor() when the transactional processor meets response caching should name the property to switch off")
-    void constructor_whenTransactionalProcessorMeetsResponseCaching_shouldNamePropertyToSwitchOff() {
+    @DisplayName("UT constructor() when the transactional processor keeps client errors should name the property to switch off")
+    void constructor_whenTransactionalProcessorKeepsClientErrors_shouldNamePropertyToSwitchOff() {
         // when / then
         assertThatThrownBy(() -> properties()
                 .processorType(ProcessorType.TRANSACTIONAL)
                 .conflict(conflictProperties(false))
-                .cache(new CacheProperties(true, "orders", false, false, inMemory()))
+                .response(new ResponseProperties(true, false, Set.of(), Set.of()))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("idempify.cache.enabled must be false")
-                .hasMessageContaining("idempify.processor-type is TRANSACTIONAL");
+                .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
+                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
+    }
+
+    @Test
+    @DisplayName("UT constructor() when the transactional processor keeps server errors should name the property to switch off")
+    void constructor_whenTransactionalProcessorKeepsServerErrors_shouldNamePropertyToSwitchOff() {
+        // when / then
+        assertThatThrownBy(() -> properties()
+                .processorType(ProcessorType.TRANSACTIONAL)
+                .conflict(conflictProperties(false))
+                .response(new ResponseProperties(false, true, Set.of(), Set.of()))
+                .build())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
+                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
     }
 
     @Test
@@ -319,16 +343,15 @@ class IdempifyPropertiesUnitTest {
     void provide_whenResponseCachingIsAskedFor_shouldCarryIt() {
         // given
         IdempifyProperties tested = properties()
-                .cache(new CacheProperties(true, "orders", true, false, inMemory()))
+                .response(new ResponseProperties(true, false, Set.of(), Set.of()))
                 .build();
 
         // when
         IdempotencyConfig result = tested.provide();
 
         // then
-        assertThat(result.getResponseCacheConfig().isEnabled()).isTrue();
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isTrue();
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isFalse();
     }
 
     @Test
@@ -363,7 +386,7 @@ class IdempifyPropertiesUnitTest {
         assertThat(result.getTtl()).isEqualTo(global.getTtl());
         assertThat(result.getProcessorType()).isEqualTo(global.getProcessorType());
         assertThat(result.getFingerprintConfig()).isEqualTo(global.getFingerprintConfig());
-        assertThat(result.getResponseCacheConfig()).isEqualTo(global.getResponseCacheConfig());
+        assertThat(result.getResponseConfig()).isEqualTo(global.getResponseConfig());
     }
 
     @Test
@@ -381,13 +404,15 @@ class IdempifyPropertiesUnitTest {
         // given
         ConflictProperties conflict = conflictProperties(true);
         FingerprintProperties fingerprint = fingerprintProperties(true);
-        CacheProperties cache = new CacheProperties(false, null, false, false, inMemory());
+        ResponseProperties response = new ResponseProperties(false, false, Set.of(), Set.of());
+        CacheProperties cache = new CacheProperties(false, CacheType.IN_MEMORY, null, 100);
         MetricsProperties metrics = new MetricsProperties(false);
 
         // when
         IdempifyProperties tested = properties()
                 .conflict(conflict)
                 .fingerprint(fingerprint)
+                .response(response)
                 .cache(cache)
                 .metrics(metrics)
                 .build();
@@ -397,6 +422,7 @@ class IdempifyPropertiesUnitTest {
         assertThat(tested.getTtl()).isEqualTo(Duration.ofHours(24));
         assertThat(tested.getConflict()).isSameAs(conflict);
         assertThat(tested.getFingerprint()).isSameAs(fingerprint);
+        assertThat(tested.getResponse()).isSameAs(response);
         assertThat(tested.getCache()).isSameAs(cache);
         assertThat(tested.getMetrics()).isSameAs(metrics);
     }
@@ -454,8 +480,14 @@ class IdempifyPropertiesUnitTest {
         private ProcessorType processorType = ProcessorType.LOCK_BASED;
         private ConflictProperties conflict = conflictProperties(true);
         private FingerprintProperties fingerprint = fingerprintProperties(true);
-        private CacheProperties cache = new CacheProperties(false, null, false, false, inMemory());
+        private ResponseProperties response = new ResponseProperties(false, false, Set.of(), Set.of());
+        private CacheProperties cache = new CacheProperties(false, CacheType.IN_MEMORY, null, 100);
         private MetricsProperties metrics = new MetricsProperties(true);
+
+        private PropertiesBuilder response(ResponseProperties response) {
+            this.response = response;
+            return this;
+        }
 
         private PropertiesBuilder enabled(Boolean enabled) {
             this.enabled = enabled;
@@ -505,13 +537,11 @@ class IdempifyPropertiesUnitTest {
                     processorType,
                     conflict,
                     fingerprint,
+                    response,
                     cache,
                     metrics
             );
         }
     }
 
-    private static CacheProperties.InMemoryCacheProperties inMemory() {
-        return new CacheProperties.InMemoryCacheProperties(100);
-    }
 }

@@ -449,6 +449,15 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when nothing is said about caching should register no cache wrapper")
+    void context_whenNothingIsSaidAboutCaching_shouldRegisterNoCacheWrapper() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class);
+        });
+    }
+
+    @Test
     @DisplayName("IT context when caching is switched off should register no cache wrapper")
     void context_whenCachingIsSwitchedOff_shouldRegisterNoCacheWrapper() {
         contextRunner

@@ -84,9 +84,9 @@ public final class ConflictProperties {
      * Every property is answered: an absent one falls back to its {@code @DefaultValue}, so this block never
      * hands the core a half-filled backoff.
      * <p>
-     * What counts as a valid value is not decided here - the bounds belong to
-     * {@link WaitConflictHandlerConfig.Builder}, which consumes them, and a second set of rules on this side
-     * could only drift from it.
+     * What counts as a valid value is decided by {@link WaitConflictHandlerConfig.Builder}, which the
+     * constructor calls while the properties bind - so a value it rejects fails the application's startup
+     * rather than the first conflict.
      */
     public static final class WaitConflictProperties {
 

@@ -2,9 +2,9 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigProvider;
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -96,15 +96,15 @@ class IdempifyAutoConfigurationIntegrationTest {
     @DisplayName("IT context when the cache block names a cache should tell the backend that name")
     void context_whenCacheBlockNamesCache_shouldTellBackendThatName() {
         contextRunner
-                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.cache-name=orders")
-                .run(context -> assertThat(context.getBean(CachePropertiesHolder.class).getCacheName())
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.name=orders")
+                .run(context -> assertThat(context.getBean(CachePropertiesHolder.class).getName())
                         .isEqualTo("orders"));
     }
 
     @Test
     @DisplayName("IT context when no cache is asked for should still answer the backend with no name")
     void context_whenNoCacheIsAskedFor_shouldStillAnswerBackendWithNoName() {
-        contextRunner.run(context -> assertThat(context.getBean(CachePropertiesHolder.class).getCacheName()).isNull());
+        contextRunner.run(context -> assertThat(context.getBean(CachePropertiesHolder.class).getName()).isNull());
     }
 
     @Test
@@ -152,31 +152,33 @@ class IdempifyAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when no capacity is asked for should hand the fallback store the built-in one")
-    void context_whenNoCapacityIsAskedFor_shouldHandFallbackStoreBuiltInOne() {
-        contextRunner.run(context ->
-                assertThat(context.getBean(CachePropertiesHolder.class).getInMemoryCacheCapacity()).isEqualTo(100));
-    }
-
-    @Test
-    @DisplayName("IT context when the in-memory block names a capacity should hand the fallback store that number")
-    void context_whenInMemoryBlockNamesCapacity_shouldHandFallbackStoreThatNumber() {
+    @DisplayName("IT context when caching is asked for without a capacity should hand the fallback store the built-in one")
+    void context_whenCachingIsAskedForWithoutCapacity_shouldHandFallbackStoreBuiltInOne() {
         contextRunner
-                .withPropertyValues("idempify.cache.in-memory.capacity=25")
+                .withPropertyValues("idempify.cache.enabled=true")
                 .run(context ->
-                        assertThat(context.getBean(CachePropertiesHolder.class).getInMemoryCacheCapacity()).isEqualTo(25));
+                        assertThat(context.getBean(CachePropertiesHolder.class).getCacheCapacity()).isEqualTo(100));
     }
 
     @Test
-    @DisplayName("IT context when the capacity holds nothing should fail naming the property at fault")
-    void context_whenCapacityHoldsNothing_shouldFailNamingPropertyAtFault() {
+    @DisplayName("IT context when the cache block names a capacity should hand the fallback store that number")
+    void context_whenCacheBlockNamesCapacity_shouldHandFallbackStoreThatNumber() {
         contextRunner
-                .withPropertyValues("idempify.cache.in-memory.capacity=0")
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.capacity=25")
+                .run(context ->
+                        assertThat(context.getBean(CachePropertiesHolder.class).getCacheCapacity()).isEqualTo(25));
+    }
+
+    @Test
+    @DisplayName("IT context when the capacity of an asked-for cache holds nothing should fail naming the property at fault")
+    void context_whenCapacityOfAskedForCacheHoldsNothing_shouldFailNamingPropertyAtFault() {
+        contextRunner
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.capacity=0")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .rootCause()
-                            .hasMessageContaining("idempify.cache.in-memory.capacity must be positive");
+                            .hasMessageContaining("'idempify.cache.capacity' must be positive");
                 });
     }
 
@@ -188,7 +190,7 @@ class IdempifyAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(CachePropertiesHolder.class);
                     assertThat(context).doesNotHaveBean("idempifyCachePropertiesHolder");
-                    assertThat(context.getBean(CachePropertiesHolder.class).getCacheName()).isEqualTo("user-cache");
+                    assertThat(context.getBean(CachePropertiesHolder.class).getName()).isEqualTo("user-cache");
                 });
     }
 
@@ -196,12 +198,12 @@ class IdempifyAutoConfigurationIntegrationTest {
     @DisplayName("IT context when the properties are rejected should fail naming the property at fault")
     void context_whenPropertiesAreRejected_shouldFailNamingPropertyAtFault() {
         contextRunner
-                .withPropertyValues("idempify.cache.enabled=true")
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .rootCause()
-                            .hasMessageContaining("idempify.cache.cache-name");
+                            .hasMessageContaining("'idempify.cache.name'");
                 });
     }
 
@@ -240,12 +242,12 @@ class IdempifyAutoConfigurationIntegrationTest {
         }
 
         @Override
-        public String getCacheName() {
+        public String getName() {
             return cacheName;
         }
 
         @Override
-        public int getInMemoryCacheCapacity() {
+        public int getCacheCapacity() {
             return 100;
         }
     }

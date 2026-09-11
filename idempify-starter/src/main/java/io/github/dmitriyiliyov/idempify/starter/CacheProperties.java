@@ -2,131 +2,94 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.StringUtils;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
-import io.github.dmitriyiliyov.idempify.core.response.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.util.Objects;
 
 /**
- * Holds the {@code idempify.cache.*} properties - which results of a completed operation are copied into the
- * secondary store that sits in front of the repository.
+ * Holds the {@code idempify.cache.*} properties - whether a cache stands in front of the response store,
+ * which one, and how it is bounded.
  * <p>
- * The repository stays the source of truth either way, so these properties tune latency and database load,
- * not behaviour.
+ * The record stays the source of truth either way: a cache here only answers a replay sooner, and a miss
+ * falls through to the row. That is why these properties tune latency and database load and never what a
+ * repeat call receives.
  * <p>
- * Caching is off until asked for, and asking for it means naming it: {@code cacheName} is what keeps the
- * entries of one application apart from another's in a store they share, so there is no default worth
- * inventing - a shared one would silently merge them. An application that says nothing about the cache
- * therefore starts; one that sets {@code idempify.cache.enabled: true} must also set
- * {@code idempify.cache.cache-name}.
+ * Caching is off until {@code idempify.cache.enabled} asks for it, and what it then installs is decided by
+ * {@code idempify.cache.type}. The remaining two are read by whichever backend needs them:
+ * {@code idempify.cache.name} keeps one application's entries apart from another's in a store they share and
+ * is therefore required of {@link CacheType#DISTRIBUTED} - an in-memory cache shares nothing and leaves it
+ * unset - while {@code idempify.cache.capacity} bounds {@link CacheType#IN_MEMORY} and must be positive,
+ * a cache holding nothing being a cache that answers no replay.
  * <p>
- * Every other property is answered: an absent one falls back to its {@code @DefaultValue}, so this block
- * always hands the core a fully decided cache policy.
- * <p>
- * <strong>Switching the cache off here is final.</strong> Neither a named {@code IdempotencyConfig} nor
- * {@code @Idempotent(useCache = ENABLE)} can turn it back on for a single call site: this same property keeps
- * the backend's auto-configuration and the caching filter out of the context, so there would be nothing to
- * cache into - and {@code ResponseCacheConfig.merge} refuses the promotion rather than resolve metadata that
- * lies about it. Turning it back on is a change to this property, not to a call site.
+ * Both are checked in the constructor rather than where they are used, so a misconfigured application fails
+ * to start instead of failing on its first replay.
  */
 public final class CacheProperties implements CachePropertiesHolder {
 
     private final Boolean enabled;
-    private final String cacheName;
-    private final Boolean shouldCache4xx;
-    private final Boolean shouldCache5xx;
-    private final InMemoryCacheProperties inMemory;
+    private final CacheType type;
+    private final String name;
+    private final Integer capacity;
 
     public CacheProperties(@DefaultValue(IdempifyDefaults.CACHE_ENABLED_VALUE) Boolean enabled,
-                           String cacheName,
-                           @DefaultValue(IdempifyDefaults.CACHE_4XX_VALUE) Boolean shouldCache4xx,
-                           @DefaultValue(IdempifyDefaults.CACHE_5XX_VALUE) Boolean shouldCache5xx,
-                           @DefaultValue InMemoryCacheProperties inMemory) {
+                           @DefaultValue(IdempifyDefaults.CACHE_TYPE_VALUE) CacheType type,
+                           String name,
+                           @DefaultValue(IdempifyDefaults.IN_MEMORY_CACHE_CAPACITY_VALUE) Integer capacity) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
-        if (enabled && StringUtils.isBlank(cacheName)) {
-            throw new IllegalArgumentException("""
-                        cacheName cannot be null, empty or blank: set idempify.cache.cache-name, 
-                        or set idempify.cache.enabled to false if the application does not cache responses
-            """);
-        }
-        this.cacheName = cacheName;
-        this.shouldCache4xx = Objects.requireNonNull(shouldCache4xx, "shouldCache4xx cannot be null");
-        this.shouldCache5xx = Objects.requireNonNull(shouldCache5xx, "shouldCache5xx cannot be null");
-        this.inMemory = Objects.requireNonNull(inMemory, "inMemory cannot be null");
-    }
+        if (enabled) {
+            this.type = Objects.requireNonNull(type, "type cannot be null");
 
-    public ResponseCacheConfig toResponseCacheConfig() {
-        return ResponseCacheConfig.builder()
-                .enabled(enabled)
-                .shouldCache4xx(shouldCache4xx)
-                .shouldCache5xx(shouldCache5xx)
-                .build();
+            if (CacheType.DISTRIBUTED.equals(type) && StringUtils.isBlank(name)) {
+                throw new IllegalArgumentException("""
+                        'idempify.cache.name' cannot be null when type is %s, empty or blank: set 'idempify.cache.name', 
+                        or set 'idempify.cache.enabled' to false if the application does not cache responses
+            """.formatted(type));
+            }
+            this.name = name;
+
+            Objects.requireNonNull(capacity, "capacity cannot be null");
+            if (CacheType.IN_MEMORY.equals(type) && capacity <= 0) {
+                throw new IllegalArgumentException(
+                        "'idempify.cache.capacity' must be positive, but was %s: a store that holds nothing "
+                                .formatted(capacity)
+                                + "answers no replay, so set a capacity or leave the property out"
+                );
+            }
+            this.capacity = capacity;
+        } else {
+            this.type = null;
+            this.name = null;
+            this.capacity = null;
+        }
     }
 
     public Boolean isEnabled() {
         return enabled;
     }
 
-    @Override
-    public String getCacheName() {
-        return cacheName;
+    public CacheType getType() {
+        return type;
     }
 
     @Override
-    public int getInMemoryCacheCapacity() {
-        return inMemory.getCapacity();
+    public String getName() {
+        return name;
     }
 
-    public Boolean shouldCache4xx() {
-        return shouldCache4xx;
-    }
-
-    public Boolean shouldCache5xx() {
-        return shouldCache5xx;
+    @Override
+    public int getCacheCapacity() {
+        return capacity;
     }
 
     @Override
     public String toString() {
         return "CacheProperties{" +
                 "enabled=" + enabled +
-                ", cacheName='" + cacheName + '\'' +
-                ", shouldCache4xx=" + shouldCache4xx +
-                ", shouldCache5xx=" + shouldCache5xx +
-                ", inMemory=" + inMemory +
+                ", type=" + type +
+                ", name='" + name + '\'' +
+                ", capacity=" + capacity +
                 '}';
-    }
-
-    /**
-     * Holds {@code idempify.cache.in-memory.*} - how much the fallback store keeps when no backend module is
-     * on the classpath. The bound store evicts its eldest entry rather than grow, so the capacity is the
-     * ceiling an application accepts for holding responses in its own heap.
-     */
-    public static final class InMemoryCacheProperties {
-
-        private final Integer capacity;
-
-        public InMemoryCacheProperties(
-                @DefaultValue(IdempifyDefaults.IN_MEMORY_CACHE_CAPACITY_VALUE) Integer capacity
-        ) {
-            Objects.requireNonNull(capacity, "capacity cannot be null");
-            if (capacity <= 0) {
-                throw new IllegalArgumentException(
-                        "idempify.cache.in-memory.capacity must be positive, but was %s: a store that holds nothing "
-                                .formatted(capacity)
-                                + "answers no replay, so set a capacity or leave the property out"
-                );
-            }
-            this.capacity = capacity;
-        }
-
-        public Integer getCapacity() {
-            return capacity;
-        }
-
-        @Override
-        public String toString() {
-            return "InMemoryCacheProperties{capacity=" + capacity + '}';
-        }
     }
 }

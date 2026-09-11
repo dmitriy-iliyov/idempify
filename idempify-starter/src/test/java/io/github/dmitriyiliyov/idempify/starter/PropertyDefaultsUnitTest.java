@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import io.github.dmitriyiliyov.idempify.core.config.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
@@ -25,9 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * value each one carries against the typed default the core holds, so a literal written back into an
  * annotation - or a config class going its own way - fails here rather than in production.
  * <p>
- * Two defaults have no typed counterpart in the core to be checked against - the capacity of the in-memory
- * fallback store and the metrics switch - so for them the check is only that the annotation still reads the
- * shared constant instead of a literal of its own.
+ * Some defaults have no typed counterpart in the core to be checked against - the cache block and the metrics
+ * switch - so for them the check is only that the annotation still reads the shared constant instead of a
+ * literal of its own.
  */
 class PropertyDefaultsUnitTest {
 
@@ -124,17 +125,42 @@ class PropertyDefaultsUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor defaults of the cache block should repeat the answers core holds")
-    void constructorDefaults_ofCacheBlock_shouldRepeatAnswersCoreHolds() {
+    @DisplayName("UT constructor defaults of the response block should repeat the answers core holds")
+    void constructorDefaults_ofResponseBlock_shouldRepeatAnswersCoreHolds() {
         // when
-        String enabled = defaultValueOf(CacheProperties.class, "enabled");
-        String shouldCache4xx = defaultValueOf(CacheProperties.class, "shouldCache4xx");
-        String shouldCache5xx = defaultValueOf(CacheProperties.class, "shouldCache5xx");
+        String shouldCache4xx = defaultValueOf(ResponseProperties.class, "shouldCache4xx");
+        String shouldCache5xx = defaultValueOf(ResponseProperties.class, "shouldCache5xx");
 
         // then
-        assertThat(Boolean.parseBoolean(enabled)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE);
-        assertThat(Boolean.parseBoolean(shouldCache4xx)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE_4XX);
-        assertThat(Boolean.parseBoolean(shouldCache5xx)).isEqualTo(ResponseCacheConfig.DEFAULT_SHOULD_CACHE_5XX);
+        assertThat(Boolean.parseBoolean(shouldCache4xx)).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_4XX);
+        assertThat(Boolean.parseBoolean(shouldCache5xx)).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_5XX);
+    }
+
+    @Test
+    @DisplayName("UT constructor defaults of the cache block should read the constants rather than literals")
+    void constructorDefaults_ofCacheBlock_shouldReadConstantsRatherThanLiterals() {
+        // when
+        String enabled = defaultValueOf(CacheProperties.class, "enabled");
+        String type = defaultValueOf(CacheProperties.class, "type");
+        String capacity = defaultValueOf(CacheProperties.class, "capacity");
+
+        // then
+        assertThat(enabled).isEqualTo(IdempifyDefaults.CACHE_ENABLED_VALUE);
+        assertThat(type).isEqualTo(IdempifyDefaults.CACHE_TYPE_VALUE);
+        assertThat(capacity).isEqualTo(IdempifyDefaults.IN_MEMORY_CACHE_CAPACITY_VALUE);
+
+        assertThat(Boolean.valueOf(enabled))
+                .describedAs("no cache stands in front of the store until an application asks for one")
+                .isFalse();
+
+        CacheProperties asked = new CacheProperties(
+                true,
+                CacheType.fromStr(type),
+                null,
+                Integer.valueOf(capacity)
+        );
+        assertThat(asked.getType()).isEqualTo(CacheType.IN_MEMORY);
+        assertThat(asked.getCacheCapacity()).isEqualTo(100);
     }
 
     @Test

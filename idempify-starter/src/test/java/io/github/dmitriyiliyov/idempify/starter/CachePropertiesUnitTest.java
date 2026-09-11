@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -9,204 +9,103 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * The properties are the outermost layer, so what is judged here is the refusal: a setting that cannot work
+ * has to be named at startup, by the property a reader would go and edit.
+ */
 class CachePropertiesUnitTest {
 
     @Test
     @DisplayName("UT constructor() when enabled is null should throw NullPointerException")
     void constructor_whenEnabledIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new CacheProperties(null, "orders", false, false, inMemory()))
+        assertThatThrownBy(() -> new CacheProperties(null, CacheType.IN_MEMORY, "orders", 100))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("enabled cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor() when shouldCache4xx is null should throw NullPointerException")
-    void constructor_whenShouldCache4xxIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor() when type is null should throw NullPointerException")
+    void constructor_whenTypeIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new CacheProperties(true, "orders", null, false, inMemory()))
+        assertThatThrownBy(() -> new CacheProperties(true, null, "orders", 100))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessage("shouldCache4xx cannot be null");
+                .hasMessage("type cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor() when shouldCache5xx is null should throw NullPointerException")
-    void constructor_whenShouldCache5xxIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor() when capacity is null should throw NullPointerException")
+    void constructor_whenCapacityIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new CacheProperties(true, "orders", false, null, inMemory()))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("shouldCache5xx cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor() when caching is enabled without a cache name should name both ways out")
-    void constructor_whenCachingIsEnabledWithoutCacheName_shouldNameBothWaysOut() {
-        // when / then
-        assertThatThrownBy(() -> new CacheProperties(true, null, false, false, inMemory()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("idempify.cache.cache-name")
-                .hasMessageContaining("idempify.cache.enabled");
-    }
-
-    @Test
-    @DisplayName("UT constructor() when caching is enabled with a blank cache name should throw IllegalArgumentException")
-    void constructor_whenCachingIsEnabledWithBlankCacheName_shouldThrowIllegalArgumentException() {
-        // when / then
-        assertThatThrownBy(() -> new CacheProperties(true, "   ", false, false, inMemory()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("cacheName cannot be null, empty or blank");
-    }
-
-    @Test
-    @DisplayName("UT constructor() when caching is disabled should not ask for a cache name")
-    void constructor_whenCachingIsDisabled_shouldNotAskForCacheName() {
-        // when
-        CacheProperties tested = new CacheProperties(false, null, false, false, inMemory());
-
-        // then
-        assertThat(tested.isEnabled()).isFalse();
-        assertThat(tested.getCacheName()).isNull();
-    }
-
-    @Test
-    @DisplayName("UT getCacheName() when a name is set should hand the backend that very name")
-    void getCacheName_whenNameIsSet_shouldHandBackendThatVeryName() {
-        // when
-        CacheProperties tested = new CacheProperties(true, "orders", false, false, inMemory());
-
-        // then
-        assertThat(tested.getCacheName()).isEqualTo("orders");
-    }
-
-    @Test
-    @DisplayName("UT toResponseCacheConfig() when caching is enabled should decide every flag")
-    void toResponseCacheConfig_whenCachingIsEnabled_shouldDecideEveryFlag() {
-        // given
-        CacheProperties tested = new CacheProperties(true, "orders", true, true, inMemory());
-
-        // when
-        ResponseCacheConfig result = tested.toResponseCacheConfig();
-
-        // then
-        assertThat(result.isEnabled()).isTrue();
-        assertThat(result.shouldCache4xx()).isTrue();
-        assertThat(result.shouldCache5xx()).isTrue();
-    }
-
-    @Test
-    @DisplayName("UT toResponseCacheConfig() when nothing is asked for should leave every status out of the cache")
-    void toResponseCacheConfig_whenNothingIsAskedFor_shouldLeaveEveryStatusOutOfCache() {
-        // given
-        CacheProperties tested = new CacheProperties(true, "orders", false, false, inMemory());
-
-        // when
-        ResponseCacheConfig result = tested.toResponseCacheConfig();
-
-        // then
-        assertThat(result.isEnabled()).isTrue();
-        assertThat(result.shouldCache4xx()).isFalse();
-        assertThat(result.shouldCache5xx()).isFalse();
-    }
-
-    @Test
-    @DisplayName("UT toResponseCacheConfig() when caching is disabled should say so instead of leaving it open")
-    void toResponseCacheConfig_whenCachingIsDisabled_shouldSaySoInsteadOfLeavingItOpen() {
-        // given
-        CacheProperties tested = new CacheProperties(false, null, false, false, inMemory());
-
-        // when
-        ResponseCacheConfig result = tested.toResponseCacheConfig();
-
-        // then
-        assertThat(result.isEnabled()).isFalse();
-        assertThat(ResponseCacheConfig.merge(result, ResponseCacheConfig.all()).isEnabled())
-                .describedAs("a call site cannot turn back on what the properties switched off")
-                .isFalse();
-    }
-
-    @Test
-    @DisplayName("UT shouldCache4xx() and shouldCache5xx() should answer what was configured")
-    void shouldCache4xxAndShouldCache5xx_shouldAnswerWhatWasConfigured() {
-        // given
-        CacheProperties tested = new CacheProperties(true, "orders", true, false, inMemory());
-
-        // when / then
-        assertThat(tested.shouldCache4xx()).isTrue();
-        assertThat(tested.shouldCache5xx()).isFalse();
-    }
-
-    @Test
-    @DisplayName("UT toString() should name every property it carries")
-    void toString_shouldNameEveryPropertyItCarries() {
-        // given
-        CacheProperties tested = new CacheProperties(true, "orders", true, false, inMemory());
-
-        // when
-        String result = tested.toString();
-
-        // then
-        assertThat(result).contains(
-                "enabled=true",
-                "cacheName='orders'",
-                "shouldCache4xx=true",
-                "shouldCache5xx=false",
-                "capacity=100"
-        );
-    }
-
-    @Test
-    @DisplayName("UT constructor() when the in-memory block is null should throw NullPointerException")
-    void constructor_whenInMemoryBlockIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new CacheProperties(true, "orders", false, false, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("inMemory cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT getInMemoryCacheCapacity() should hand the fallback store the capacity the block carries")
-    void getInMemoryCacheCapacity_shouldHandFallbackStoreCapacityBlockCarries() {
-        // given
-        CacheProperties tested = new CacheProperties(true, "orders", false, false, inMemory(25));
-
-        // when / then
-        assertThat(tested.getInMemoryCacheCapacity()).isEqualTo(25);
-    }
-
-    @Test
-    @DisplayName("UT getInMemoryCacheCapacity() when caching is disabled should still answer a capacity")
-    void getInMemoryCacheCapacity_whenCachingIsDisabled_shouldStillAnswerCapacity() {
-        // given
-        CacheProperties tested = new CacheProperties(false, null, false, false, inMemory());
-
-        // when / then
-        assertThat(tested.getInMemoryCacheCapacity()).isEqualTo(100);
-    }
-
-    @Test
-    @DisplayName("UT InMemoryCacheProperties constructor when capacity is null should throw NullPointerException")
-    void inMemoryConstructor_whenCapacityIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new CacheProperties.InMemoryCacheProperties(null))
+        assertThatThrownBy(() -> new CacheProperties(true, CacheType.IN_MEMORY, "orders", null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("capacity cannot be null");
     }
 
+    @Test
+    @DisplayName("UT constructor() when a distributed cache is on without a name should name the property at fault")
+    void constructor_whenDistributedCacheIsOnWithoutName_shouldNamePropertyAtFault() {
+        // when / then
+        assertThatThrownBy(() -> new CacheProperties(true, CacheType.DISTRIBUTED, "  ", 100))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'idempify.cache.name' cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor() when a distributed cache is off should accept a missing name")
+    void constructor_whenDistributedCacheIsOff_shouldAcceptMissingName() {
+        // when
+        CacheProperties result = new CacheProperties(false, CacheType.DISTRIBUTED, null, 100);
+
+        // then
+        assertThat(result.getName()).isNull();
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, -1})
-    @DisplayName("UT InMemoryCacheProperties constructor when the capacity holds nothing should name the property at fault")
-    void inMemoryConstructor_whenCapacityHoldsNothing_shouldNamePropertyAtFault(int capacity) {
+    @DisplayName("UT constructor() when an in-memory cache holds nothing should name the property at fault")
+    void constructor_whenInMemoryCacheHoldsNothing_shouldNamePropertyAtFault(int capacity) {
         // when / then
-        assertThatThrownBy(() -> new CacheProperties.InMemoryCacheProperties(capacity))
+        assertThatThrownBy(() -> new CacheProperties(true, CacheType.IN_MEMORY, "orders", capacity))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("idempify.cache.in-memory.capacity must be positive");
+                .hasMessageContaining("'idempify.cache.capacity' must be positive");
     }
 
-    private static CacheProperties.InMemoryCacheProperties inMemory() {
-        return inMemory(100);
+    @Test
+    @DisplayName("UT constructor() when the cache is distributed should not judge the capacity")
+    void constructor_whenCacheIsDistributed_shouldNotJudgeCapacity() {
+        // when
+        CacheProperties result = new CacheProperties(true, CacheType.DISTRIBUTED, "orders", 0);
+
+        // then
+        assertThat(result.getCacheCapacity()).isZero();
     }
 
-    private static CacheProperties.InMemoryCacheProperties inMemory(int capacity) {
-        return new CacheProperties.InMemoryCacheProperties(capacity);
+    @Test
+    @DisplayName("UT toString() should name every setting it carries")
+    void toString_shouldNameEverySettingItCarries() {
+        // when
+        String result = new CacheProperties(true, CacheType.DISTRIBUTED, "orders", 250).toString();
+
+        // then
+        assertThat(result).contains(
+                "enabled=true",
+                "type=DISTRIBUTED",
+                "name='orders'",
+                "capacity=250"
+        );
+    }
+
+    @Test
+    @DisplayName("UT getters should hand back everything the properties were built with")
+    void getters_shouldHandBackEverythingPropertiesWereBuiltWith() {
+        // when
+        CacheProperties result = new CacheProperties(true, CacheType.IN_MEMORY, "orders", 250);
+
+        // then
+        assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getType()).isEqualTo(CacheType.IN_MEMORY);
+        assertThat(result.getName()).isEqualTo("orders");
+        assertThat(result.getCacheCapacity()).isEqualTo(250);
     }
 }
