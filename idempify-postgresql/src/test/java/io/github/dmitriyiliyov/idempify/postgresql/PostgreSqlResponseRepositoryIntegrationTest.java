@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
+import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
 import io.github.dmitriyiliyov.idempify.core.RawOperation;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import org.junit.jupiter.api.BeforeAll;
@@ -101,7 +102,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
 
         // when / then
         assertThatThrownBy(() -> tested.save(key, "raw-response"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(key.toString());
         assertThat(tested.findByIdempotencyKey(key))
                 .hasValueSatisfying(container -> assertThat(container.getResponse()).isNull());
@@ -115,7 +116,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
 
         // when / then
         assertThatThrownBy(() -> tested.save(key, "raw-response"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(key.toString());
     }
 

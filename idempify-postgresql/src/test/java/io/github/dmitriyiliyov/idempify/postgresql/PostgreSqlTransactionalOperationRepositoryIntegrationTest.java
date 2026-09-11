@@ -30,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * completed operation and nowhere else. All of it is judged against a real Postgres.
  * <p>
  * The repository deals in rows only - no serializer takes part here, so what is written is what comes back.
+ * Where a statement is meant to carry the whole record, that is asserted on the record and not field by
+ * field: a column added to the table and to {@link RawOperation} but left out of the statement passes every
+ * hand-picked assertion there is.
  */
 @Testcontainers
 class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
@@ -79,6 +82,19 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         assertThat(result.isFirstAttempt()).isTrue();
         assertThat(result.result()).isNull();
         assertThat(result.fingerprint()).isEqualTo("fingerprint");
+    }
+
+    @Test
+    @DisplayName("IT saveIfAbsent() when the key is free should write every column its statement names")
+    void saveIfAbsent_whenKeyIsFree_shouldWriteEveryColumnItsStatementNames() {
+        // given
+        RawOperation toClaim = fullClaim(UUID.randomUUID());
+
+        // when
+        RawOperation result = tested.saveIfAbsent(toClaim);
+
+        // then
+        assertThat(result).isEqualTo(toClaim);
     }
 
     @Test
@@ -133,16 +149,13 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         // given
         UUID key = UUID.randomUUID();
         tested.saveIfAbsent(claim(key));
-        RawOperation rewritten = completed(key);
+        RawOperation rewritten = fullRewrite(key);
 
         // when
         RawOperation result = tested.update(rewritten, OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(result.result()).isEqualTo("new-result");
-        assertThat(result.fingerprint()).isEqualTo("new-fingerprint");
-        assertThat(result.expiresAt()).isEqualTo(rewritten.expiresAt());
+        assertThat(result).isEqualTo(rewritten);
     }
 
     @Test
@@ -325,6 +338,32 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
                 null,
                 "fingerprint",
                 null,
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
+    }
+
+    private static RawOperation fullClaim(UUID idempotencyKey) {
+        return new RawOperation(
+                idempotencyKey,
+                OperationStatus.IN_PROCESS,
+                true,
+                "raw-result",
+                "raw-response",
+                "fingerprint",
+                null,
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
+    }
+
+    private static RawOperation fullRewrite(UUID idempotencyKey) {
+        return new RawOperation(
+                idempotencyKey,
+                OperationStatus.PROCESSED,
+                false,
+                "new-result",
+                "new-response",
+                "new-fingerprint",
+                Instant.now().plus(48, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
                 Instant.now().truncatedTo(ChronoUnit.MICROS)
         );
     }

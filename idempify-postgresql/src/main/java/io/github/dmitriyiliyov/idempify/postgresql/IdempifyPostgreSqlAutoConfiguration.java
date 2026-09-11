@@ -35,7 +35,7 @@ public class IdempifyPostgreSqlAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public TransactionalOperationRepository idempifyPostgreSqlOperationRepository(JdbcClient jdbcClient) {
+    public TransactionalOperationRepository idempifyTransactionalOperationRepository(JdbcClient jdbcClient) {
         return new PostgreSqlTransactionalOperationRepository(jdbcClient);
     }
 }

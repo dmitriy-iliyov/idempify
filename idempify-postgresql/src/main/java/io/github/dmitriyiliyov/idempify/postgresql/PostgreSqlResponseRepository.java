@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
+import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -31,7 +32,7 @@ public class PostgreSqlResponseRepository implements ResponseRepository {
                 .optional();
 
         if (updated.isEmpty()) {
-            throw new IllegalStateException(
+            throw new OperationStatusMismatchException(
                     "Operation (idempotencyKey=%s) has no completed record to save a response onto".formatted(idempotencyKey)
             );
         }
