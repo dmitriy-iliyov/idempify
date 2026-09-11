@@ -10,12 +10,12 @@ import java.util.UUID;
 /**
  * The single table of "what went wrong" -> status, {@link ProblemTypes type} and title.
  */
-final class ProblemFactory {
+final class ProblemDetailFactory {
 
     private static final String IDEMPOTENCY_KEY = "idempotencyKey";
     private static final String TIMESTAMP = "timestamp";
 
-    private ProblemFactory() {}
+    private ProblemDetailFactory() {}
 
     static ProblemDetail invalidIdempotencyKey(String detail, String instance, Instant timestamp) {
         return problem(
@@ -96,11 +96,11 @@ final class ProblemFactory {
         );
     }
 
-    static ProblemDetail resultProcessingFailed(String detail, String instance, Instant timestamp) {
+    static ProblemDetail serializationProcessingFailed(String detail, String instance, Instant timestamp) {
         return problem(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                ProblemTypes.RESULT_PROCESSING_FAILED,
-                "Operation result processing failed",
+                ProblemTypes.SERIALIZATION_PROCESSING_FAILED,
+                "Serialization processing failed",
                 detail,
                 instance,
                 timestamp

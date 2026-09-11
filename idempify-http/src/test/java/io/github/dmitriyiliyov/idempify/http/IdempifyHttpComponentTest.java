@@ -2,7 +2,7 @@ package io.github.dmitriyiliyov.idempify.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.*;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.DefaultFingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
@@ -11,10 +11,10 @@ import io.github.dmitriyiliyov.idempify.core.fingerprint.ThrowingEmptyBodyFallba
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
-import io.github.dmitriyiliyov.idempify.core.response.CachedResponse;
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.response.DefaultResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.Response;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseManager;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -51,6 +51,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -81,7 +82,7 @@ class IdempifyHttpComponentTest {
 
     private AnnotationConfigWebApplicationContext context;
     private MockMvc mockMvc;
-    private RecordingResponseCache cache;
+    private RecordingResponseManager cache;
     private PaymentController controller;
 
     @BeforeEach
@@ -91,7 +92,7 @@ class IdempifyHttpComponentTest {
         context.register(WebMvcConfiguration.class, CoreConfiguration.class, IdempifyHttpAutoConfiguration.class);
         context.refresh();
 
-        cache = context.getBean(RecordingResponseCache.class);
+        cache = context.getBean(RecordingResponseManager.class);
         controller = context.getBean(PaymentController.class);
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .addFilters(responseCachingFilter())
@@ -114,7 +115,6 @@ class IdempifyHttpComponentTest {
         // then
         assertThat(controller.payCalls).isEqualTo(1);
         assertThat(cache.storage).containsKey(KEY);
-        assertThat(cache.lastTtl).isEqualTo(OPERATION_TTL);
     }
 
     @Test
@@ -247,17 +247,17 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT request when caching is disabled for the endpoint should reach the handler every time")
-    void request_whenCachingIsDisabledForEndpoint_shouldReachHandlerEveryTime() throws Exception {
-        // given
+    @DisplayName("CT request when the endpoint switched 4xx off should still record and replay an ordinary answer")
+    void request_whenEndpointSwitchedFourXxOff_shouldStillRecordAndReplayOrdinaryAnswer() throws Exception {
+        // given - the toggle governs which failed answers may be replayed, not whether the operation keeps one
         mockMvc.perform(post("/payments/uncached").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
 
         // when
         mockMvc.perform(post("/payments/uncached").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
 
         // then
-        assertThat(controller.uncachedCalls).isEqualTo(2);
-        assertThat(cache.storage).isEmpty();
+        assertThat(controller.uncachedCalls).isEqualTo(1);
+        assertThat(cache.storage).containsKey(KEY);
     }
 
     @Test
@@ -416,11 +416,14 @@ class IdempifyHttpComponentTest {
 
         private final ObjectProvider<OperationStateChannel> channel;
         private final ObjectProvider<RequestContextProvider> contextProvider;
+        private final ObjectProvider<RecordingResponseManager> responseManager;
 
         WebMvcConfiguration(ObjectProvider<OperationStateChannel> channel,
-                            ObjectProvider<RequestContextProvider> contextProvider) {
+                            ObjectProvider<RequestContextProvider> contextProvider,
+                            ObjectProvider<RecordingResponseManager> responseManager) {
             this.channel = channel;
             this.contextProvider = contextProvider;
+            this.responseManager = responseManager;
         }
 
         @Bean
@@ -430,7 +433,7 @@ class IdempifyHttpComponentTest {
 
         @Override
         public void addInterceptors(InterceptorRegistry registry) {
-            registry.addInterceptor(new StubIdempotentCore(channel));
+            registry.addInterceptor(new StubIdempotentCore(channel, responseManager));
         }
     }
 
@@ -438,8 +441,8 @@ class IdempifyHttpComponentTest {
     static class CoreConfiguration {
 
         @Bean
-        public RecordingResponseCache responseCache() {
-            return new RecordingResponseCache();
+        public RecordingResponseManager responseManager() {
+            return new RecordingResponseManager();
         }
 
         @Bean
@@ -517,7 +520,7 @@ class IdempifyHttpComponentTest {
             return ResponseEntity.badRequest().body("rejected");
         }
 
-        @Idempotent(headerName = HEADER_NAME, useCache = Toggle.DISABLE)
+        @Idempotent(headerName = HEADER_NAME, cache4xx = Toggle.DISABLE)
         @PostMapping("/payments/uncached")
         public String uncached() {
             uncachedCalls++;
@@ -544,7 +547,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/replayed")
         public String replayed() {
-            channel.getObject().publish(TestOperationState.of(NOW.plus(OPERATION_TTL), true));
+            channel.getObject().publish(TestOperationState.of(true));
             return "replayed";
         }
 
@@ -580,8 +583,7 @@ class IdempifyHttpComponentTest {
                     .ttl(metadata.getTtl() == null ? OPERATION_TTL : metadata.getTtl())
                     .useFingerprint(metadata.getFingerprintToggle() == Toggle.ENABLE)
                     .fingerprintPolicy(new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback()))
-                    .responseCacheConfig(ResponseCacheConfig.builder()
-                            .enabled(metadata.getCacheToggle() != Toggle.DISABLE)
+                    .responseConfig(ResponseConfig.builder()
                             .shouldCache4xx(metadata.getCache4xxToggle() != Toggle.DISABLE)
                             .shouldCache5xx(metadata.getCache5xxToggle() == Toggle.ENABLE)
                             .build())
@@ -610,9 +612,12 @@ class IdempifyHttpComponentTest {
     static class StubIdempotentCore implements HandlerInterceptor {
 
         private final ObjectProvider<OperationStateChannel> channel;
+        private final ObjectProvider<RecordingResponseManager> responseManager;
 
-        StubIdempotentCore(ObjectProvider<OperationStateChannel> channel) {
+        StubIdempotentCore(ObjectProvider<OperationStateChannel> channel,
+                           ObjectProvider<RecordingResponseManager> responseManager) {
             this.channel = channel;
+            this.responseManager = responseManager;
         }
 
         @Override
@@ -625,27 +630,62 @@ class IdempifyHttpComponentTest {
                     || request.getHeader(HEADER_NAME) == null) {
                 return;
             }
+            claimWithFingerprint(request, handlerMethod);
+
             OperationStateChannel operationStateChannel = channel.getObject();
             OperationState alreadyPublished = operationStateChannel.consume();
             operationStateChannel.publish(alreadyPublished != null
                     ? alreadyPublished
-                    : TestOperationState.of(NOW.plus(OPERATION_TTL), false));
+                    : TestOperationState.of(false));
+        }
+
+        private void claimWithFingerprint(HttpServletRequest request, HandlerMethod handlerMethod) {
+            Idempotent annotation = handlerMethod.getMethodAnnotation(Idempotent.class);
+            if (annotation == null || annotation.useFingerprint() != Toggle.ENABLE) {
+                return;
+            }
+
+            UUID idempotencyKey;
+            try {
+                idempotencyKey = UUID.fromString(request.getHeader(HEADER_NAME));
+            } catch (IllegalArgumentException iae) {
+                return;
+            }
+
+            responseManager.getObject().recordClaimFingerprint(
+                    idempotencyKey,
+                    new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback())
+                            .generate(new HttpRequestContext(request))
+            );
         }
     }
 
-    static class RecordingResponseCache implements ResponseCache {
+    /**
+     * Stands in for the core manager: the filter is what this test exercises, so the row behind it is a map.
+     */
+    static class RecordingResponseManager implements ResponseManager {
 
-        final Map<UUID, CachedResponse> storage = new ConcurrentHashMap<>();
-        Duration lastTtl;
+        final Map<UUID, Response> storage = new ConcurrentHashMap<>();
+        private final Map<UUID, String> fingerprints = new ConcurrentHashMap<>();
 
-        @Override
-        public CachedResponse findByIdempotencyKey(UUID idempotencyKey) {
-            return storage.get(idempotencyKey);
+        /**
+         * A real row carries the fingerprint the operation was claimed with, and the filter never supplies it -
+         * the core writes it before the handler runs. The stand-in is told the same way.
+         */
+        void recordClaimFingerprint(UUID idempotencyKey, String fingerprint) {
+            fingerprints.put(idempotencyKey, fingerprint);
         }
 
         @Override
-        public void save(UUID idempotencyKey, CachedResponse response, Duration ttl) {
-            lastTtl = ttl;
+        public Optional<ResponseContainer> findByIdempotencyKey(UUID idempotencyKey) {
+            Response stored = storage.get(idempotencyKey);
+            return stored == null
+                    ? Optional.empty()
+                    : Optional.of(new DefaultResponseContainer(stored, fingerprints.get(idempotencyKey)));
+        }
+
+        @Override
+        public void save(UUID idempotencyKey, Response response) {
             storage.put(idempotencyKey, response);
         }
     }

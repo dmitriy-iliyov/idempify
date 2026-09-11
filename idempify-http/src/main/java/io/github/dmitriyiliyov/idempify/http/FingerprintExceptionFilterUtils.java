@@ -14,7 +14,7 @@ import java.util.UUID;
 /**
  * Writes the problem responses of the filter, which runs outside the {@code DispatcherServlet} and so is never
  * reached by {@link IdempifyControllerAdvice}. What a failure looks like to a client is decided in
- * {@link ProblemFactory}, shared with the advice; here lives only how it reaches the wire.
+ * {@link ProblemDetailFactory}, shared with the advice; here lives only how it reaches the wire.
  */
 public final class FingerprintExceptionFilterUtils {
 
@@ -27,7 +27,7 @@ public final class FingerprintExceptionFilterUtils {
                                  UUID idempotencyKey,
                                  ObjectMapper problemDetailMapper,
                                  Instant timestamp) {
-        ProblemDetail detail = ProblemFactory.fingerprintPolicyBroken(
+        ProblemDetail detail = ProblemDetailFactory.fingerprintPolicyBroken(
                 "Fingerprint policy is broken, returned fingerprint is null or blank.",
                 request.getRequestURI(),
                 timestamp,
@@ -41,7 +41,7 @@ public final class FingerprintExceptionFilterUtils {
                                   UUID idempotencyKey,
                                   ObjectMapper problemDetailMapper,
                                   Instant timestamp) {
-        ProblemDetail detail = ProblemFactory.idempotencyKeyReuse(
+        ProblemDetail detail = ProblemDetailFactory.idempotencyKeyReuse(
                 request.getRequestURI(),
                 timestamp,
                 idempotencyKey
@@ -54,7 +54,7 @@ public final class FingerprintExceptionFilterUtils {
                                                UUID idempotencyKey,
                                                ObjectMapper problemDetailMapper,
                                                Instant timestamp) {
-        ProblemDetail detail = ProblemFactory.fingerprintPolicyBroken(
+        ProblemDetail detail = ProblemDetailFactory.fingerprintPolicyBroken(
                 "Generate fingerprint throw",
                 request.getRequestURI(),
                 timestamp,

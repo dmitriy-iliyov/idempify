@@ -3,11 +3,15 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.OperationState;
+import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
-import io.github.dmitriyiliyov.idempify.core.response.*;
+import io.github.dmitriyiliyov.idempify.core.response.Response;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseContainer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseManager;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,8 +26,8 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 public class OperationResponseCachingFilter extends OncePerRequestFilter {
@@ -33,7 +37,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
     private final OperationStateChannel channel;
     private final FingerprintMatcher fingerprintMatcher;
     private final KeyExtractor keyExtractor;
-    private final ResponseCache cache;
+    private final ResponseManager responseManager;
     private final ObjectMapper problemDetailMapper;
     private final Clock clock;
 
@@ -48,14 +52,14 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                                           OperationStateChannel channel,
                                           FingerprintMatcher fingerprintMatcher,
                                           KeyExtractor keyExtractor,
-                                          ResponseCache cache,
+                                          ResponseManager responseManager,
                                           ObjectMapper mapper,
                                           Clock clock) {
         this.matcher = Objects.requireNonNull(matcher, "matcher cannot be null");
         this.channel = Objects.requireNonNull(channel, "channel cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
         this.keyExtractor = Objects.requireNonNull(keyExtractor, "keyExtractor cannot be null");
-        this.cache = Objects.requireNonNull(cache, "cache cannot be null");
+        this.responseManager = Objects.requireNonNull(responseManager, "responseManager cannot be null");
         this.problemDetailMapper = Objects.requireNonNull(mapper, "mapper cannot be null")
                 .copy()
                 .addMixIn(ProblemDetail.class, ProblemDetailJacksonMixin.class);
@@ -72,9 +76,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
             return;
         }
 
-        HttpServletRequest wrappedRequest = metadata.useFingerprint()
-                ? new ContentCachingRequestWrapper(request)
-                : request;
+        HttpServletRequest wrappedRequest = wrapRequest(metadata, request);
 
         UUID idempotencyKey = extractIdempotencyKey(metadata, wrappedRequest);
         if (idempotencyKey == null) {
@@ -82,6 +84,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
             return;
         }
 
+        // matching fingerprint
         String fingerprint = generateFingerprint(idempotencyKey, metadata, wrappedRequest, response);
         if (metadata.useFingerprint() && fingerprint != null && fingerprint.isBlank()) {
             return;
@@ -97,11 +100,16 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
-
         } finally {
-            cachePut(idempotencyKey, fingerprint, metadata, wrappedResponse);
+            cachePut(idempotencyKey, metadata, wrappedResponse);
             wrappedResponse.copyBodyToResponse();
         }
+    }
+
+    private HttpServletRequest wrapRequest(OperationMetadata metadata, HttpServletRequest request) {
+        return metadata.useFingerprint()
+                ? new ContentCachingRequestWrapper(request)
+                : request;
     }
 
     private UUID extractIdempotencyKey(OperationMetadata metadata, HttpServletRequest request) {
@@ -160,128 +168,70 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                                String fingerprint,
                                HttpServletRequest request,
                                HttpServletResponse response) throws IOException {
-        CachedResponse cachedResponse = findInCache(idempotencyKey);
-        if (cachedResponse != null) {
-            if (metadata.useFingerprint()) {
-                try {
-                    fingerprintMatcher.match(
-                            fingerprint,
-                            cachedResponse.getFingerprint(),
-                            metadata.getFingerprintPolicy(),
-                            idempotencyKey
-                    );
-                } catch (Exception e) {
-                    log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking cache", idempotencyKey);
-                    FingerprintExceptionFilterUtils.ofMismatch(
-                            request,
-                            response,
-                            idempotencyKey,
-                            problemDetailMapper,
-                            clock.instant()
-                    );
-                    return true;
-                }
-            }
-            writeCachedResponse(response, cachedResponse, idempotencyKey);
-            return true;
+        Optional<ResponseContainer> nullableResponseContainer = findResponse(idempotencyKey);
+        if (nullableResponseContainer.isEmpty()) {
+            return false;
         }
-        return false;
+        ResponseContainer responseContainer = nullableResponseContainer.get();
+
+        if (metadata.useFingerprint()) {
+            try {
+                fingerprintMatcher.match(
+                        fingerprint,
+                        responseContainer.getFingerprint(),
+                        metadata.getFingerprintPolicy(),
+                        idempotencyKey
+                );
+            } catch (Exception e) {
+                log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking cache", idempotencyKey);
+                FingerprintExceptionFilterUtils.ofMismatch(
+                        request,
+                        response,
+                        idempotencyKey,
+                        problemDetailMapper,
+                        clock.instant()
+                );
+                return true;
+            }
+        }
+        FilterUtils.writeToServletResponse(idempotencyKey, response, responseContainer.getResponse());
+        return true;
     }
 
-    private CachedResponse findInCache(UUID idempotencyKey) {
+    private Optional<ResponseContainer> findResponse(UUID idempotencyKey) {
         try {
-            return cache.findByIdempotencyKey(idempotencyKey);
+            return responseManager.findByIdempotencyKey(idempotencyKey);
         } catch (Exception e) {
             log.error("Error when checking cache for operation response (idempotencyKey={})", idempotencyKey, e);
-            return null;
-        }
-    }
-
-    private void writeCachedResponse(HttpServletResponse response,
-                                     CachedResponse cachedResponse,
-                                     UUID idempotencyKey) throws IOException {
-        response.setStatus(cachedResponse.getStatus());
-
-        String contentType = cachedResponse.getContentType();
-        if (contentType != null && !contentType.isBlank()) {
-            response.setContentType(contentType);
-        } else {
-            log.warn("Operation (idempotencyKey={}) response contentType is null or blank", idempotencyKey);
-        }
-
-        byte [] body = cachedResponse.getBody();
-        int length = body == null ? 0 : body.length;
-        response.setContentLength(length);
-
-        if (length > 0) {
-            response.getOutputStream().write(body);
+            return Optional.empty();
         }
     }
 
     private void cachePut(UUID idempotencyKey,
-                          String fingerprint,
                           OperationMetadata metadata,
                           ContentCachingResponseWrapper responseWrapper) {
         try {
-            OperationState operationState = channel.consume();
-            if (operationState == null || operationState.replayed()) {
+            try {
+                OperationState operationState = channel.consume();
+                if (operationState == null || operationState.replayed()) {
+                    return;
+                }
+            } catch (Exception e) {
+                log.error("Channel interrupted when consuming operation state (idempotencyKey={})", idempotencyKey, e);
                 return;
             }
 
-            ResponseCacheConfig cacheConfig = metadata.getResponseCacheConfig();
-            if (!shouldCache(cacheConfig, responseWrapper.getStatus())) {
+            ResponseConfig responseConfig = metadata.getResponseConfig();
+            if (!FilterUtils.shouldCache(responseConfig, responseWrapper.getStatus())) {
                 return;
             }
 
-            CachedResponse cacheableResponse = new DefaultCachedResponse(
-                    responseWrapper.getStatus(),
-                    responseWrapper.getContentAsByteArray(),
-                    responseWrapper.getContentType(),
-                    fingerprint
-            );
+            Response operationResponse = new HttpResponseProvider(responseConfig).provide(responseWrapper);
 
-            Duration ttl = cacheTtl(operationState);
-            if (ttl == null) {
-                log.debug("Operation (idempotencyKey={}) has no expiry yet, response not cached", idempotencyKey);
-                return;
-            }
-            cache.save(idempotencyKey, cacheableResponse, ttl);
+            // DISCUSS is concurrently involve possible
+            responseManager.save(idempotencyKey, operationResponse);
         } catch (Exception e) {
             log.error("Error when saving operation response (idempotencyKey={})", idempotencyKey, e);
         }
-    }
-
-    private boolean shouldCache(ResponseCacheConfig cacheConfig, int status) {
-        if (cacheConfig == null) {
-            return false;
-        }
-
-        boolean shouldCache = cacheConfig.isEnabled();
-
-        if (is4xx(status) && !cacheConfig.shouldCache4xx()) {
-            shouldCache = false;
-        }
-
-        if (is5xx(status) && !cacheConfig.shouldCache5xx()) {
-            shouldCache = false;
-        }
-
-        return shouldCache;
-    }
-
-    private boolean is4xx(int status) {
-        return status >= 400 && status < 500;
-    }
-
-    private boolean is5xx(int status) {
-        return status >= 500 && status < 600;
-    }
-
-    private Duration cacheTtl(OperationState operationState) {
-        if (operationState.getExpiresAt() == null) {
-            return null;
-        }
-        Duration ttl = Duration.between(clock.instant(), operationState.getExpiresAt());
-        return ttl.isPositive() ? ttl : null;
     }
 }

@@ -1,29 +1,21 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
-
-import java.time.Instant;
+import io.github.dmitriyiliyov.idempify.core.OperationState;
 
 /**
- * Stands in for whatever core publishes into the channel: http reads nothing from it but the two values below.
+ * Stands in for whatever core publishes into the channel: http reads nothing from it but whether the answer
+ * was replayed - the expiry lives on the record instead.
  */
 final class TestOperationState implements OperationState {
 
-    private final Instant expiresAt;
     private final boolean replayed;
 
-    private TestOperationState(Instant expiresAt, boolean replayed) {
-        this.expiresAt = expiresAt;
+    private TestOperationState(boolean replayed) {
         this.replayed = replayed;
     }
 
-    static TestOperationState of(Instant expiresAt, boolean replayed) {
-        return new TestOperationState(expiresAt, replayed);
-    }
-
-    @Override
-    public Instant getExpiresAt() {
-        return expiresAt;
+    static TestOperationState of(boolean replayed) {
+        return new TestOperationState(replayed);
     }
 
     @Override

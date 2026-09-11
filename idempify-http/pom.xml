@@ -44,6 +44,20 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- the other entry point, alive only in the component test that has to see both of them cooperate -->
+        <dependency>
+            <groupId>io.github.dmitriy-iliyov.idempify</groupId>
+            <artifactId>idempify-aop</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

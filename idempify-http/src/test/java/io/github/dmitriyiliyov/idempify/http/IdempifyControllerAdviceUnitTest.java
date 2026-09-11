@@ -5,6 +5,7 @@ import io.github.dmitriyiliyov.idempify.core.conflict.*;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -165,6 +166,32 @@ class IdempifyControllerAdviceUnitTest {
     }
 
     @Test
+    @DisplayName("UT handleInvalidFingerprintException() should answer the same way the filter does, carrying the key")
+    void handleInvalidFingerprintException_shouldAnswerSameWayFilterDoesCarryingKey() {
+        // when
+        ProblemDetail detail = tested.handleInvalidFingerprintException(new InvalidFingerprintException(KEY), request);
+
+        // then
+        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.FINGERPRINT_POLICY_BROKEN);
+        assertThat(detail.getProperties()).containsEntry("idempotencyKey", KEY);
+    }
+
+    @Test
+    @DisplayName("UT handleOperationStatusMismatchException() should answer 500 without exposing the internal message")
+    void handleOperationStatusMismatchException_shouldAnswer500WithoutExposingInternalMessage() {
+        // given
+        OperationStatusMismatchException exception =
+                new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS);
+
+        // when
+        ProblemDetail detail = tested.handleOperationStatusMismatchException(exception, request);
+
+        // then
+        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.IDEMPOTENT_PROCESSING_FAILED);
+        assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
+    }
+
+    @Test
     @DisplayName("UT handleOperationDisappearedException() should answer 500 without exposing the internal message")
     void handleOperationDisappearedException_shouldAnswer500WithoutExposingInternalMessage() {
         // given
@@ -194,33 +221,33 @@ class IdempifyControllerAdviceUnitTest {
     }
 
     @Test
-    @DisplayName("UT handleResultProcessingException() should answer 500 without exposing the internal message")
-    void handleResultProcessingException_shouldAnswer500WithoutExposingInternalMessage() {
+    @DisplayName("UT handleSerializationProcessingException() should answer 500 without exposing the internal message")
+    void handleSerializationProcessingException_shouldAnswer500WithoutExposingInternalMessage() {
         // given
-        ResultProcessingException exception =
-                new ResultProcessingException("Cannot construct instance of ResponseEntity", new IllegalStateException());
+        SerializationProcessingException exception =
+                new SerializationProcessingException("Cannot construct instance of ResponseEntity", new IllegalStateException());
 
         // when
-        ProblemDetail detail = tested.handleResultProcessingException(exception, request);
+        ProblemDetail detail = tested.handleSerializationProcessingException(exception, request);
 
         // then
-        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
+        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.SERIALIZATION_PROCESSING_FAILED);
         assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
-        assertThat(detail.getTitle()).isEqualTo("Operation result processing failed");
+        assertThat(detail.getTitle()).isEqualTo("Serialization processing failed");
     }
 
     @Test
-    @DisplayName("UT handleResultProcessingException() should answer the same way for a failure on either side")
-    void handleResultProcessingException_shouldAnswerSameWayForFailureOnEitherSide() {
+    @DisplayName("UT handleSerializationProcessingException() should answer the same way for a failure on either side")
+    void handleSerializationProcessingException_shouldAnswerSameWayForFailureOnEitherSide() {
         // given - the handler is declared on the group, so both sides have to reach it
-        ResultProcessingException read = new ResultDeserializationException("read failed", new IllegalStateException());
-        ResultProcessingException write = new ResultSerializationException("write failed", new IllegalStateException());
+        SerializationProcessingException read = new DeserializationException("read failed", new IllegalStateException());
+        SerializationProcessingException write = new SerializationException("write failed", new IllegalStateException());
 
         // when / then
-        assertProblem(tested.handleResultProcessingException(read, request),
-                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
-        assertProblem(tested.handleResultProcessingException(write, request),
-                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.RESULT_PROCESSING_FAILED);
+        assertProblem(tested.handleSerializationProcessingException(read, request),
+                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.SERIALIZATION_PROCESSING_FAILED);
+        assertProblem(tested.handleSerializationProcessingException(write, request),
+                HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.SERIALIZATION_PROCESSING_FAILED);
     }
 
     @Test

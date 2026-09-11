@@ -35,8 +35,8 @@ class ProblemTypesUnitTest {
                 .isEqualTo(URI.create("https://idempify.io/errors/fingerprint-policy-broken"));
         assertThat(ProblemTypes.IDEMPOTENT_PROCESSING_FAILED)
                 .isEqualTo(URI.create("https://idempify.io/errors/idempotent-processing-failed"));
-        assertThat(ProblemTypes.RESULT_PROCESSING_FAILED)
-                .isEqualTo(URI.create("https://idempify.io/errors/result-processing-failed"));
+        assertThat(ProblemTypes.SERIALIZATION_PROCESSING_FAILED)
+                .isEqualTo(URI.create("https://idempify.io/errors/serialization-processing-failed"));
     }
 
     @Test

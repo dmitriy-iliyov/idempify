@@ -3,18 +3,14 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import io.github.dmitriyiliyov.idempify.core.IdempifyDefaults;
-import io.github.dmitriyiliyov.idempify.core.Idempotent;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseManager;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,7 +46,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     private final WebApplicationContextRunner contextRunner = contextRunnerWithout()
             .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
             .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-            .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+            .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
             .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
             .withBean(ObjectMapper.class, ObjectMapper::new)
             .withBean(Clock.class, Clock::systemUTC);
@@ -83,7 +79,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     void context_whenNoOperationMetadataResolverExists_shouldFailToStart() {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
@@ -91,19 +87,15 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when no ResponseCache exists should start without the caching filter")
-    void context_whenNoResponseCacheExists_shouldStartWithoutCachingFilter() {
+    @DisplayName("IT context when no ResponseManager exists should fail to start")
+    void context_whenNoResponseManagerExists_shouldFailToStart() {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    assertThat(context).doesNotHaveBean("idempifyOperationResponseCachingFilterRegistrationBean");
-                    assertThat(context).hasSingleBean(IdempotentRequestMatcher.class);
-                });
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -111,7 +103,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     void context_whenNoRequestMappingHandlerMappingExists_shouldFailToStart() {
         contextRunnerWithout()
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
@@ -124,7 +116,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
                 .run(context -> assertThat(context).hasFailed());
@@ -136,7 +128,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(Clock.class, Clock::systemUTC)
                 .run(context -> {
@@ -162,7 +154,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
         contextRunnerWithout()
                 .withBean(RequestMappingHandlerMapping.class, () -> mock(RequestMappingHandlerMapping.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .run(context -> assertThat(context).hasFailed());
@@ -285,7 +277,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempifyHttpAutoConfiguration.class))
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC)
@@ -367,7 +359,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
         return contextRunnerWithout()
                 .withUserConfiguration(WebMvcConfiguration.class)
                 .withBean(OperationMetadataResolver.class, () -> mock(OperationMetadataResolver.class))
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
                 .withBean(FingerprintMatcher.class, () -> mock(FingerprintMatcher.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(Clock.class, Clock::systemUTC);
@@ -452,7 +444,7 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
                     mock(OperationStateChannel.class),
                     mock(FingerprintMatcher.class),
                     mock(KeyExtractor.class),
-                    mock(ResponseCache.class),
+                    mock(ResponseManager.class),
                     new ObjectMapper(),
                     Clock.systemUTC()
             ));

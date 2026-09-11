@@ -3,14 +3,13 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.response.ResponseCache;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseManager;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -54,20 +53,26 @@ public class IdempifyHttpAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnBean(ResponseCache.class)
     public FilterRegistrationBean<OperationResponseCachingFilter> idempifyOperationResponseCachingFilterRegistrationBean(
             IdempotentRequestMatcher matcher,
             OperationStateChannel channel,
             FingerprintMatcher fingerprintMatcher,
             KeyExtractor keyExtractor,
-            ResponseCache cache,
+            ResponseManager responseManager,
             ObjectProvider<MappingJackson2HttpMessageConverter> jsonConverter,
             Clock clock
     ) {
         FilterRegistrationBean<OperationResponseCachingFilter> registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(
-                new OperationResponseCachingFilter(matcher, channel, fingerprintMatcher, keyExtractor, cache,
-                        problemMapper(jsonConverter), clock)
+                new OperationResponseCachingFilter(
+                        matcher,
+                        channel,
+                        fingerprintMatcher,
+                        keyExtractor,
+                        responseManager,
+                        problemMapper(jsonConverter),
+                        clock
+                )
         );
         registrationBean.setOrder(Ordered.LOWEST_PRECEDENCE);
         registrationBean.addUrlPatterns("/*");

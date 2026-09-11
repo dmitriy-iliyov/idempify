@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.OperationState;
+import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.context.request.RequestAttributes;

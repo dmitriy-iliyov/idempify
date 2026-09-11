@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
+import io.github.dmitriyiliyov.idempify.core.OperationState;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +47,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_afterPublish_shouldReturnPublishedState() {
         // given
         bindRequest();
-        OperationState published = TestOperationState.of(EXPIRES_AT, false);
+        OperationState published = TestOperationState.of(false);
 
         // when
         tested.publish(published);
@@ -55,7 +55,6 @@ class HttpAttributesOperationStateChannelUnitTest {
 
         // then
         assertThat(result).isSameAs(published);
-        assertThat(result.getExpiresAt()).isEqualTo(EXPIRES_AT);
         assertThat(result.replayed()).isFalse();
     }
 
@@ -64,10 +63,10 @@ class HttpAttributesOperationStateChannelUnitTest {
     void publish_whenStateWasAlreadyPublished_shouldReplaceIt() {
         // given
         bindRequest();
-        OperationState last = TestOperationState.of(EXPIRES_AT, true);
+        OperationState last = TestOperationState.of(true);
 
         // when
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
         tested.publish(last);
 
         // then
@@ -79,7 +78,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void publish_shouldKeepStateOnRequestItselfRatherThanOnThread() {
         // given
         MockHttpServletRequest request = bindRequest();
-        OperationState published = TestOperationState.of(EXPIRES_AT, false);
+        OperationState published = TestOperationState.of(false);
 
         // when
         tested.publish(published);
@@ -95,7 +94,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         MockHttpServletRequest request = bindRequest();
 
         // when
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
 
         // then
         assertThat(Collections.list(request.getAttributeNames()))
@@ -108,7 +107,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_whenCalledTwice_shouldReturnNullSecondTime() {
         // given
         bindRequest();
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
 
         // when
         OperationState first = tested.consume();
@@ -124,7 +123,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_shouldTakeStateOffRequestInsteadOfLeavingItThere() {
         // given
         MockHttpServletRequest request = bindRequest();
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
 
         // when
         tested.consume();
@@ -138,7 +137,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_whenAnotherRequestIsBound_shouldNotSeeStateOfPreviousOne() {
         // given
         bindRequest();
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
 
         // when
         bindRequest();
@@ -154,7 +153,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         RequestContextHolder.resetRequestAttributes();
 
         // when / then
-        assertThatThrownBy(() -> tested.publish(TestOperationState.of(EXPIRES_AT, false)))
+        assertThatThrownBy(() -> tested.publish(TestOperationState.of(false)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No HTTP request is bound to the current thread");
     }
@@ -178,7 +177,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/payments");
         ServletRequestAttributes attributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(attributes);
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
         attributes.requestCompleted();
 
         // when / then
@@ -194,7 +193,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
 
         // when
-        tested.publish(TestOperationState.of(EXPIRES_AT, false));
+        tested.publish(TestOperationState.of(false));
 
         // then
         assertThat(attributes.getAttribute(ATTRIBUTE_NAME, RequestAttributes.SCOPE_SESSION)).isNull();
