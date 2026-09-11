@@ -2,6 +2,8 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
+import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,37 +13,45 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * Owns the conversion between the domain and the store: the repository below deals in rows, and this is the
+ * one place that knows what those rows decode into. The declared type of a result comes from the call site
+ * rather than the row, so a caller without one - the response path - never has to invent it.
+ */
 public class DefaultTransactionalOperationManager implements TransactionalOperationManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultTransactionalOperationManager.class);
-    private final OperationMapper mapper;
+    private final OperationCreator creator;
     private final TransactionalOperationRepository repository;
     private final FingerprintMatcher fingerprintMatcher;
+    private final OperationSerializer serializer;
+    private final OperationDeserializer deserializer;
     private final ResultSerializer resultSerializer;
-    private final ResultDeserializer resultDeserializer;
     private final Clock clock;
 
-    public DefaultTransactionalOperationManager(OperationMapper mapper,
+    public DefaultTransactionalOperationManager(OperationCreator creator,
                                                 TransactionalOperationRepository repository,
                                                 FingerprintMatcher fingerprintMatcher,
+                                                OperationSerializer serializer,
+                                                OperationDeserializer deserializer,
                                                 ResultSerializer resultSerializer,
-                                                ResultDeserializer resultDeserializer,
                                                 Clock clock) {
-        this.mapper = Objects.requireNonNull(mapper, "mapper cannot be null");
+        this.creator = Objects.requireNonNull(creator, "creator cannot be null");
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
+        this.serializer = Objects.requireNonNull(serializer, "serializer cannot be null");
+        this.deserializer = Objects.requireNonNull(deserializer, "deserializer cannot be null");
         this.resultSerializer = Objects.requireNonNull(resultSerializer, "resultSerializer cannot be null");
-        this.resultDeserializer = Objects.requireNonNull(resultDeserializer, "resultDeserializer cannot be null");
         this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
     @Override
     public OperationDetail startOrReply(OperationContext context, OperationMetadata metadata) {
-        Operation operation = saveOrFetch(context, metadata);
+        Operation operation = saveOrFetch(context);
 
         if (metadata.useFingerprint() && !operation.isFirstAttempt()) {
             if (context.getFingerprint().isEmpty()) {
-                log.warn("Operation (idempotencyKey={}) fingerprint is null or blank", operation.getIdempotencyKey());
+                log.error("Operation (idempotencyKey={}) fingerprint is null or blank", operation.getIdempotencyKey());
                 throw new InvalidFingerprintException(operation.getIdempotencyKey());
             } else {
                 fingerprintMatcher.match(
@@ -58,31 +68,32 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
 
         if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
             replayed = true;
-            result = resultDeserializer.deserialize(operation.getResult(), context.getOperationResultType());
+            result = operation.getResult();
         }
 
         return new DefaultOperationDetail(
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
                 replayed,
-                result,
-                operation.getExpiresAt()
+                result
         );
     }
 
-    protected Operation saveOrFetch(OperationContext context, OperationMetadata metadata) {
-        String fingerprint = context.getFingerprint().isEmpty() ? null : context.getFingerprint().get();
-        Operation toSave = mapper.toOperation(
-                context.getIdempotencyKey(),
-                fingerprint,
-                metadata,
-                clock.instant()
+    protected Operation saveOrFetch(OperationContext context) {
+        RawOperation rawToSave = serializer.serialize(
+                creator.create(context, clock.instant())
         );
 
-        Operation exists = repository.saveIfAbsent(toSave);
+        Operation exists = deserializer.deserialize(
+                repository.saveIfAbsent(rawToSave),
+                context.getResultType()
+        );
 
         if (exists.isExpired(clock.instant())) {
-            exists = repository.update(toSave, OperationStatus.PROCESSED);
+            exists = deserializer.deserialize(
+                    repository.update(rawToSave, OperationStatus.PROCESSED),
+                    context.getResultType()
+            );
         }
 
         return exists;
@@ -109,21 +120,23 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
 //    }
 
     @Override
-    public OperationDetail complete(UUID idempotencyKey, Duration ttl, Object result) {
+    public OperationDetail complete(UUID idempotencyKey, Object result, ResultType resultType, Duration ttl) {
         Instant expiresAt = clock.instant().plus(ttl);
-        Operation operation = repository.saveResultAndUpdateStatus(
-                resultSerializer.serialize(result),
-                OperationStatus.PROCESSED,
-                expiresAt,
-                idempotencyKey,
-                OperationStatus.IN_PROCESS
+        Operation operation = deserializer.deserialize(
+                repository.saveResultAndUpdateStatus(
+                        idempotencyKey,
+                        resultSerializer.serialize(result),
+                        OperationStatus.PROCESSED,
+                        expiresAt,
+                        OperationStatus.IN_PROCESS
+                ),
+                resultType
         );
         return new DefaultOperationDetail(
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
                 false,
-                result,
-                operation.getExpiresAt()
+                operation.getResult()
         );
     }
 }

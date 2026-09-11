@@ -12,9 +12,8 @@ import java.time.Duration;
  * <p>
  * The config classes read these strings for their own {@code DEFAULT_*} constants, so a default is written
  * here once and answered the same way from both sides; that the two agree is what
- * {@code PropertyDefaultsUnitTest} checks. Response caching is the one answer that is a plain "no": it stays
- * off until an application names a cache, since entries of different applications sharing a store must not be
- * merged under a name nobody chose.
+ * {@code PropertyDefaultsUnitTest} checks. Keeping an error response is the one answer that is a plain "no":
+ * neither a 4xx nor a 5xx stays on the record unless an application asks for it.
  */
 public final class IdempifyDefaults {
 
@@ -42,9 +41,11 @@ public final class IdempifyDefaults {
     public static final String BODY_FORMAT_VALUE = "JSON";
     public static final String CANONICALIZE_STRATEGY_VALUE = "LEXICOGRAPHICAL";
 
-    public static final String CACHE_ENABLED_VALUE = "false";
-    public static final String CACHE_4XX_VALUE = "false";
-    public static final String CACHE_5XX_VALUE = "false";
+    public static final String RESPONSE_CACHE_4XX_VALUE = "false";
+    public static final String RESPONSE_CACHE_5XX_VALUE = "false";
+
+    public static final String CACHE_ENABLED_VALUE = "true";
+    public static final String CACHE_TYPE_VALUE = "IN_MEMORY";
     public static final String IN_MEMORY_CACHE_CAPACITY_VALUE = "100";
 
     public static final String METRICS_ENABLED_VALUE = "false";

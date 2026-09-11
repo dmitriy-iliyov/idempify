@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -45,8 +46,8 @@ class DefaultOperationContextUnitTest {
         DefaultOperationContext tested = new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fingerprint");
 
         // then
-        assertThat(tested.getOperationResultType()).isEqualTo(ResultType.ofClass(String.class));
-        assertThat(tested.getOperationCallback().call()).isEqualTo("result");
+        assertThat(tested.getResultType()).isEqualTo(ResultType.ofClass(String.class));
+        assertThat(tested.getCallback().call()).isEqualTo("result");
         assertThat(tested.getIdempotencyKey()).isEqualTo(KEY);
         assertThat(tested.getFingerprint()).contains("fingerprint");
     }

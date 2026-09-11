@@ -13,6 +13,10 @@ import java.util.UUID;
  */
 public class OperationStatusMismatchException extends RuntimeException {
 
+    public OperationStatusMismatchException(String message) {
+        super(message);
+    }
+
     public OperationStatusMismatchException(UUID idempotencyKey, OperationStatus expectedStatus) {
         super("Operation (idempotencyKey=%s) was not in expected status %s".formatted(idempotencyKey, expectedStatus));
     }

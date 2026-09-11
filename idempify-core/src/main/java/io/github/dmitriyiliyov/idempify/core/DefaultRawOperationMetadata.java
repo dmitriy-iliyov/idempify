@@ -14,7 +14,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     private final ProcessorTypeToggle processorType;
     private final ConflictHandleStrategyToggle conflictHandleStrategy;
     private final Toggle fingerprintToggle;
-    private final Toggle cacheToggle;
     private final Toggle cache4xxToggle;
     private final Toggle cache5xxToggle;
 
@@ -25,7 +24,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         this.processorType = builder.processorType;
         this.conflictHandleStrategy = builder.conflictHandleStrategy;
         this.fingerprintToggle = builder.fingerprintToggle;
-        this.cacheToggle = builder.cacheToggle;
         this.cache4xxToggle = builder.cache4xxToggle;
         this.cache5xxToggle = builder.cache5xxToggle;
     }
@@ -61,11 +59,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     }
 
     @Override
-    public Toggle getCacheToggle() {
-        return cacheToggle;
-    }
-
-    @Override
     public Toggle getCache4xxToggle() {
         return cache4xxToggle;
     }
@@ -85,7 +78,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
                 && processorType == that.processorType
                 && conflictHandleStrategy == that.conflictHandleStrategy
                 && fingerprintToggle == that.fingerprintToggle
-                && cacheToggle == that.cacheToggle
                 && cache4xxToggle == that.cache4xxToggle
                 && cache5xxToggle == that.cache5xxToggle;
     }
@@ -93,7 +85,7 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     @Override
     public int hashCode() {
         return Objects.hash(useHeaderName, headerName, ttl, processorType, conflictHandleStrategy, fingerprintToggle,
-                cacheToggle, cache4xxToggle, cache5xxToggle);
+                cache4xxToggle, cache5xxToggle);
     }
 
     @Override
@@ -105,7 +97,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
                 ", processorType=" + processorType +
                 ", conflictHandleStrategy=" + conflictHandleStrategy +
                 ", fingerprintToggle=" + fingerprintToggle +
-                ", cacheToggle=" + cacheToggle +
                 ", cache4xxToggle=" + cache4xxToggle +
                 ", cache5xxToggle=" + cache5xxToggle +
                 '}';
@@ -124,7 +115,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         private TimeUnit timeUnit = TimeUnit.HOURS;
         private ConflictHandleStrategyToggle conflictHandleStrategy = ConflictHandleStrategyToggle.UNSELECTED;
         private Toggle fingerprintToggle = Toggle.UNSELECTED;
-        private Toggle cacheToggle = Toggle.UNSELECTED;
         private Toggle cache4xxToggle = Toggle.UNSELECTED;
         private Toggle cache5xxToggle = Toggle.UNSELECTED;
 
@@ -164,11 +154,6 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
         public Builder fingerprintToggle(Toggle fingerprintToggle) {
             this.fingerprintToggle = toggleOrDefault(fingerprintToggle);
-            return this;
-        }
-
-        public Builder cacheToggle(Toggle cacheToggle) {
-            this.cacheToggle = toggleOrDefault(cacheToggle);
             return this;
         }
 

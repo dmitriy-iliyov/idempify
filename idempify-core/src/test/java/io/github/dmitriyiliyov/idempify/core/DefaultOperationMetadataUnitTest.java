@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.conflict.RejectConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
@@ -42,7 +42,7 @@ class DefaultOperationMetadataUnitTest {
         assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
         assertThat(result.getConflictHandler()).isSameAs(handler);
         assertThat(result.getFingerprintPolicy()).isSameAs(policy);
-        assertThat(result.getResponseCacheConfig()).isNotNull();
+        assertThat(result.getResponseConfig()).isNotNull();
     }
 
     @Test
@@ -52,7 +52,7 @@ class DefaultOperationMetadataUnitTest {
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .ttl(Duration.ofHours(1))
                 .processorType(ProcessorType.LOCK_BASED)
-                .responseCacheConfig(ResponseCacheConfig.disabled())
+                .responseConfig(ResponseConfig.disabled())
                 .build();
 
         // then
@@ -68,7 +68,7 @@ class DefaultOperationMetadataUnitTest {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .processorType(ProcessorType.LOCK_BASED)
-                .responseCacheConfig(ResponseCacheConfig.disabled())
+                .responseConfig(ResponseConfig.disabled())
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("ttl cannot be null");
@@ -80,7 +80,7 @@ class DefaultOperationMetadataUnitTest {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .responseCacheConfig(ResponseCacheConfig.disabled())
+                .responseConfig(ResponseConfig.disabled())
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("processorType cannot be null");
@@ -95,7 +95,7 @@ class DefaultOperationMetadataUnitTest {
                 .processorType(ProcessorType.LOCK_BASED)
                 .build())
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("responseCacheConfig cannot be null");
+                .hasMessageContaining("responseConfig cannot be null");
     }
 
     @ParameterizedTest
@@ -184,10 +184,23 @@ class DefaultOperationMetadataUnitTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
                 .processorType(ProcessorType.TRANSACTIONAL)
-                .responseCacheConfig(ResponseCacheConfig.all())
+                .responseConfig(ResponseConfig.all())
                 .build())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("responseCacheConfig cannot be enabled if processorType is TRANSACTIONAL");
+                .hasMessageContaining("responses with 4xx or 5xx cannot be cached");
+    }
+
+    @Test
+    @DisplayName("UT build() when the processor is TRANSACTIONAL and only 5xx is kept should refuse the pair")
+    void build_whenProcessorIsTransactionalAndOnly5xxIsKept_shouldRefusePair() {
+        assertThatThrownBy(() -> DefaultOperationMetadata.builder()
+                .headerName("Idempotency-Key")
+                .ttl(Duration.ofHours(1))
+                .processorType(ProcessorType.TRANSACTIONAL)
+                .responseConfig(ResponseConfig.builder().shouldCache4xx(false).shouldCache5xx(true).build())
+                .build())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("responses with 4xx or 5xx cannot be cached");
     }
 
     @Test
@@ -198,12 +211,12 @@ class DefaultOperationMetadataUnitTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
                 .processorType(ProcessorType.TRANSACTIONAL)
-                .responseCacheConfig(ResponseCacheConfig.disabled())
+                .responseConfig(ResponseConfig.disabled())
                 .build();
 
         // then
         assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
     }
 
     private static DefaultOperationMetadata.Builder full() {
@@ -211,7 +224,7 @@ class DefaultOperationMetadataUnitTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
                 .processorType(ProcessorType.LOCK_BASED)
-                .responseCacheConfig(ResponseCacheConfig.all());
+                .responseConfig(ResponseConfig.all());
     }
 
     private static FingerprintPolicy policy() {

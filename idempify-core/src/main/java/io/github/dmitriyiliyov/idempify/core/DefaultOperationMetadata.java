@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 
@@ -22,7 +22,7 @@ import java.util.Objects;
  * run where the guard was forgotten, and there it would hide the mistake instead of surfacing it.
  * <p>
  * The response cache config is not one of the two, even though it can also say "no": it says it as
- * {@link ResponseCacheConfig#disabled()}, a value of its own, so a {@code null} there is a decision nobody
+ * {@link ResponseConfig#disabled()}, a value of its own, so a {@code null} there is a decision nobody
  * made rather than a decision to cache nothing - and callers read it without a guard.
  */
 public final class DefaultOperationMetadata implements OperationMetadata {
@@ -32,7 +32,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
     private final ProcessorType processorType;
     private final ConflictHandler conflictHandler;
     private final FingerprintPolicy fingerprintPolicy;
-    private final ResponseCacheConfig responseCacheConfig;
+    private final ResponseConfig responseConfig;
 
     private DefaultOperationMetadata(Builder builder) {
         this.headerName = builder.headerName;
@@ -40,7 +40,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
         this.processorType = builder.processorType;
         this.conflictHandler = builder.conflictHandler;
         this.fingerprintPolicy = builder.fingerprintPolicy;
-        this.responseCacheConfig = builder.responseCacheConfig;
+        this.responseConfig = builder.responseConfig;
     }
 
     @Override
@@ -69,8 +69,8 @@ public final class DefaultOperationMetadata implements OperationMetadata {
     }
 
     @Override
-    public ResponseCacheConfig getResponseCacheConfig() {
-        return responseCacheConfig;
+    public ResponseConfig getResponseConfig() {
+        return responseConfig;
     }
 
     @Override
@@ -81,7 +81,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
                 ", processorType=" + processorType +
                 ", conflictHandler=" + conflictHandler +
                 ", fingerprintPolicy=" + fingerprintPolicy +
-                ", responseCacheConfig=" + responseCacheConfig +
+                ", responseConfig=" + responseConfig +
                 '}';
     }
 
@@ -96,7 +96,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
         private ProcessorType processorType;
         private ConflictHandler conflictHandler;
         private FingerprintPolicy fingerprintPolicy;
-        private ResponseCacheConfig responseCacheConfig;
+        private ResponseConfig responseConfig;
 
         private Builder() {}
 
@@ -141,20 +141,21 @@ public final class DefaultOperationMetadata implements OperationMetadata {
             return this;
         }
 
-        public Builder responseCacheConfig(ResponseCacheConfig responseCacheConfig) {
-            this.responseCacheConfig = Objects.requireNonNull(responseCacheConfig, "responseCacheConfig cannot be null");
+        public Builder responseConfig(ResponseConfig responseConfig) {
+            this.responseConfig = Objects.requireNonNull(responseConfig, "responseConfig cannot be null");
             return this;
         }
 
         public DefaultOperationMetadata build() {
             Objects.requireNonNull(ttl, "ttl cannot be null");
             Objects.requireNonNull(processorType, "processorType cannot be null");
-            Objects.requireNonNull(responseCacheConfig, "responseCacheConfig cannot be null");
+            Objects.requireNonNull(responseConfig, "responseConfig cannot be null");
 
-            if (ProcessorType.TRANSACTIONAL.equals(processorType) && responseCacheConfig.isEnabled()) {
+            if (ProcessorType.TRANSACTIONAL.equals(processorType) &&
+                    (responseConfig.shouldCache4xx() || responseConfig.shouldCache5xx())) {
                 throw new IllegalStateException("""
-                        responseCacheConfig cannot be enabled if processorType is %s: the operation record is rolled back 
-                        together with the business logic, so a cached result would outlive it
+                        if processorType is %s responses with 4xx or 5xx cannot be cached: the operation record 
+                        is rolled back together with the business logic, so a cached result would outlive it
                 """.formatted(processorType));
             }
 

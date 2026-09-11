@@ -162,7 +162,6 @@ class DefaultOperationMetadataResolverUnitTest {
                 .timeUnit(TimeUnit.HOURS)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cacheToggle(Toggle.ENABLE)
                 .cache4xxToggle(Toggle.DISABLE)
                 .cache5xxToggle(Toggle.DISABLE)
                 .build();
@@ -260,7 +259,6 @@ class DefaultOperationMetadataResolverUnitTest {
         assertThat(raw.getTtl()).isNull();
         assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(raw.getCacheToggle()).isEqualTo(Toggle.UNSELECTED);
         assertThat(raw.getCache4xxToggle()).isEqualTo(Toggle.UNSELECTED);
         assertThat(raw.getCache5xxToggle()).isEqualTo(Toggle.UNSELECTED);
     }
@@ -374,7 +372,6 @@ class DefaultOperationMetadataResolverUnitTest {
                 timeUnit = TimeUnit.HOURS,
                 onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                useCache = Toggle.ENABLE,
                 cache4xx = Toggle.DISABLE,
                 cache5xx = Toggle.DISABLE
         )

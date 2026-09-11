@@ -2,8 +2,12 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.fingerprint.*;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
-import io.github.dmitriyiliyov.idempify.core.response.OperationState;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.response.Response;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseDeserializer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,12 +47,15 @@ class IdempifyCoreComponentTest {
     @BeforeEach
     void setUp() {
         clock = TestClock.fixedAt(TestClock.EPOCH);
+        PassThroughResultSerializer resultSerializer = new PassThroughResultSerializer();
+        PassThroughResponseSerializer responseSerializer = new PassThroughResponseSerializer();
         TransactionalOperationManager operationManager = new DefaultTransactionalOperationManager(
-                new DefaultOperationMapper(),
+                new DefaultOperationCreator(),
                 repository,
                 new DefaultFingerprintMatcher(IdempotencyEventListener.NOOP),
-                new PassThroughResultSerializer(),
-                new PassThroughResultSerializer(),
+                new DefaultOperationSerializer(resultSerializer, responseSerializer),
+                new DefaultOperationDeserializer(resultSerializer, responseSerializer),
+                resultSerializer,
                 clock
         );
         processor = new DelegatingIdempotentProcessor(List.of(new TransactionalIdempotentProcessor(
@@ -72,8 +79,8 @@ class IdempifyCoreComponentTest {
         assertThat(result).isEqualTo("charged");
         assertThat(operation.calls).isEqualTo(1);
         assertThat(repository.findByIdempotencyKey(KEY)).hasValueSatisfying(stored -> {
-            assertThat(stored.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-            assertThat(stored.getResult()).isEqualTo("charged");
+            assertThat(stored.status()).isEqualTo(OperationStatus.PROCESSED);
+            assertThat(stored.result()).isEqualTo("charged");
         });
     }
 
@@ -223,7 +230,7 @@ class IdempifyCoreComponentTest {
         call(KEY, request("body"), metadata(false), slow);
 
         // then
-        assertThat(channel.consume().getExpiresAt())
+        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt())
                 .isEqualTo(TestClock.EPOCH.plus(ranFor).plus(ttl));
     }
 
@@ -231,7 +238,7 @@ class IdempifyCoreComponentTest {
     @DisplayName("CT request while the operation is still running should hold a row that carries no expiry")
     void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() {
         // given
-        List<Operation> seenMidFlight = new ArrayList<>();
+        List<RawOperation> seenMidFlight = new ArrayList<>();
         ExternalOperationCallback peeking = () -> {
             seenMidFlight.add(repository.findByIdempotencyKey(KEY).orElseThrow());
             return "charged";
@@ -242,10 +249,10 @@ class IdempifyCoreComponentTest {
 
         // then
         assertThat(seenMidFlight).singleElement().satisfies(midFlight -> {
-            assertThat(midFlight.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-            assertThat(midFlight.getExpiresAt()).isNull();
+            assertThat(midFlight.status()).isEqualTo(OperationStatus.IN_PROCESS);
+            assertThat(midFlight.expiresAt()).isNull();
         });
-        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().getExpiresAt()).isNotNull();
+        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt()).isNotNull();
     }
 
     @Test
@@ -263,7 +270,7 @@ class IdempifyCoreComponentTest {
         // then
         assertThat(firstRun.replayed()).isFalse();
         assertThat(replay.replayed()).isTrue();
-        assertThat(replay.getExpiresAt())
+        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt())
                 .isEqualTo(TestClock.EPOCH.plus(Duration.parse(IdempifyDefaults.TTL_VALUE)));
     }
 
@@ -279,7 +286,7 @@ class IdempifyCoreComponentTest {
 
         assertThat(transactionManager.rollbacks).isEqualTo(1);
         assertThat(repository.findByIdempotencyKey(KEY))
-                .hasValueSatisfying(stored -> assertThat(stored.getStatus()).isEqualTo(OperationStatus.IN_PROCESS));
+                .hasValueSatisfying(stored -> assertThat(stored.status()).isEqualTo(OperationStatus.IN_PROCESS));
     }
 
     @Test
@@ -376,62 +383,88 @@ class IdempifyCoreComponentTest {
      * Stands in for idempify-postgresql, holding to the same contract: {@code saveIfAbsent} is first-writer-wins,
      * the two updates are compare-and-swap on the current status.
      */
-    private static final class InMemoryOperationRepository implements TransactionalOperationRepository {
+    private static final class InMemoryOperationRepository
+            implements TransactionalOperationRepository, OperationRepository {
 
-        private final Map<UUID, Operation> rows = new HashMap<>();
+        private final Map<UUID, RawOperation> rows = new HashMap<>();
 
         @Override
-        public Operation saveIfAbsent(Operation operation) {
-            Operation stored = rows.get(operation.getIdempotencyKey());
+        public RawOperation saveIfAbsent(RawOperation operation) {
+            RawOperation stored = rows.get(operation.idempotencyKey());
             if (stored == null) {
-                rows.put(operation.getIdempotencyKey(), copyOf(operation));
-                return copyOf(operation);
+                rows.put(operation.idempotencyKey(), operation);
+                return operation;
             }
-            stored.setFirstAttempt(false);
-            return copyOf(stored);
+
+            RawOperation repeated = new RawOperation(
+                    stored.idempotencyKey(),
+                    stored.status(),
+                    false,
+                    stored.result(),
+                    stored.response(),
+                    stored.fingerprint(),
+                    stored.expiresAt(),
+                    stored.createdAt()
+            );
+            rows.put(repeated.idempotencyKey(), repeated);
+            return repeated;
         }
 
         @Override
-        public Operation update(Operation operation, OperationStatus onStatus) {
-            Operation stored = rows.get(operation.getIdempotencyKey());
-            if (stored == null || stored.getStatus() != onStatus) {
-                throw new OperationStatusMismatchException(operation.getIdempotencyKey(), onStatus);
+        public RawOperation update(RawOperation operation, OperationStatus onStatus) {
+            RawOperation stored = rows.get(operation.idempotencyKey());
+            if (stored == null || stored.status() != onStatus) {
+                throw new OperationStatusMismatchException(operation.idempotencyKey(), onStatus);
             }
-            rows.put(operation.getIdempotencyKey(), copyOf(operation));
-            return copyOf(operation);
+            rows.put(operation.idempotencyKey(), operation);
+            return operation;
         }
 
         @Override
-        public Operation saveResultAndUpdateStatus(String result,
-                                                   OperationStatus status,
-                                                   Instant expiresAt,
-                                                   UUID idempotencyKey,
-                                                   OperationStatus onStatus) {
-            Operation stored = rows.get(idempotencyKey);
-            if (stored == null || stored.getStatus() != onStatus) {
+        public RawOperation saveResultAndUpdateStatus(UUID idempotencyKey,
+                                                      String result,
+                                                      OperationStatus status,
+                                                      Instant expiresAt,
+                                                      OperationStatus onStatus) {
+            RawOperation stored = rows.get(idempotencyKey);
+            if (stored == null || stored.status() != onStatus) {
                 throw new OperationStatusMismatchException(idempotencyKey, onStatus);
             }
-            stored.setResult(result);
-            stored.setStatus(status);
-            stored.setExpiresAt(expiresAt);
-            return copyOf(stored);
+
+            RawOperation completed = new RawOperation(
+                    stored.idempotencyKey(),
+                    status,
+                    stored.isFirstAttempt(),
+                    result,
+                    stored.response(),
+                    stored.fingerprint(),
+                    expiresAt,
+                    stored.createdAt()
+            );
+            rows.put(idempotencyKey, completed);
+            return completed;
         }
 
         @Override
-        public Optional<Operation> findByIdempotencyKey(UUID idempotencyKey) {
-            return Optional.ofNullable(rows.get(idempotencyKey)).map(InMemoryOperationRepository::copyOf);
+        public Optional<RawOperation> findByIdempotencyKey(UUID idempotencyKey) {
+            return Optional.ofNullable(rows.get(idempotencyKey));
+        }
+    }
+
+    /**
+     * Stands in for idempify-jackson on the response half: these tests never record one, so the pair only has
+     * to keep the round trip honest about nothing being there.
+     */
+    private static final class PassThroughResponseSerializer implements ResponseSerializer, ResponseDeserializer {
+
+        @Override
+        public String serialize(Response response) {
+            return null;
         }
 
-        private static Operation copyOf(Operation operation) {
-            return new Operation(
-                    operation.getIdempotencyKey(),
-                    operation.getStatus(),
-                    operation.isFirstAttempt(),
-                    operation.getResult(),
-                    operation.getFingerprint(),
-                    operation.getExpiresAt(),
-                    operation.getCreatedAt()
-            );
+        @Override
+        public Response deserialize(String rawResponse) {
+            return null;
         }
     }
 

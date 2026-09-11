@@ -1,5 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,12 +24,12 @@ public final class DefaultOperationContext implements OperationContext {
     }
 
     @Override
-    public ResultType getOperationResultType() {
+    public ResultType getResultType() {
         return operationResultType;
     }
 
     @Override
-    public ExternalOperationCallback getOperationCallback() {
+    public ExternalOperationCallback getCallback() {
         return operationCallback;
     }
 
@@ -43,17 +45,13 @@ public final class DefaultOperationContext implements OperationContext {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof DefaultOperationContext that)) {
-            return false;
-        }
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        DefaultOperationContext that = (DefaultOperationContext) o;
         return Objects.equals(operationResultType, that.operationResultType)
                 && Objects.equals(operationCallback, that.operationCallback)
                 && Objects.equals(idempotencyKey, that.idempotencyKey)
-                && Objects.equals(fingerprint, that.fingerprint);
-    }
+                && Objects.equals(fingerprint, that.fingerprint);    }
 
     @Override
     public int hashCode() {

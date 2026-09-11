@@ -23,7 +23,6 @@ class DefaultRawOperationMetadataUnitTest {
         assertThat(result.getTtl()).isNull();
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(result.getCacheToggle()).isEqualTo(Toggle.UNSELECTED);
         assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.UNSELECTED);
         assertThat(result.getCache5xxToggle()).isEqualTo(Toggle.UNSELECTED);
     }
@@ -39,7 +38,6 @@ class DefaultRawOperationMetadataUnitTest {
                 .processorType(ProcessorTypeToggle.TRANSACTIONAL)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cacheToggle(Toggle.ENABLE)
                 .cache4xxToggle(Toggle.DISABLE)
                 .cache5xxToggle(Toggle.DISABLE)
                 .build();
@@ -50,7 +48,6 @@ class DefaultRawOperationMetadataUnitTest {
         assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.TRANSACTIONAL);
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
-        assertThat(result.getCacheToggle()).isEqualTo(Toggle.ENABLE);
         assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
         assertThat(result.getCache5xxToggle()).isEqualTo(Toggle.DISABLE);
     }
@@ -218,11 +215,9 @@ class DefaultRawOperationMetadataUnitTest {
     void cacheToggle_whenToggleIsNull_shouldFallBackToUnselected() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .cacheToggle(null)
                 .build();
 
         // then
-        assertThat(result.getCacheToggle()).isEqualTo(Toggle.UNSELECTED);
     }
 
     @Test
@@ -303,7 +298,6 @@ class DefaultRawOperationMetadataUnitTest {
                 "processorType=TRANSACTIONAL",
                 "conflictHandleStrategy=WAIT",
                 "fingerprintToggle=ENABLE",
-                "cacheToggle=ENABLE",
                 "cache4xxToggle=DISABLE",
                 "cache5xxToggle=DISABLE"
         );
@@ -317,7 +311,6 @@ class DefaultRawOperationMetadataUnitTest {
                 .processorType(ProcessorTypeToggle.TRANSACTIONAL)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cacheToggle(Toggle.ENABLE)
                 .cache4xxToggle(Toggle.DISABLE)
                 .cache5xxToggle(Toggle.DISABLE);
     }

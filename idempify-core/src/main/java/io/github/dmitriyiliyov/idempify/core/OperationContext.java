@@ -1,5 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,20 +13,11 @@ import java.util.UUID;
  */
 public interface OperationContext {
 
-    /**
-     * Returns the type a stored result is deserialized back into when a duplicate call is replayed.
-     */
-    ResultType getOperationResultType();
-
-    /**
-     * Returns the caller's business operation, to be run only when this call is the first attempt.
-     */
-    ExternalOperationCallback getOperationCallback();
-
-    /**
-     * Returns the key this call is deduplicated by.
-     */
     UUID getIdempotencyKey();
+
+    ResultType getResultType();
+
+    ExternalOperationCallback getCallback();
 
     /**
      * Returns the fingerprint of the current request, or {@link Optional#empty()} if fingerprinting is off

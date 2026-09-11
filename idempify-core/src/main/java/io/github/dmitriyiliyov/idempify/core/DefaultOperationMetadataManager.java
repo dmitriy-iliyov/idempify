@@ -5,12 +5,15 @@ import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategyToggle;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerProvider;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicyProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Objects;
 
 public class DefaultOperationMetadataManager implements OperationMetadataManager {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultOperationMetadataManager.class);
     private final IdempotencyConfig defaultConfig;
     private final IdempotencyConfigRegistry configRegistry;
     private final ConflictHandlerProvider conflictHandlerProvider;
@@ -61,6 +64,16 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         return config;
     }
 
+    /**
+     * Layers the call site over the config already resolved for it, and refuses a result that contradicts
+     * itself.
+     * <p>
+     * A call site that goes {@link ProcessorType#TRANSACTIONAL} has its conflict handling switched off here
+     * instead of being refused, because it is the only layer that cannot switch it off itself: an annotation
+     * attribute has no value for "handle no conflicts", while a named config and the global properties both
+     * say it in one call. Every other contradiction travels on to {@link IdempotencyConfig#validate()} and is
+     * refused there - by then it was written by a layer that had the words to write it differently.
+     */
     private IdempotencyConfig merge(IdempotencyConfig config, RawOperationMetadata rawMetadata) {
         IdempotencyConfig.Builder configBuilder = IdempotencyConfig.builder(config);
 
@@ -74,12 +87,12 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
 
         if (ProcessorType.TRANSACTIONAL.equals(processorType)) {
             configBuilder.conflict(ConflictConfig.disabled());
-            configBuilder.responseCache(ResponseCacheConfig.disabled());
+            logDroppedConflictHandling(config.getConflictConfig());
         } else {
             mergeConflict(config, configBuilder, rawMetadata);
-            mergeResponseCache(config, configBuilder, rawMetadata);
         }
 
+        mergeResponse(config, configBuilder, rawMetadata);
         mergeFingerprint(config, configBuilder, rawMetadata);
 
         IdempotencyConfig mergedConfig = configBuilder.build();
@@ -103,6 +116,13 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         Duration ttl = rawMetadata.getTtl();
         if (ttl != null && !ttl.isNegative()) {
             builder.ttl(ttl);
+        }
+    }
+
+    private void logDroppedConflictHandling(ConflictConfig conflictConfig) {
+        if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
+            log.info("Conflict handling (strategy={}) is dropped: {} leaves a duplicate no conflict to arrive at",
+                     conflictConfig.getStrategy(), ProcessorType.TRANSACTIONAL);
         }
     }
 
@@ -144,41 +164,21 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         }
     }
 
-    private void mergeResponseCache(IdempotencyConfig config, IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
-        if (!config.getResponseCacheConfig().isEnabled()) {
-            builder.responseCache(ResponseCacheConfig.disabled());
+    private void mergeResponse(IdempotencyConfig config, IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
+
+        ResponseConfig.Builder responseConfigBuilder = ResponseConfig.builder(config.getResponseConfig());
+
+        Boolean cache4xx = Toggle.toBoolean(rawMetadata.getCache4xxToggle());
+        if (cache4xx != null) {
+            responseConfigBuilder.shouldCache4xx(cache4xx);
         }
 
-        Boolean useCache = Toggle.toBoolean(rawMetadata.getCacheToggle());
-        if (useCache != null) {
-            if (useCache) {
-                ResponseCacheConfig.Builder cacheConfigBuilder = ResponseCacheConfig.builder(config.getResponseCacheConfig());
-
-                ResponseCacheConfig defaultResponseCacheConfig = defaultConfig.getResponseCacheConfig();
-
-                Boolean cache4xx = Toggle.toBoolean(rawMetadata.getCache4xxToggle());
-                if (cache4xx != null) {
-                    cacheConfigBuilder.shouldCache4xx(cache4xx);
-                } else {
-                    if (defaultResponseCacheConfig.isEnabled()) {
-                        cacheConfigBuilder.shouldCache4xx(defaultResponseCacheConfig.shouldCache4xx());
-                    }
-                }
-
-                Boolean cache5xx = Toggle.toBoolean(rawMetadata.getCache5xxToggle());
-                if (cache5xx != null) {
-                    cacheConfigBuilder.shouldCache5xx(cache5xx);
-                } else {
-                    if (defaultResponseCacheConfig.isEnabled()) {
-                        cacheConfigBuilder.shouldCache5xx(defaultResponseCacheConfig.shouldCache5xx());
-                    }
-                }
-
-                builder.responseCache(cacheConfigBuilder.build());
-            } else {
-                builder.responseCache(ResponseCacheConfig.disabled());
-            }
+        Boolean cache5xx = Toggle.toBoolean(rawMetadata.getCache5xxToggle());
+        if (cache5xx != null) {
+            responseConfigBuilder.shouldCache5xx(cache5xx);
         }
+
+        builder.response(responseConfigBuilder.build());
     }
 
     private OperationMetadata buildMetadata(IdempotencyConfig config) {
@@ -188,7 +188,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
                 .processorType(config.getProcessorType())
                 .conflictHandler(conflictHandlerProvider.provide(config.getConflictConfig()))
                 .fingerprintPolicy(fingerprintPolicyProvider.provide(config.getFingerprintConfig()))
-                .responseCacheConfig(config.getResponseCacheConfig())
+                .responseConfig(config.getResponseConfig())
                 .build();
     }
 }

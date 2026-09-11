@@ -14,10 +14,9 @@ import java.util.concurrent.TimeUnit;
  * reached through the Spring proxy - a call from inside the same bean bypasses the aspect entirely.
  * <p>
  * Every attribute here is optional, and each has a value meaning "not specified at this call site": an empty
- * string, a negative {@link #ttl()}, {@link ConflictHandleStrategyToggle#UNSELECTED}, {@link Toggle#UNSELECTED}. What a
- * call site leaves unspecified is decided by the config it names in {@link #config()}, and failing that by
- * the global properties. {@link #processorType()} is the exception: it has no such value yet, so its default
- * reads as an explicit choice and wins over both other layers.
+ * string, a negative {@link #ttl()}, {@link ConflictHandleStrategyToggle#UNSELECTED},
+ * {@link ProcessorTypeToggle#UNSELECTED} and {@link Toggle#UNSELECTED}. What a call site leaves unspecified
+ * is decided by the config it names in {@link #config()}, and failing that by the global properties.
  *
  * @see Toggle
  */
@@ -41,8 +40,6 @@ public @interface Idempotent {
     ConflictHandleStrategyToggle onConflict() default ConflictHandleStrategyToggle.UNSELECTED;
 
     Toggle useFingerprint() default Toggle.UNSELECTED;
-
-    Toggle useCache() default Toggle.UNSELECTED;
 
     Toggle cache4xx() default Toggle.UNSELECTED;
 

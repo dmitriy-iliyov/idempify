@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import io.github.dmitriyiliyov.idempify.core.config.ResponseCacheConfig;
+import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 
@@ -17,8 +17,7 @@ public interface OperationMetadata {
 
     /**
      * Returns the name of the header the idempotency key is read from, or {@code null} when the call site
-     * takes the key from an expression instead - the one setting a broader layer may not answer, since a
-     * header nobody reads would send the transport looking for a key the call site computes itself.
+     * takes the key from an expression instead.
      */
     String getHeaderName();
 
@@ -31,9 +30,6 @@ public interface OperationMetadata {
         return !StringUtils.isBlank(getHeaderName());
     }
 
-    /**
-     * Returns how long a completed operation's result stays replayable.
-     */
     Duration getTtl();
 
     /**
@@ -54,9 +50,6 @@ public interface OperationMetadata {
         return getConflictHandler() != null;
     }
 
-    /**
-     * Returns the handler to invoke when another request is already processing the same key.
-     */
     ConflictHandler getConflictHandler();
 
     /**
@@ -70,16 +63,9 @@ public interface OperationMetadata {
 
     /**
      * Returns the policy that computes and compares fingerprints, or {@code null} when this call site does not
-     * fingerprint at all.
-     * <p>
-     * Callers guard on {@link #useFingerprint()} first; the {@code null} is deliberate rather than replaced by
-     * a do-nothing policy, so that a missing guard fails at once instead of quietly reporting every duplicate
-     * as a mismatch and carrying on.
+     * fingerprint at all. Callers guard on {@link #useFingerprint()} first.
      */
     FingerprintPolicy getFingerprintPolicy();
 
-    /**
-     * Returns which results are worth an entry in the cache in front of the repository.
-     */
-    ResponseCacheConfig getResponseCacheConfig();
+    ResponseConfig getResponseConfig();
 }

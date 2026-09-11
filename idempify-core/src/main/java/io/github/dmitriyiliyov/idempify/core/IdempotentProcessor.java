@@ -1,5 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+
 /**
  * Runs one intercepted call under its idempotency guarantee: claims the key, and from there either runs the
  * caller's business operation exactly once or replays what an earlier call under the same key produced.
@@ -7,9 +9,9 @@ package io.github.dmitriyiliyov.idempify.core;
  * Implementations differ in where the operation's record lives relative to the business transaction, which is
  * what {@link ProcessorType} names.
  * <p>
- * The result is an {@code Object} throughout this chain. What is wrapped is an arbitrary method, so its
- * return type is known only at runtime; it travels beside the call as a {@link ResultType} instead of a type
- * parameter, and a caller that does know the type casts once at its own entry point.
+ * The result is an {@code Object} throughout this chain: the wrapped method's return type is known only at
+ * runtime and travels beside the call as a {@link ResultType}. A caller that does know the type casts once
+ * at its own entry point.
  */
 public interface IdempotentProcessor {
 

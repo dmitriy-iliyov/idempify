@@ -85,7 +85,7 @@ class DefaultOperationMetadataManagerUnitTest {
         assertThat(result.getHeaderName()).isNotNull();
         assertThat(result.getTtl()).isNotNull();
         assertThat(result.getProcessorType()).isNotNull();
-        assertThat(result.getResponseCacheConfig()).isNotNull();
+        assertThat(result.getResponseConfig()).isNotNull();
     }
 
     @Test
@@ -161,7 +161,7 @@ class DefaultOperationMetadataManagerUnitTest {
     @DisplayName("UT merge() when the call site picks a processor should let it win over the global one")
     void merge_whenCallSitePicksProcessor_shouldLetItWinOverGlobalOne() {
         // given
-        DefaultOperationMetadataManager tested = manager(global());
+        DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
         OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build());
@@ -180,7 +180,7 @@ class DefaultOperationMetadataManagerUnitTest {
                 .processorType(ProcessorType.TRANSACTIONAL)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.builder().bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH).build())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
@@ -248,33 +248,20 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site turns caching off should switch it off")
-    void merge_whenCallSiteTurnsCachingOff_shouldSwitchItOff() {
-        // given
-        DefaultOperationMetadataManager tested = manager(global());
-
-        // when
-        OperationMetadata result = tested.merge(raw().cacheToggle(Toggle.DISABLE).build());
-
-        // then
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
-    }
-
-    @Test
     @DisplayName("UT merge() when the call site tunes only 4xx caching should keep the global answer for 5xx")
     void merge_whenCallSiteTunesOnly4xxCaching_shouldKeepGlobalAnswerFor5xx() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .responseCache(ResponseCacheConfig.builder().enabled(true).shouldCache4xx(true).shouldCache5xx(true).build())
+                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(true).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().cacheToggle(Toggle.ENABLE).cache4xxToggle(Toggle.DISABLE).build());
+        OperationMetadata result = tested.merge(raw().cache4xxToggle(Toggle.DISABLE).build());
 
         // then
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
     }
 
     @Test
@@ -378,16 +365,16 @@ class DefaultOperationMetadataManagerUnitTest {
     void merge_whenCallSiteTunesOnly5xxCaching_shouldKeepGlobalAnswerFor4xx() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .responseCache(ResponseCacheConfig.builder().enabled(true).shouldCache4xx(true).shouldCache5xx(false).build())
+                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(false).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().cacheToggle(Toggle.ENABLE).cache5xxToggle(Toggle.ENABLE).build());
+        OperationMetadata result = tested.merge(raw().cache5xxToggle(Toggle.ENABLE).build());
 
         // then
-        assertThat(result.getResponseCacheConfig().shouldCache5xx()).isTrue();
-        assertThat(result.getResponseCacheConfig().shouldCache4xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().shouldCache4xx()).isTrue();
     }
 
     @Test
@@ -399,17 +386,47 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes transactional should leave it neither a conflict handler nor caching")
-    void merge_whenCallSiteGoesTransactional_shouldLeaveItNeitherConflictHandlerNorCaching() {
+    @DisplayName("UT merge() when the call site goes transactional should leave it no conflict handler")
+    void merge_whenCallSiteGoesTransactional_shouldLeaveItNoConflictHandler() {
         // given
-        DefaultOperationMetadataManager tested = manager(global());
+        DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
         OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build());
 
         // then
         assertThat(result.getConflictHandler()).isNull();
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes transactional over a global that keeps failures should refuse to resolve")
+    void merge_whenCallSiteGoesTransactionalOverGlobalThatKeepsFailures_shouldRefuseToResolve() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be cached if processorType is TRANSACTIONAL");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes transactional and drops the failures itself should resolve")
+    void merge_whenCallSiteGoesTransactionalAndDropsFailuresItself_shouldResolve() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when
+        OperationMetadata result = tested.merge(raw()
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL)
+                .cache4xxToggle(Toggle.DISABLE)
+                .cache5xxToggle(Toggle.DISABLE)
+                .build());
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getConflictHandler()).isNull();
     }
 
     @Test
@@ -535,7 +552,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().build());
 
         // then
-        assertThat(result.getResponseCacheConfig()).isEqualTo(ResponseCacheConfig.all());
+        assertThat(result.getResponseConfig()).isEqualTo(ResponseConfig.all());
     }
 
     @Test
@@ -587,7 +604,7 @@ class DefaultOperationMetadataManagerUnitTest {
         registry.register(CONFIG_NAME, IdempotencyConfig.builder()
                 .processorType(ProcessorType.TRANSACTIONAL)
                 .conflict(ConflictConfig.disabled())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build());
         DefaultOperationMetadataManager tested = manager(global(), registry);
 
@@ -606,7 +623,7 @@ class DefaultOperationMetadataManagerUnitTest {
         registry.register(CONFIG_NAME, IdempotencyConfig.builder()
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.defaults()))
                 .build());
-        DefaultOperationMetadataManager tested = manager(global(), registry);
+        DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses(), registry);
 
         // when
         OperationMetadata result = tested.merge(
@@ -615,7 +632,16 @@ class DefaultOperationMetadataManagerUnitTest {
         // then
         assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
         assertThat(result.getConflictHandler()).isNull();
-        assertThat(result.getResponseCacheConfig().isEnabled()).isFalse();
+    }
+
+    /**
+     * The global layer as an application that keeps no failure response would write it - which is what a test
+     * about picking a processor wants, so that the pair of settings it is not about cannot get in the way.
+     */
+    private static IdempotencyConfig globalKeepingNoFailureResponses() {
+        return IdempotencyConfig.builder(global())
+                .response(ResponseConfig.defaults())
+                .build();
     }
 
     private static DefaultRawOperationMetadata.Builder raw() {
@@ -643,7 +669,7 @@ class DefaultOperationMetadataManagerUnitTest {
                 .fingerprint(FingerprintConfig.builder()
                         .bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH)
                         .build())
-                .responseCache(ResponseCacheConfig.all())
+                .response(ResponseConfig.all())
                 .build();
     }
 
@@ -716,10 +742,6 @@ class DefaultOperationMetadataManagerUnitTest {
             return Toggle.UNSELECTED;
         }
 
-        @Override
-        public Toggle getCacheToggle() {
-            return Toggle.UNSELECTED;
-        }
 
         @Override
         public Toggle getCache4xxToggle() {

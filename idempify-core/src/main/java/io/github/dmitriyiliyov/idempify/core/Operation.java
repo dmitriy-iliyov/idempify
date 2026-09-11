@@ -1,14 +1,29 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.response.Response;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * One operation as the domain sees it - the stored row decoded, with the result and the response back as
+ * objects.
+ * <p>
+ * Two of its states read like defects and are not. An expiry exists exactly on a
+ * {@link OperationStatus#PROCESSED} operation: a claim is written without one, and a row still running is
+ * never overwritten however long it has been there. And a {@code PROCESSED} operation may carry no response
+ * at all - that means writing the response failed, not that the operation is unfinished, and a repeat is
+ * answered from the result instead.
+ */
 public class Operation {
 
     private UUID idempotencyKey;
     private OperationStatus status;
     private Boolean isFirstAttempt;
-    private String result;
+    private Object result;
+    private ResultType resultType;
+    private Response response;
     private String fingerprint;
     private Instant expiresAt;
     private Instant createdAt;
@@ -16,7 +31,9 @@ public class Operation {
     public Operation(UUID idempotencyKey,
                      OperationStatus status,
                      Boolean isFirstAttempt,
-                     String result,
+                     Object result,
+                     ResultType resultType,
+                     Response response,
                      String fingerprint,
                      Instant expiresAt,
                      Instant createdAt) {
@@ -24,6 +41,8 @@ public class Operation {
         this.status = status;
         this.isFirstAttempt = isFirstAttempt;
         this.result = result;
+        this.resultType = resultType;
+        this.response = response;
         this.fingerprint = fingerprint;
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
@@ -78,12 +97,32 @@ public class Operation {
         isFirstAttempt = firstAttempt;
     }
 
-    public String getResult() {
+    public Object getResult() {
         return result;
     }
 
-    public void setResult(String result) {
+    public void setResult(Object result) {
         this.result = result;
+    }
+
+    /**
+     * The type the stored result is read back into. It travels with the operation but is never written to the
+     * store - it comes from the call site on every read.
+     */
+    public ResultType getResultType() {
+        return resultType;
+    }
+
+    public void setResultType(ResultType resultType) {
+        this.resultType = resultType;
+    }
+
+    public Response getResponse() {
+        return response;
+    }
+
+    public void setResponse(Response response) {
+        this.response = response;
     }
 
     public String getFingerprint() {
@@ -108,5 +147,20 @@ public class Operation {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    @Override
+    public String toString() {
+        return "Operation{" +
+                "idempotencyKey=" + idempotencyKey +
+                ", status=" + status +
+                ", isFirstAttempt=" + isFirstAttempt +
+                ", hasResult=" + (result != null) +
+                ", resultType=" + resultType +
+                ", hasResponse=" + (response != null) +
+                ", fingerprint='" + fingerprint + '\'' +
+                ", expiresAt=" + expiresAt +
+                ", createdAt=" + createdAt +
+                '}';
     }
 }

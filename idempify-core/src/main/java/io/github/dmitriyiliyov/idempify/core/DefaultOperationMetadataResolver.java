@@ -86,7 +86,6 @@ public class DefaultOperationMetadataResolver implements OperationMetadataResolv
                 .processorType(annotation.processorType())
                 .conflictHandleStrategy(annotation.onConflict())
                 .fingerprintToggle(annotation.useFingerprint())
-                .cacheToggle(annotation.useCache())
                 .cache4xxToggle(annotation.cache4xx())
                 .cache5xxToggle(annotation.cache5xx())
                 .build();

@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Objects;
@@ -27,19 +27,14 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
 
     /**
      * Publishing the state and reporting the events happen after {@code execute} returns, and have to stay
-     * there: until the transaction commits the operation does not exist, so a published expiry would
-     * describe a row that may never be.
+     * there: until the transaction commits the operation does not exist, so a state published earlier would
+     * announce a row that may never be, and a success would be counted for one that never happened.
      */
     @Override
     public Object process(OperationContext context, OperationMetadata metadata) {
         try {
             OperationDetail operationDetail = transactionTemplate.execute(status -> {
-                if (!status.isNewTransaction()) {
-                    throw new IllegalStateException("""
-                        @Idempotent must own its transaction: it is meant for an entry point, 
-                        not for a method already running inside a transaction
-                    """);
-                }
+                transactionStatusCheck(status);
 
                 OperationDetail operation = operationManager.startOrReply(context, metadata);
 
@@ -47,8 +42,13 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
                     return operation;
                 }
 
-                Object result = IdempotentProcessorUtils.getResult(context.getOperationCallback());
-                operation = operationManager.complete(context.getIdempotencyKey(), metadata.getTtl(), result);
+                Object result = IdempotentProcessorUtils.getResult(context.getCallback());
+                operation = operationManager.complete(
+                        operation.getIdempotencyKey(),
+                        result,
+                        context.getResultType(),
+                        metadata.getTtl()
+                );
                 return operation;
             });
 
@@ -68,6 +68,15 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
                 throw re;
             }
             throw new IdempotentProcessingException("Error when processing surrounded method", t);
+        }
+    }
+
+    protected void transactionStatusCheck(TransactionStatus status) {
+        if (!status.isNewTransaction()) {
+            throw new IllegalStateException("""
+                        @Idempotent must own its transaction: it is meant for an entry point, 
+                        not for a method already running inside a transaction
+                    """);
         }
     }
 

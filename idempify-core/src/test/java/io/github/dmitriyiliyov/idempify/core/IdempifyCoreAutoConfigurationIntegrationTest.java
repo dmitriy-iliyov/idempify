@@ -1,5 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
+import io.github.dmitriyiliyov.idempify.core.cache.InMemoryCacheResponseRepositoryDecorator;
 import io.github.dmitriyiliyov.idempify.core.config.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerProvider;
 import io.github.dmitriyiliyov.idempify.core.conflict.DefaultConflictHandlerProvider;
@@ -10,6 +12,9 @@ import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestType;
 import io.github.dmitriyiliyov.idempify.core.response.*;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -23,6 +28,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 
@@ -74,8 +80,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(FingerprintMatcher.class);
             assertThat(context).hasSingleBean(DefaultFingerprintMatcher.class);
 
-            assertThat(context).hasSingleBean(OperationMapper.class);
-            assertThat(context).hasSingleBean(DefaultOperationMapper.class);
+            assertThat(context).hasSingleBean(OperationCreator.class);
+            assertThat(context).hasSingleBean(DefaultOperationCreator.class);
 
             assertThat(context).hasSingleBean(OperationMetadataCache.class);
             assertThat(context).hasSingleBean(DefaultOperationMetadataCache.class);
@@ -86,6 +92,9 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(OperationMetadataResolver.class);
             assertThat(context).hasSingleBean(DefaultOperationMetadataResolver.class);
 
+            assertThat(context).hasSingleBean(ResponseManager.class);
+            assertThat(context).hasSingleBean(DefaultResponseManager.class);
+
             assertThat(context).hasSingleBean(TransactionalOperationManager.class);
             assertThat(context).hasSingleBean(DefaultTransactionalOperationManager.class);
 
@@ -94,15 +103,6 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
             assertThat(context).hasSingleBean(DelegatingKeyExtractor.class);
             assertThat(context).hasSingleBean(DelegatingIdempotentProcessor.class);
-        });
-    }
-
-    @Test
-    @DisplayName("IT context when nothing asks for a response cache should register none")
-    void context_whenNothingAsksForResponseCache_shouldRegisterNone() {
-        contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
-            assertThat(context).doesNotHaveBean(ResponseCache.class);
         });
     }
 
@@ -291,10 +291,10 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     @DisplayName("IT context when existing OperationMapper bean should not register the default one")
     void context_whenExistingOperationMapperBean_shouldNotRegisterDefaultOne() {
         contextRunner
-                .withBean(OperationMapper.class, () -> mock(OperationMapper.class))
+                .withBean(OperationCreator.class, () -> mock(OperationCreator.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(OperationMapper.class);
-                    assertThat(context).doesNotHaveBean(DefaultOperationMapper.class);
+                    assertThat(context).hasSingleBean(OperationCreator.class);
+                    assertThat(context).doesNotHaveBean(DefaultOperationCreator.class);
                 });
     }
 
@@ -328,6 +328,17 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(OperationMetadataResolver.class);
                     assertThat(context).doesNotHaveBean(DefaultOperationMetadataResolver.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when existing ResponseManager bean should not register the default one")
+    void context_whenExistingResponseManagerBean_shouldNotRegisterDefaultOne() {
+        contextRunner
+                .withBean(ResponseManager.class, () -> mock(ResponseManager.class))
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ResponseManager.class);
+                    assertThat(context).doesNotHaveBean(DefaultResponseManager.class);
                 });
     }
 
@@ -399,13 +410,17 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when caching is switched on should register the in-memory cache")
-    void context_whenCachingIsSwitchedOn_shouldRegisterInMemoryCache() {
+    @DisplayName("IT context when caching is switched on should register the in-memory cache wrapper")
+    void context_whenCachingIsSwitchedOn_shouldRegisterInMemoryCacheWrapper() {
         contextRunner
                 .withPropertyValues("idempify.cache.enabled=true")
                 .run(context -> {
-                    assertThat(context).hasSingleBean(ResponseCache.class);
-                    assertThat(context).hasSingleBean(InMemoryResponseCache.class);
+                    assertThat(context).hasSingleBean(ResponseRepositoryWrapper.class);
+
+                    ResponseRepositoryWrapper wrapper = context.getBean(ResponseRepositoryWrapper.class);
+
+                    assertThat(wrapper.wrap(mock(ResponseRepository.class)))
+                            .isInstanceOf(InMemoryCacheResponseRepositoryDecorator.class);
                 });
     }
 
@@ -415,63 +430,43 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         contextRunner
                 .withPropertyValues("idempify.cache.enabled=true")
                 .run(context -> {
-                    ResponseCache cache = context.getBean(ResponseCache.class);
+                    CountingRepository backend = new CountingRepository();
+                    ResponseRepository cache = context.getBean(ResponseRepositoryWrapper.class).wrap(backend);
 
-                    cache.save(KEY, response(), Duration.ofMinutes(1));
-                    cache.save(OTHER_KEY, response(), Duration.ofMinutes(1));
+                    cache.findByIdempotencyKey(KEY);
+                    cache.findByIdempotencyKey(KEY);
+                    assertThat(backend.lookups)
+                            .describedAs("the key just looked up is remembered")
+                            .isEqualTo(1);
 
-                    assertThat(cache.findByIdempotencyKey(KEY)).isNull();
-                    assertThat(cache.findByIdempotencyKey(OTHER_KEY)).isNotNull();
-                });
-    }
-
-    @Test
-    @DisplayName("IT context when caching is switched on and a wrapper is registered should hand out the wrapped cache")
-    void context_whenCachingIsSwitchedOnAndWrapperIsRegistered_shouldHandOutWrappedCache() {
-        contextRunner
-                .withPropertyValues("idempify.cache.enabled=true")
-                .withBean(ResponseCacheWrapper.class, CountingWrapper::new)
-                .run(context -> {
-                    ResponseCache cache = context.getBean(ResponseCache.class);
-
-                    cache.save(KEY, response(), Duration.ofMinutes(1));
+                    cache.findByIdempotencyKey(OTHER_KEY);
                     cache.findByIdempotencyKey(KEY);
 
-                    assertThat(cache).isInstanceOf(CountingCache.class);
-                    assertThat(((CountingCache) cache).lookups).isEqualTo(1);
-                    assertThat(((CountingCache) cache).next).isInstanceOf(InMemoryResponseCache.class);
+                    assertThat(backend.lookups)
+                            .describedAs("a cache holding one entry forgets the first key when the second arrives")
+                            .isEqualTo(3);
                 });
     }
 
     @Test
-    @DisplayName("IT context when nobody wraps the cache should hand out the in-memory one unwrapped")
-    void context_whenNobodyWrapsCache_shouldHandOutInMemoryOneUnwrapped() {
-        contextRunner
-                .withPropertyValues("idempify.cache.enabled=true")
-                .run(context -> assertThat(context.getBean(ResponseCache.class))
-                        .isInstanceOf(InMemoryResponseCache.class));
-    }
-
-    @Test
-    @DisplayName("IT context when caching is switched off should register no response cache")
-    void context_whenCachingIsSwitchedOff_shouldRegisterNoResponseCache() {
+    @DisplayName("IT context when caching is switched off should register no cache wrapper")
+    void context_whenCachingIsSwitchedOff_shouldRegisterNoCacheWrapper() {
         contextRunner
                 .withPropertyValues("idempify.cache.enabled=false")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context).doesNotHaveBean(ResponseCache.class);
+                    assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class);
                 });
     }
 
     @Test
-    @DisplayName("IT context when caching is switched on with a backend of its own should not register the in-memory one")
-    void context_whenCachingIsSwitchedOnWithBackendOfItsOwn_shouldNotRegisterInMemoryOne() {
+    @DisplayName("IT context when the cache type is not in-memory should register no in-memory wrapper")
+    void context_whenCacheTypeIsNotInMemory_shouldRegisterNoInMemoryWrapper() {
         contextRunner
-                .withPropertyValues("idempify.cache.enabled=true")
-                .withBean(ResponseCache.class, () -> mock(ResponseCache.class))
+                .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
                 .run(context -> {
-                    assertThat(context).hasSingleBean(ResponseCache.class);
-                    assertThat(context).doesNotHaveBean(InMemoryResponseCache.class);
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class);
                 });
     }
 
@@ -602,36 +597,29 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     /**
-     * Keeps the cache it wraps within reach and counts the lookups it saw, so a test reads both the nesting
-     * and the fact that the wrapper is really in the path.
+     * Counts the lookups that reached it, so a test can tell a cache hit from a trip to the backend.
      */
-    private static final class CountingCache extends AbstractResponseCacheDecorator {
+    private static final class CountingRepository implements ResponseRepository {
 
-        private final ResponseCache next;
         private int lookups;
 
-        private CountingCache(ResponseCache delegate) {
-            super(delegate);
-            this.next = delegate;
+        @Override
+        public RawResponseContainer save(UUID idempotencyKey, String response) {
+            return container();
         }
 
         @Override
-        public CachedResponse findByIdempotencyKey(UUID idempotencyKey) {
+        public Optional<RawResponseContainer> findByIdempotencyKey(UUID idempotencyKey) {
             lookups++;
-            return super.findByIdempotencyKey(idempotencyKey);
-        }
-    }
-
-    private static final class CountingWrapper implements ResponseCacheWrapper {
-
-        @Override
-        public ResponseCache wrap(ResponseCache responseCache) {
-            return new CountingCache(responseCache);
+            return Optional.of(container());
         }
 
-        @Override
-        public int getPriority() {
-            return 0;
+        private static RawResponseContainer container() {
+            return new DefaultRawResponseContainer(
+                    "raw-response",
+                    "fingerprint",
+                    TestClock.EPOCH.plus(Duration.ofHours(1))
+            );
         }
     }
 
@@ -646,8 +634,13 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 IdempifyCoreAutoConfigurationIntegrationTest::globalConfig)),
         OPERATION_REPOSITORY(runner -> runner.withBean(
                 TransactionalOperationRepository.class, () -> mock(TransactionalOperationRepository.class))),
+        READ_REPOSITORY(runner -> runner.withBean(OperationRepository.class, () -> mock(OperationRepository.class))),
+        RESPONSE_REPOSITORY(runner -> runner.withBean(ResponseRepository.class, () -> mock(ResponseRepository.class))),
         RESULT_SERIALIZER(runner -> runner.withBean(ResultSerializer.class, () -> mock(ResultSerializer.class))),
         RESULT_DESERIALIZER(runner -> runner.withBean(ResultDeserializer.class, () -> mock(ResultDeserializer.class))),
+        RESPONSE_SERIALIZER(runner -> runner.withBean(ResponseSerializer.class, () -> mock(ResponseSerializer.class))),
+        RESPONSE_DESERIALIZER(runner -> runner.withBean(
+                ResponseDeserializer.class, () -> mock(ResponseDeserializer.class))),
         STATE_CHANNEL(runner -> runner.withBean(OperationStateChannel.class, () -> mock(OperationStateChannel.class))),
         TRANSACTION_TEMPLATE(runner -> runner.withBean(
                 TransactionTemplate.class, () -> new TransactionTemplate(mock(PlatformTransactionManager.class)))),
@@ -679,7 +672,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
-                .responseCache(ResponseCacheConfig.disabled())
+                .response(ResponseConfig.disabled())
                 .build();
     }
 
@@ -691,8 +684,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         return TestRequestContext.of("/payments", "POST", "{\"amount\":10}");
     }
 
-    private static CachedResponse response() {
-        return new DefaultCachedResponse(200, "{}".getBytes(StandardCharsets.UTF_8), "application/json", null);
+    private static Response response() {
+        return new DefaultResponse(200, "{}".getBytes(StandardCharsets.UTF_8), "application/json", null);
     }
 
     static class PaymentService {
@@ -736,12 +729,12 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     private static final class TestCachePropertiesHolder implements CachePropertiesHolder {
 
         @Override
-        public String getCacheName() {
+        public String getName() {
             return "idempify";
         }
 
         @Override
-        public int getInMemoryCacheCapacity() {
+        public int getCacheCapacity() {
             return 1;
         }
     }

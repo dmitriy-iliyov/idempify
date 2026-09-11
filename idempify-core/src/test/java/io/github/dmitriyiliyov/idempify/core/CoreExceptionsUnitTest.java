@@ -37,25 +37,65 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
-    @DisplayName("UT ResultDeserializationException should belong to the group a caller catches")
+    @DisplayName("UT SerializationException should carry the failure it wraps so the cause is not lost")
+    void resultSerializationException_shouldCarryFailureItWrapsSoCauseIsNotLost() {
+        // given
+        Exception cause = new IllegalStateException("mapper blew up");
+
+        // when
+        SerializationException tested = new SerializationException("Error when serializing", cause);
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Error when serializing");
+        assertThat(tested.getCause()).isSameAs(cause);
+    }
+
+    @Test
+    @DisplayName("UT DeserializationException should carry the failure it wraps so the cause is not lost")
+    void resultDeserializationException_shouldCarryFailureItWrapsSoCauseIsNotLost() {
+        // given
+        Exception cause = new IllegalStateException("mapper blew up");
+
+        // when
+        DeserializationException tested =
+                new DeserializationException("Error when deserializing", cause);
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Error when deserializing");
+        assertThat(tested.getCause()).isSameAs(cause);
+    }
+
+    @Test
+    @DisplayName("UT SerializationProcessingException should be constructible from a message alone")
+    void resultProcessingException_shouldBeConstructibleFromMessageAlone() {
+        // when
+        SerializationProcessingException tested = new SerializationProcessingException("Error when processing result");
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Error when processing result");
+        assertThat(tested.getCause()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT DeserializationException should belong to the group a caller catches")
     void resultDeserializationException_shouldBelongToGroupCallerCatches() {
-        // given - the transport catches ResultProcessingException to answer a problem response; a failure
+        // given - the transport catches SerializationProcessingException to answer a problem response; a failure
         // that skips the group reaches the container as a bare error instead
-        assertThat(ResultProcessingException.class)
-                .isAssignableFrom(ResultDeserializationException.class);
+        assertThat(SerializationProcessingException.class)
+                .isAssignableFrom(DeserializationException.class);
     }
 
     @Test
-    @DisplayName("UT ResultSerializationException should belong to the group a caller catches")
+    @DisplayName("UT SerializationException should belong to the group a caller catches")
     void resultSerializationException_shouldBelongToGroupCallerCatches() {
-        assertThat(ResultProcessingException.class)
-                .isAssignableFrom(ResultSerializationException.class);
+        assertThat(SerializationProcessingException.class)
+                .isAssignableFrom(SerializationException.class);
     }
 
     @Test
-    @DisplayName("UT ResultProcessingException should be unchecked like every other exception of the core")
+    @DisplayName("UT SerializationProcessingException should be unchecked like every other exception of the core")
     void resultProcessingException_shouldBeUncheckedLikeEveryOtherExceptionOfCore() {
-        assertThat(RuntimeException.class).isAssignableFrom(ResultProcessingException.class);
+        assertThat(RuntimeException.class).isAssignableFrom(SerializationProcessingException.class);
     }
 
     @Test
@@ -65,10 +105,10 @@ class CoreExceptionsUnitTest {
         Exception cause = new IllegalStateException("no creators");
 
         // then
-        assertThat(new ResultDeserializationException("read failed", cause))
+        assertThat(new DeserializationException("read failed", cause))
                 .hasMessage("read failed")
                 .hasCause(cause);
-        assertThat(new ResultSerializationException("write failed", cause))
+        assertThat(new SerializationException("write failed", cause))
                 .hasMessage("write failed")
                 .hasCause(cause);
     }

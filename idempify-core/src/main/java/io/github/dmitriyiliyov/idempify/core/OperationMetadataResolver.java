@@ -8,7 +8,9 @@ import java.lang.reflect.Method;
  * <p>
  * The single way to get metadata for a method, and deliberately so - the aspect that intercepts the call and a
  * transport module that scans endpoints at startup both come through here, so both see the same instance for
- * the same method and cannot drift apart.
+ * the same method and cannot drift apart. That is also what keeps the idempotency key of a request one value
+ * and not two: both entries read {@link OperationMetadata#getHeaderName()} off this metadata, so the same
+ * request yields the same key on either of them.
  * <p>
  * The annotation is read from the method rather than passed in: the key an implementation caches by is the
  * method it normalized, and taking the annotation from anywhere else would allow the two to disagree.

@@ -1,5 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+
 import java.time.Duration;
 import java.util.UUID;
 
@@ -22,8 +24,8 @@ public interface TransactionalOperationManager {
      * @param metadata the resolved settings of the call site.
      * @return what the store holds for this key, never {@code null}: a {@link OperationStatus#PROCESSED}
      *         operation whose result is there to be replayed, or one this call has just claimed and
-     *         therefore must run itself. A claim carries no expiry yet - that is
-     *         {@link #complete}'s to write.
+     *         therefore must run itself. The status is what tells the two apart - a {@code null} result is
+     *         legal and answers nothing.
      */
     OperationDetail startOrReply(OperationContext context, OperationMetadata metadata);
 
@@ -37,10 +39,12 @@ public interface TransactionalOperationManager {
      * the result exists.
      *
      * @param idempotencyKey the key of the operation to complete.
-     * @param ttl            how long the stored result stays replayable, counted from now.
      * @param result         the result to store.
-     * @return the completed operation, never {@code null} - the same result, plus what the store decided
-     *         about it, its expiry above all.
+     * @param resultType     the type that result is read back into, carried from the call site because the
+     *                       row does not keep it.
+     * @param ttl            how long the stored result stays replayable, counted from now.
+     * @return the completed operation, never {@code null} - the same result, plus the status the store now
+     *         holds it in. The expiry it was given stays on the record and is read from there.
      */
-    OperationDetail complete(UUID idempotencyKey, Duration ttl, Object result);
+    OperationDetail complete(UUID idempotencyKey, Object result, ResultType resultType, Duration ttl);
 }

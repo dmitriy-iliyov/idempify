@@ -2,7 +2,7 @@ package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
-import io.github.dmitriyiliyov.idempify.core.response.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,7 +15,6 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +27,7 @@ class TransactionalIdempotentProcessorUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Duration TTL = Duration.parse(IdempifyDefaults.TTL_VALUE);
-    private static final Instant EXPIRES_AT = TestClock.EPOCH.plus(TTL);
+    private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
 
     @Mock
     TransactionTemplate transactionTemplate;
@@ -101,7 +100,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // then
         assertThat(result).isEqualTo("replayed");
         assertThat(callback.calls).isZero();
-        verify(operationManager, never()).complete(any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any(), any());
     }
 
     @Test
@@ -115,7 +114,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, TTL, "fresh"))
+        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -124,7 +123,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // then
         assertThat(result).isEqualTo("fresh");
         assertThat(callback.calls).isEqualTo(1);
-        verify(operationManager, times(1)).complete(KEY, TTL, "fresh");
+        verify(operationManager, times(1)).complete(KEY, "fresh", RESULT_TYPE, TTL);
     }
 
     @Test
@@ -137,7 +136,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, TTL, "fresh"))
+        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -198,7 +197,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, TTL, "fresh")).thenReturn(completed);
+        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL)).thenReturn(completed);
 
         // when
         tested.process(context, metadata);
@@ -240,7 +239,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
-        verify(operationManager, never()).complete(any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -262,7 +261,7 @@ class TransactionalIdempotentProcessorUnitTest {
                 .hasMessage("Surrounded method throws")
                 .hasCause(thrown);
 
-        verify(operationManager, never()).complete(any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -284,7 +283,7 @@ class TransactionalIdempotentProcessorUnitTest {
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
         assertThat(callback.calls).isZero();
-        verify(operationManager, never()).complete(any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -377,7 +376,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, TTL, "fresh"))
+        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -398,7 +397,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, callSiteTtl, "fresh"))
+        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, callSiteTtl))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -406,7 +405,7 @@ class TransactionalIdempotentProcessorUnitTest {
 
         // then
         assertThat(result).isEqualTo("fresh");
-        verify(operationManager, times(1)).complete(KEY, callSiteTtl, "fresh");
+        verify(operationManager, times(1)).complete(KEY, "fresh", RESULT_TYPE, callSiteTtl);
     }
 
     @Test
@@ -464,11 +463,11 @@ class TransactionalIdempotentProcessorUnitTest {
     }
 
     private OperationContext context(ExternalOperationCallback callback) {
-        return new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fingerprint");
+        return new DefaultOperationContext(RESULT_TYPE, callback, KEY, "fingerprint");
     }
 
     private OperationDetail detail(OperationStatus status, boolean replayed, String result) {
-        return new DefaultOperationDetail(KEY, status, replayed, result, EXPIRES_AT);
+        return new DefaultOperationDetail(KEY, status, replayed, result);
     }
 
     private static final class RecordingCallback implements ExternalOperationCallback {
