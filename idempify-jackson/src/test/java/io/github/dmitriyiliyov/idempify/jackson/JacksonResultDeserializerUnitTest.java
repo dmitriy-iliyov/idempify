@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.dmitriyiliyov.idempify.core.ResultDeserializationException;
-import io.github.dmitriyiliyov.idempify.core.ResultType;
+import io.github.dmitriyiliyov.idempify.core.DeserializationException;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -87,7 +87,7 @@ class JacksonResultDeserializerUnitTest {
     void deserialize_whenStoredResultIsMalformed_shouldWrapFailureWithItsCause() {
         // when / then
         assertThatThrownBy(() -> tested.deserialize("{not json", ResultType.ofClass(Order.class)))
-                .isInstanceOf(ResultDeserializationException.class)
+                .isInstanceOf(DeserializationException.class)
                 .hasMessageContaining("Error when deserializing operation result")
                 .cause().isNotNull();
     }
@@ -115,6 +115,14 @@ class JacksonResultDeserializerUnitTest {
         static Map<String, Order> ordersByName() {
             return Map.of();
         }
+    }
+
+    @Test
+    @DisplayName("UT deserialize() when the column is empty should answer null without reading anything")
+    void deserialize_whenColumnIsEmpty_shouldAnswerNullWithoutReadingAnything() {
+        // when / then
+        assertThat(new JacksonResultDeserializer(new ObjectMapper())
+                .deserialize(null, ResultType.ofClass(Order.class))).isNull();
     }
 
     private record Order(String value) {}

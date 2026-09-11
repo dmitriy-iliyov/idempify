@@ -20,8 +20,8 @@ import java.util.*;
  * <p>
  * Fields are selected by {@link BodyCanonicalizerConfig#getIncludedFields()} (default-deny) or pruned by
  * {@link BodyCanonicalizerConfig#getExcludedFields()} (default-allow); the config forbids using both. Paths
- * are dot-separated and carry no array indices, so {@code items.sku} addresses {@code sku} in <em>every</em>
- * element of {@code items}.
+ * are dot-separated and carry no array indices. Whether a path reaches inside an array differs between the
+ * two modes, so a path pointing into one is not interchangeable between them.
  * <p>
  * Numbers are written as they were parsed rather than normalized to the ECMAScript form, so {@code 1.0} and
  * {@code 1} still fingerprint differently. That is a deliberate deviation from RFC 8785 towards strictness.

@@ -2,7 +2,7 @@ package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.dmitriyiliyov.idempify.core.ResultSerializationException;
+import io.github.dmitriyiliyov.idempify.core.SerializationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,8 +42,8 @@ public class JacksonResultSerializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT serialize() when mapper throws JsonProcessingException should throw ResultSerializationException")
-    void serialize_whenMapperThrowsJsonProcessingException_shouldThrowResultSerializationException() throws Exception {
+    @DisplayName("UT serialize() when mapper throws JsonProcessingException should throw SerializationException")
+    void serialize_whenMapperThrowsJsonProcessingException_shouldThrowSerializationException() throws Exception {
         // given
         ObjectMapper mapper = mock(ObjectMapper.class);
         JacksonResultSerializer tested = new JacksonResultSerializer(mapper);
@@ -57,7 +57,7 @@ public class JacksonResultSerializerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.serialize(response))
-                .isInstanceOf(ResultSerializationException.class)
+                .isInstanceOf(SerializationException.class)
                 .hasMessageContaining("Error when serializing operation result")
                 .hasCause(exception);
 
@@ -68,25 +68,17 @@ public class JacksonResultSerializerUnitTest {
     }
 
     @Test
-    @DisplayName("UT serialize() when response is null should return null json")
-    void serialize_whenResponseIsNull_shouldReturnNullJson() throws Exception {
+    @DisplayName("UT serialize() when the result is null should answer null so the column stays empty")
+    void serialize_whenResultIsNull_shouldAnswerNullSoColumnStaysEmpty() {
         // given
         ObjectMapper mapper = mock(ObjectMapper.class);
         JacksonResultSerializer tested = new JacksonResultSerializer(mapper);
-
-        when(mapper.writeValueAsString(null))
-                .thenReturn("null");
 
         // when
         String result = tested.serialize(null);
 
         // then
-        assertThat(result)
-                .isEqualTo("null");
-
-        verify(mapper, times(1))
-                .writeValueAsString(null);
-
-        verifyNoMoreInteractions(mapper);
+        assertThat(result).isNull();
+        verifyNoInteractions(mapper);
     }
 }

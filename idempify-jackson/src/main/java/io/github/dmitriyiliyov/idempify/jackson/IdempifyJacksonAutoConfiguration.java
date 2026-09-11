@@ -2,9 +2,11 @@ package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.ConditionalOnIdempifyEnabled;
-import io.github.dmitriyiliyov.idempify.core.ResultDeserializer;
-import io.github.dmitriyiliyov.idempify.core.ResultSerializer;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyCanonicalizerCreator;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseDeserializer;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseSerializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -25,6 +27,19 @@ public class IdempifyJacksonAutoConfiguration {
     @ConditionalOnMissingBean
     public ResultDeserializer idempifyJacksonResultDeserializer(ObjectMapper mapper) {
         return new JacksonResultDeserializer(mapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ResponseSerializer idempifyJacksonResponseSerializer(ObjectMapper mapper) {
+        GenericJacksonSerializer serializer = new GenericJacksonSerializer(mapper);
+        return serializer::serialize;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ResponseDeserializer idempifyJacksonResponseDeserializer(ObjectMapper mapper) {
+        return new JacksonResponseDeserializer(mapper);
     }
 
     @Bean
