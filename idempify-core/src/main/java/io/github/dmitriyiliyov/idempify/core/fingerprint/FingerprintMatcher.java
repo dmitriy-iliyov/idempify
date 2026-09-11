@@ -7,9 +7,9 @@ import java.util.UUID;
  * and reacts if they disagree.
  * <p>
  * Kept apart from {@link FingerprintPolicy} because the check has two callers - the core manager before a
- * replay, and the http filter before answering from cache - and what happens on a mismatch must not differ
- * between them. The policy still owns both the comparison and the reaction; this only sequences them and
- * reports the event.
+ * replay, and the http filter before answering from the operation's record - and what happens on a mismatch
+ * must not differ between them. The policy still owns both the comparison and the reaction; this only
+ * sequences them and reports the event.
  */
 public interface FingerprintMatcher {
 
