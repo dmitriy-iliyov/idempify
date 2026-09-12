@@ -1,7 +1,5 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import io.github.dmitriyiliyov.idempify.core.result.ResultType;
-
 import java.time.Duration;
 import java.util.UUID;
 
@@ -40,11 +38,11 @@ public interface TransactionalOperationManager {
      *
      * @param idempotencyKey the key of the operation to complete.
      * @param result         the result to store.
-     * @param resultType     the type that result is read back into, carried from the call site because the
-     *                       row does not keep it.
      * @param ttl            how long the stored result stays replayable, counted from now.
-     * @return the completed operation, never {@code null} - the same result, plus the status the store now
-     *         holds it in. The expiry it was given stays on the record and is read from there.
+     * @return the completed operation, never {@code null} - the caller's own result, unchanged, plus the
+     *         status the store now holds it in. The result is not read back from the store: what was just
+     *         written is what the caller already has, and a round trip through the serializer would hand
+     *         back a copy instead. The expiry stays on the record and is read from there.
      */
-    OperationDetail complete(UUID idempotencyKey, Object result, ResultType resultType, Duration ttl);
+    OperationDetail complete(UUID idempotencyKey, Object result, Duration ttl);
 }

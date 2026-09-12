@@ -101,7 +101,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // then
         assertThat(result).isEqualTo("replayed");
         assertThat(callback.calls).isZero();
-        verify(operationManager, never()).complete(any(), any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any());
     }
 
     @Test
@@ -115,7 +115,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
+        when(operationManager.complete(KEY, "fresh", TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -124,7 +124,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // then
         assertThat(result).isEqualTo("fresh");
         assertThat(callback.calls).isEqualTo(1);
-        verify(operationManager, times(1)).complete(KEY, "fresh", RESULT_TYPE, TTL);
+        verify(operationManager, times(1)).complete(KEY, "fresh", TTL);
     }
 
     @Test
@@ -137,7 +137,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
+        when(operationManager.complete(KEY, "fresh", TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -198,7 +198,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL)).thenReturn(completed);
+        when(operationManager.complete(KEY, "fresh", TTL)).thenReturn(completed);
 
         // when
         tested.process(context, metadata);
@@ -240,7 +240,7 @@ class TransactionalIdempotentProcessorUnitTest {
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
-        verify(operationManager, never()).complete(any(), any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -262,7 +262,7 @@ class TransactionalIdempotentProcessorUnitTest {
                 .hasMessage("Surrounded method throws")
                 .hasCause(thrown);
 
-        verify(operationManager, never()).complete(any(), any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -284,7 +284,7 @@ class TransactionalIdempotentProcessorUnitTest {
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
         assertThat(callback.calls).isZero();
-        verify(operationManager, never()).complete(any(), any(), any(), any());
+        verify(operationManager, never()).complete(any(), any(), any());
         verify(eventListener, never()).onSuccess();
     }
 
@@ -377,7 +377,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, TTL))
+        when(operationManager.complete(KEY, "fresh", TTL))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -398,7 +398,7 @@ class TransactionalIdempotentProcessorUnitTest {
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
                 .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
-        when(operationManager.complete(KEY, "fresh", RESULT_TYPE, callSiteTtl))
+        when(operationManager.complete(KEY, "fresh", callSiteTtl))
                 .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
 
         // when
@@ -406,7 +406,7 @@ class TransactionalIdempotentProcessorUnitTest {
 
         // then
         assertThat(result).isEqualTo("fresh");
-        verify(operationManager, times(1)).complete(KEY, "fresh", RESULT_TYPE, callSiteTtl);
+        verify(operationManager, times(1)).complete(KEY, "fresh", callSiteTtl);
     }
 
     @Test

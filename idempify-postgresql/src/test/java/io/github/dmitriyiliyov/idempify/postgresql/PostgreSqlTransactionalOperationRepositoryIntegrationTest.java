@@ -226,12 +226,14 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         tested.saveIfAbsent(claim(key));
 
         // when
-        RawOperation result = tested.saveResultAndUpdateStatus(
+        tested.saveResultAndUpdateStatus(
                 key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(result.result()).isEqualTo("result");
+        assertThat(reader.findByIdempotencyKey(key)).hasValueSatisfying(stored -> {
+            assertThat(stored.status()).isEqualTo(OperationStatus.PROCESSED);
+            assertThat(stored.result()).isEqualTo("result");
+        });
     }
 
     @Test
@@ -243,11 +245,12 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         Instant expiresAt = anHourFromNow();
 
         // when
-        RawOperation result = tested.saveResultAndUpdateStatus(
+        tested.saveResultAndUpdateStatus(
                 key, "result", OperationStatus.PROCESSED, expiresAt, OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(result.expiresAt()).isEqualTo(expiresAt);
+        assertThat(reader.findByIdempotencyKey(key))
+                .hasValueSatisfying(stored -> assertThat(stored.expiresAt()).isEqualTo(expiresAt));
     }
 
     @Test
@@ -259,11 +262,12 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         givenStoredResponse(key);
 
         // when
-        RawOperation result = tested.saveResultAndUpdateStatus(
+        tested.saveResultAndUpdateStatus(
                 key, "result", OperationStatus.PROCESSED, anHourFromNow(), OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(result.response()).isEqualTo("raw-response");
+        assertThat(reader.findByIdempotencyKey(key))
+                .hasValueSatisfying(stored -> assertThat(stored.response()).isEqualTo("raw-response"));
     }
 
     @Test
@@ -295,11 +299,12 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
         Instant later = Instant.now().plus(5, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS);
 
         // when
-        RawOperation result = tested.saveResultAndUpdateStatus(
+        tested.saveResultAndUpdateStatus(
                 key, "result", OperationStatus.PROCESSED, later, OperationStatus.IN_PROCESS);
 
         // then
-        assertThat(result.expiresAt()).isEqualTo(later);
+        assertThat(reader.findByIdempotencyKey(key))
+                .hasValueSatisfying(stored -> assertThat(stored.expiresAt()).isEqualTo(later));
     }
 
     @Test

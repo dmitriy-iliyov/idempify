@@ -61,8 +61,8 @@ public interface TransactionalOperationRepository {
      * <p>
      * As in {@link #update}, a missed condition is not an outcome to inspect but a failure: this method
      * completes an operation the caller itself started and still holds, so the row is expected to be there
-     * and to be in {@code onStatus}. An implementation must not silently leave the row alone and return
-     * whatever it found.
+     * and to be in {@code onStatus}. An implementation must not silently leave the row alone: nothing is
+     * handed back for the caller to notice the miss by.
      * <p>
      * This is the only method that puts an expiry on a row. {@link #saveIfAbsent} claims a key without one,
      * so the column must be nullable and reads must survive {@code NULL}; the invariant that buys is the one
@@ -73,12 +73,11 @@ public interface TransactionalOperationRepository {
      * @param status         the new status of the operation.
      * @param expiresAt      when the stored result stops being replayable.
      * @param onStatus       the expected current status of the row for the update to proceed.
-     * @return the updated row, never {@code null}.
      * @throws OperationStatusMismatchException if no row with this key is in {@code onStatus}.
      */
-    RawOperation saveResultAndUpdateStatus(UUID idempotencyKey,
-                                           String result,
-                                           OperationStatus status,
-                                           Instant expiresAt,
-                                           OperationStatus onStatus);
+    void saveResultAndUpdateStatus(UUID idempotencyKey,
+                                   String result,
+                                   OperationStatus status,
+                                   Instant expiresAt,
+                                   OperationStatus onStatus);
 }

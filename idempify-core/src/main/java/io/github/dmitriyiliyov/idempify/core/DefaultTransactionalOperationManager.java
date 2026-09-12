@@ -3,7 +3,6 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
-import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,23 +99,20 @@ public class DefaultTransactionalOperationManager implements TransactionalOperat
     }
 
     @Override
-    public OperationDetail complete(UUID idempotencyKey, Object result, ResultType resultType, Duration ttl) {
-        Instant expiresAt = clock.instant().plus(ttl);
-        Operation operation = deserializer.deserialize(
-                repository.saveResultAndUpdateStatus(
-                        idempotencyKey,
-                        result == null ? null : resultSerializer.serialize(result),
-                        OperationStatus.PROCESSED,
-                        expiresAt,
-                        OperationStatus.IN_PROCESS
-                ),
-                resultType
+    public OperationDetail complete(UUID idempotencyKey, Object result, Duration ttl) {
+        OperationStatus newStatus = OperationStatus.PROCESSED;
+        repository.saveResultAndUpdateStatus(
+                idempotencyKey,
+                result == null ? null : resultSerializer.serialize(result),
+                newStatus,
+                clock.instant().plus(ttl),
+                OperationStatus.IN_PROCESS
         );
         return new DefaultOperationDetail(
-                operation.getIdempotencyKey(),
-                operation.getStatus(),
+                idempotencyKey,
+                newStatus,
                 false,
-                operation.getResult()
+                result
         );
     }
 }

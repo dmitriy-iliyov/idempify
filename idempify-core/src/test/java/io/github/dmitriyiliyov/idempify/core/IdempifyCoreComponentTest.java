@@ -422,11 +422,11 @@ class IdempifyCoreComponentTest {
         }
 
         @Override
-        public RawOperation saveResultAndUpdateStatus(UUID idempotencyKey,
-                                                      String result,
-                                                      OperationStatus status,
-                                                      Instant expiresAt,
-                                                      OperationStatus onStatus) {
+        public void saveResultAndUpdateStatus(UUID idempotencyKey,
+                                              String result,
+                                              OperationStatus status,
+                                              Instant expiresAt,
+                                              OperationStatus onStatus) {
             RawOperation stored = rows.get(idempotencyKey);
             if (stored == null || stored.status() != onStatus) {
                 throw new OperationStatusMismatchException(idempotencyKey, onStatus);
@@ -443,7 +443,6 @@ class IdempifyCoreComponentTest {
                     stored.createdAt()
             );
             rows.put(idempotencyKey, completed);
-            return completed;
         }
 
         @Override

@@ -76,21 +76,20 @@ public class PostgreSqlTransactionalOperationRepository implements Transactional
     }
 
     @Override
-    public RawOperation saveResultAndUpdateStatus(UUID idempotencyKey,
-                                                  String result,
-                                                  OperationStatus status,
-                                                  Instant expiresAt,
-                                                  OperationStatus onStatus) {
-        return jdbcClient
+    public void saveResultAndUpdateStatus(UUID idempotencyKey,
+                                          String result,
+                                          OperationStatus status,
+                                          Instant expiresAt,
+                                          OperationStatus onStatus) {
+        int updated = jdbcClient
                 .sql("""
                     UPDATE idempotent_operations
                         SET result = ?, status = ?, expires_at = ?
                     WHERE idempotency_key = ? AND status = ?
-                    RETURNING *
                 """)
                 .params(result, status.name(), Timestamp.from(expiresAt), idempotencyKey, onStatus.name())
-                .query((rs, rowNum) -> PostgreSqlRepositoryUtils.toRawOperation(rs))
-                .optional()
-                .orElseThrow(() -> new OperationStatusMismatchException(idempotencyKey, onStatus));
+                .update();
+
+        if (updated == 0) throw new OperationStatusMismatchException(idempotencyKey, onStatus);
     }
 }

@@ -316,11 +316,8 @@ class DefaultTransactionalOperationManagerUnitTest {
     @Test
     @DisplayName("UT complete() should store the serialized result under a compare-and-swap on IN_PROCESS")
     void complete_shouldStoreSerializedResultUnderCompareAndSwapOnInProcess() {
-        // given
-        givenCompletionReturns(processed("result"));
-
         // when
-        OperationDetail detail = tested.complete(KEY, "result", RESULT_TYPE, TTL);
+        OperationDetail detail = tested.complete(KEY, "result", TTL);
 
         // then
         assertThat(detail.getResult()).isEqualTo("result");
@@ -333,10 +330,9 @@ class DefaultTransactionalOperationManagerUnitTest {
     void complete_shouldCountExpiryFromMomentResultExistsNotFromClaim() {
         // given
         clock.advance(Duration.ofHours(2));
-        givenCompletionReturns(processed("result"));
 
         // when
-        tested.complete(KEY, "result", RESULT_TYPE, TTL);
+        tested.complete(KEY, "result", TTL);
 
         // then
         assertThat(capturedExpiry()).isEqualTo(NOW.plus(Duration.ofHours(2)).plus(TTL));
@@ -347,10 +343,9 @@ class DefaultTransactionalOperationManagerUnitTest {
     void complete_whenOperationOutranItsOwnTtl_shouldStillStoreExpiryInTheFuture() {
         // given
         clock.advance(TTL.plus(Duration.ofMinutes(1)));
-        givenCompletionReturns(processed("result"));
 
         // when
-        tested.complete(KEY, "result", RESULT_TYPE, TTL);
+        tested.complete(KEY, "result", TTL);
 
         // then
         assertThat(capturedExpiry()).isAfter(clock.instant());
@@ -359,11 +354,8 @@ class DefaultTransactionalOperationManagerUnitTest {
     @Test
     @DisplayName("UT complete() should hand back a detail that is not a replay")
     void complete_shouldHandBackDetailThatIsNotReplay() {
-        // given
-        givenCompletionReturns(processed("result"));
-
         // when
-        OperationDetail detail = tested.complete(KEY, "result", RESULT_TYPE, TTL);
+        OperationDetail detail = tested.complete(KEY, "result", TTL);
 
         // then
         assertThat(detail.replayed()).isFalse();
@@ -372,26 +364,24 @@ class DefaultTransactionalOperationManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT complete() should hand back the result the store recorded rather than the one it was given")
-    void complete_shouldHandBackResultStoreRecordedRatherThanOneItWasGiven() {
+    @DisplayName("UT complete() should hand back the caller's own result rather than a copy read back from the store")
+    void complete_shouldHandBackCallersOwnResultRatherThanCopyReadBackFromStore() {
         // given
-        givenCompletionReturns(processed("recorded"));
+        Object result = new Object();
 
         // when
-        OperationDetail detail = tested.complete(KEY, "result", RESULT_TYPE, TTL);
+        OperationDetail detail = tested.complete(KEY, result, TTL);
 
         // then
-        assertThat(detail.getResult()).isEqualTo("recorded");
+        assertThat(detail.getResult()).isSameAs(result);
     }
 
     @Test
     @DisplayName("UT complete() when the operation returned null should store and hand back that null")
     void complete_whenOperationReturnedNull_shouldStoreAndHandBackThatNull() {
         // given
-        givenCompletionReturns(processed(null));
-
         // when
-        OperationDetail detail = tested.complete(KEY, null, RESULT_TYPE, TTL);
+        OperationDetail detail = tested.complete(KEY, null, TTL);
 
         // then
         assertThat(detail.getResult()).isNull();
@@ -404,11 +394,11 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT complete() when the row is no longer in process should let the mismatch out")
     void complete_whenRowIsNoLongerInProcess_shouldLetMismatchOut() {
         // given
-        when(repository.saveResultAndUpdateStatus(any(), any(), any(), any(), any()))
-                .thenThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS));
+        doThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS))
+                .when(repository).saveResultAndUpdateStatus(any(), any(), any(), any(), any());
 
         // when / then
-        assertThatThrownBy(() -> tested.complete(KEY, "result", RESULT_TYPE, TTL))
+        assertThatThrownBy(() -> tested.complete(KEY, "result", TTL))
                 .isInstanceOf(OperationStatusMismatchException.class)
                 .hasMessageContaining(KEY.toString());
     }
@@ -421,12 +411,6 @@ class DefaultTransactionalOperationManagerUnitTest {
     private void givenClaimAnsweredWith(Operation stored) {
         when(creator.create(any(), eq(NOW))).thenReturn(claim());
         when(repository.saveIfAbsent(row(claim()))).thenReturn(row(stored));
-    }
-
-    private void givenCompletionReturns(Operation completed) {
-        when(repository.saveResultAndUpdateStatus(eq(KEY), any(), eq(OperationStatus.PROCESSED), any(),
-                eq(OperationStatus.IN_PROCESS)))
-                .thenReturn(row(completed));
     }
 
     private Instant capturedExpiry() {
