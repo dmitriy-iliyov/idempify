@@ -127,8 +127,8 @@ public final class ResponseConfig implements ResponseProvidePolicy {
      * keeps the reference's value. A target that decided a flag to the same value as the built-in default is
      * a target that decided, and overrides.
      * <p>
-     * Only the two flags are layered - the header sets come from {@code reference} whatever {@code target}
-     * says about them.
+     * The header sets layer by the same rule, and an empty set counts as a decision rather than as silence:
+     * it is how a narrower layer says "keep every header" over a reference that named only a few.
      */
     // this isn;t place for shouldCacheXxx, shouldCacheXxx must deside saving to db or not when throwing
     public static ResponseConfig merge(ResponseConfig reference, ResponseConfig target) {

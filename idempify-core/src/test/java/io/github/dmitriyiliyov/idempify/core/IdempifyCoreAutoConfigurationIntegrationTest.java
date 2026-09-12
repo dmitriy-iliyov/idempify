@@ -288,8 +288,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when existing OperationMapper bean should not register the default one")
-    void context_whenExistingOperationMapperBean_shouldNotRegisterDefaultOne() {
+    @DisplayName("IT context when existing OperationCreator bean should not register the default one")
+    void context_whenExistingOperationCreatorBean_shouldNotRegisterDefaultOne() {
         contextRunner
                 .withBean(OperationCreator.class, () -> mock(OperationCreator.class))
                 .run(context -> {
