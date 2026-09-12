@@ -53,7 +53,7 @@ public class IdempifyHttpAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public FilterRegistrationBean<OperationResponseCachingFilter> idempifyOperationResponseCachingFilterRegistrationBean(
+    public FilterRegistrationBean<OperationResponseFilter> idempifyOperationResponseFilterRegistrationBean(
             IdempotentRequestMatcher matcher,
             OperationStateChannel channel,
             FingerprintMatcher fingerprintMatcher,
@@ -62,9 +62,9 @@ public class IdempifyHttpAutoConfiguration {
             ObjectProvider<MappingJackson2HttpMessageConverter> jsonConverter,
             Clock clock
     ) {
-        FilterRegistrationBean<OperationResponseCachingFilter> registrationBean = new FilterRegistrationBean<>();
+        FilterRegistrationBean<OperationResponseFilter> registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(
-                new OperationResponseCachingFilter(
+                new OperationResponseFilter(
                         matcher,
                         channel,
                         fingerprintMatcher,

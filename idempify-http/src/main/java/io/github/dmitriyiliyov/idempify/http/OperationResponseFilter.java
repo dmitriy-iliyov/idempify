@@ -30,9 +30,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public class OperationResponseCachingFilter extends OncePerRequestFilter {
+public class OperationResponseFilter extends OncePerRequestFilter {
 
-    private static final Logger log = LoggerFactory.getLogger(OperationResponseCachingFilter.class);
+    private static final Logger log = LoggerFactory.getLogger(OperationResponseFilter.class);
     private final IdempotentRequestMatcher matcher;
     private final OperationStateChannel channel;
     private final FingerprintMatcher fingerprintMatcher;
@@ -48,13 +48,13 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
      * flat. The copy makes both shapes equal whatever mapper the application configured, and leaves the
      * caller's own mapper untouched.
      */
-    public OperationResponseCachingFilter(IdempotentRequestMatcher matcher,
-                                          OperationStateChannel channel,
-                                          FingerprintMatcher fingerprintMatcher,
-                                          KeyExtractor keyExtractor,
-                                          ResponseManager responseManager,
-                                          ObjectMapper mapper,
-                                          Clock clock) {
+    public OperationResponseFilter(IdempotentRequestMatcher matcher,
+                                   OperationStateChannel channel,
+                                   FingerprintMatcher fingerprintMatcher,
+                                   KeyExtractor keyExtractor,
+                                   ResponseManager responseManager,
+                                   ObjectMapper mapper,
+                                   Clock clock) {
         this.matcher = Objects.requireNonNull(matcher, "matcher cannot be null");
         this.channel = Objects.requireNonNull(channel, "channel cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
@@ -90,18 +90,18 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
             return;
         }
 
-        // cache check
-        boolean shouldReturn = cacheCheck(idempotencyKey, metadata, fingerprint, request, response);
+        // replay
+        boolean shouldReturn = replayRecorded(idempotencyKey, metadata, fingerprint, request, response);
         if (shouldReturn) {
             return;
         }
 
-        // cache put
+        // record
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
         } finally {
-            cachePut(idempotencyKey, metadata, wrappedResponse);
+            recordResponse(idempotencyKey, metadata, wrappedResponse);
             wrappedResponse.copyBodyToResponse();
         }
     }
@@ -114,7 +114,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
 
     private UUID extractIdempotencyKey(OperationMetadata metadata, HttpServletRequest request) {
         if (!metadata.useHeaderName()) {
-            log.info("Idempotency key of {} comes from an expression, so the response cache cannot be reached here", request.getRequestURI());
+            log.info("Idempotency key of {} comes from an expression, so the recorded response cannot be reached here", request.getRequestURI());
             return null;
         }
 
@@ -163,11 +163,11 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
         return null;
     }
 
-    private boolean cacheCheck(UUID idempotencyKey,
-                               OperationMetadata metadata,
-                               String fingerprint,
-                               HttpServletRequest request,
-                               HttpServletResponse response) throws IOException {
+    private boolean replayRecorded(UUID idempotencyKey,
+                                   OperationMetadata metadata,
+                                   String fingerprint,
+                                   HttpServletRequest request,
+                                   HttpServletResponse response) throws IOException {
         Optional<ResponseContainer> nullableResponseContainer = findResponse(idempotencyKey);
         if (nullableResponseContainer.isEmpty()) {
             return false;
@@ -183,7 +183,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
                         idempotencyKey
                 );
             } catch (Exception e) {
-                log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking cache", idempotencyKey);
+                log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking the recorded response", idempotencyKey);
                 FingerprintExceptionFilterUtils.ofMismatch(
                         request,
                         response,
@@ -202,14 +202,14 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
         try {
             return responseManager.findByIdempotencyKey(idempotencyKey);
         } catch (Exception e) {
-            log.error("Error when checking cache for operation response (idempotencyKey={})", idempotencyKey, e);
+            log.error("Error when looking up the recorded operation response (idempotencyKey={})", idempotencyKey, e);
             return Optional.empty();
         }
     }
 
-    private void cachePut(UUID idempotencyKey,
-                          OperationMetadata metadata,
-                          ContentCachingResponseWrapper responseWrapper) {
+    private void recordResponse(UUID idempotencyKey,
+                                OperationMetadata metadata,
+                                ContentCachingResponseWrapper responseWrapper) {
         try {
             try {
                 OperationState operationState = channel.consume();
@@ -222,7 +222,7 @@ public class OperationResponseCachingFilter extends OncePerRequestFilter {
             }
 
             ResponseConfig responseConfig = metadata.getResponseConfig();
-            if (!FilterUtils.shouldCache(responseConfig, responseWrapper.getStatus())) {
+            if (!FilterUtils.shouldKeep(responseConfig, responseWrapper.getStatus())) {
                 return;
             }
 

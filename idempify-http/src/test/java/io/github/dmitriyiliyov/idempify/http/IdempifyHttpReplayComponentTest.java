@@ -88,7 +88,7 @@ class IdempifyHttpReplayComponentTest {
         core = context.getBean(ReplayingIdempotentProcessor.class);
         controller = context.getBean(PaymentController.class);
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
-                .addFilters(responseCachingFilter())
+                .addFilters(operationResponseFilter())
                 .build();
     }
 
@@ -146,7 +146,7 @@ class IdempifyHttpReplayComponentTest {
         assertThat(core.processCalls).isEqualTo(2);
     }
 
-    private Filter responseCachingFilter() {
+    private Filter operationResponseFilter() {
         return context.getBean(FilterRegistrationBean.class).getFilter();
     }
 

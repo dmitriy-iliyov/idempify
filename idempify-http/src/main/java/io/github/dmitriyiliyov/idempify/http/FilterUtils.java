@@ -23,7 +23,7 @@ public final class FilterUtils {
      * @param responseConfig the resolved settings of the call site, or {@code null} when it has none.
      * @param status         the status the handler answered with.
      */
-    public static boolean shouldCache(ResponseConfig responseConfig, int status) {
+    public static boolean shouldKeep(ResponseConfig responseConfig, int status) {
         if (responseConfig == null) {
             return false;
         }

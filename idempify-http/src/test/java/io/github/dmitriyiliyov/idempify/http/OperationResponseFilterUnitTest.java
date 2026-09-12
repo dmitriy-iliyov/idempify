@@ -58,7 +58,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class ResponseCachingFilterUnitTest {
+class OperationResponseFilterUnitTest {
 
     private static final String HEADER_NAME = IdempifyDefaults.HEADER_NAME;
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -81,7 +81,7 @@ class ResponseCachingFilterUnitTest {
     KeyExtractor keyExtractor;
 
     @Mock
-    ResponseManager cache;
+    ResponseManager responseManager;
 
     @Mock
     FingerprintPolicy fingerprintPolicy;
@@ -96,13 +96,13 @@ class ResponseCachingFilterUnitTest {
     private final MockHttpServletRequest request = request(BODY);
     private final MockHttpServletResponse response = new MockHttpServletResponse();
 
-    private OperationResponseCachingFilter tested;
+    private OperationResponseFilter tested;
     private RecordingLogAppender logAppender;
     private Level previousLogLevel;
 
     @BeforeEach
     void setUp() {
-        tested = new OperationResponseCachingFilter(matcher, channel, fingerprintMatcher, keyExtractor, cache, mapper, clock);
+        tested = new OperationResponseFilter(matcher, channel, fingerprintMatcher, keyExtractor, responseManager, mapper, clock);
     }
 
     @AfterEach
@@ -117,8 +117,8 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when matcher is null should throw NullPointerException")
     void constructor_whenMatcherIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                null, channel, fingerprintMatcher, keyExtractor, cache, mapper, clock))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                null, channel, fingerprintMatcher, keyExtractor, responseManager, mapper, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("matcher cannot be null");
     }
@@ -126,8 +126,8 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when channel is null should throw NullPointerException")
     void constructor_whenChannelIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                matcher, null, fingerprintMatcher, keyExtractor, cache, mapper, clock))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                matcher, null, fingerprintMatcher, keyExtractor, responseManager, mapper, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("channel cannot be null");
     }
@@ -135,8 +135,8 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when fingerprintMatcher is null should throw NullPointerException")
     void constructor_whenFingerprintMatcherIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                matcher, channel, null, keyExtractor, cache, mapper, clock))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                matcher, channel, null, keyExtractor, responseManager, mapper, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("fingerprintMatcher cannot be null");
     }
@@ -144,16 +144,16 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when keyExtractor is null should throw NullPointerException")
     void constructor_whenKeyExtractorIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                matcher, channel, fingerprintMatcher, null, cache, mapper, clock))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                matcher, channel, fingerprintMatcher, null, responseManager, mapper, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("keyExtractor cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when responseManager is null should throw NullPointerException")
-    void constructor_whenCacheIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
+    void constructor_whenResponseManagerIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new OperationResponseFilter(
                 matcher, channel, fingerprintMatcher, keyExtractor, null, mapper, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("responseManager cannot be null");
@@ -162,8 +162,8 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when mapper is null should throw NullPointerException")
     void constructor_whenMapperIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                matcher, channel, fingerprintMatcher, keyExtractor, cache, null, clock))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                matcher, channel, fingerprintMatcher, keyExtractor, responseManager, null, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("mapper cannot be null");
     }
@@ -171,8 +171,8 @@ class ResponseCachingFilterUnitTest {
     @Test
     @DisplayName("UT constructor when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new OperationResponseCachingFilter(
-                matcher, channel, fingerprintMatcher, keyExtractor, cache, mapper, null))
+        assertThatThrownBy(() -> new OperationResponseFilter(
+                matcher, channel, fingerprintMatcher, keyExtractor, responseManager, mapper, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clock cannot be null");
     }
@@ -191,7 +191,7 @@ class ResponseCachingFilterUnitTest {
         assertThat(chain.calls).isEqualTo(1);
         assertThat(chain.request).isSameAs(request);
         assertThat(chain.response).isSameAs(response);
-        verifyNoInteractions(keyExtractor, cache, fingerprintMatcher);
+        verifyNoInteractions(keyExtractor, responseManager, fingerprintMatcher);
     }
 
     @Test
@@ -207,7 +207,7 @@ class ResponseCachingFilterUnitTest {
         // then
         assertThat(chain.calls).isEqualTo(1);
         assertThat(chain.request).isSameAs(request);
-        verifyNoInteractions(keyExtractor, cache);
+        verifyNoInteractions(keyExtractor, responseManager);
     }
 
     @Test
@@ -223,7 +223,7 @@ class ResponseCachingFilterUnitTest {
 
         // then
         assertThat(chain.calls).isEqualTo(1);
-        verifyNoInteractions(keyExtractor, cache);
+        verifyNoInteractions(keyExtractor, responseManager);
     }
 
     @Test
@@ -239,7 +239,7 @@ class ResponseCachingFilterUnitTest {
         // then
         assertThat(chain.calls).isEqualTo(1);
         assertThat(chain.request).isSameAs(request);
-        verifyNoInteractions(keyExtractor, cache);
+        verifyNoInteractions(keyExtractor, responseManager);
     }
 
     @Test
@@ -258,7 +258,7 @@ class ResponseCachingFilterUnitTest {
         assertThat(chain.calls).isEqualTo(1);
         assertThat(chain.request).isSameAs(request);
         assertThat(response.getStatus()).isEqualTo(200);
-        verifyNoInteractions(cache);
+        verifyNoInteractions(responseManager);
     }
 
     @Test
@@ -277,7 +277,7 @@ class ResponseCachingFilterUnitTest {
         // then
         assertThat(chain.calls).isEqualTo(1);
         assertThat(chain.request).isInstanceOf(ContentCachingRequestWrapper.class);
-        verifyNoInteractions(cache, fingerprintMatcher);
+        verifyNoInteractions(responseManager, fingerprintMatcher);
     }
 
     @Test
@@ -300,13 +300,13 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is in the cache should replay it without calling the chain")
-    void doFilter_whenResponseIsInCache_shouldReplayItWithoutCallingChain() throws Exception {
+    @DisplayName("UT doFilter() when the response is on the record should replay it without calling the chain")
+    void doFilter_whenResponseIsOnRecord_shouldReplayItWithoutCallingChain() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
-        givenCached(new DefaultResponse(201, body, "application/json", null), null);
+        givenRecordedResponse(new DefaultResponse(201, body, "application/json", null), null);
         RecordingFilterChain chain = new RecordingFilterChain();
 
         // when
@@ -318,17 +318,17 @@ class ResponseCachingFilterUnitTest {
         assertThat(response.getContentType()).isEqualTo("application/json");
         assertThat(response.getContentLength()).isEqualTo(body.length);
         assertThat(response.getContentAsByteArray()).isEqualTo(body);
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
         verifyNoInteractions(fingerprintMatcher);
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cached response has no body should replay it with zero content length")
-    void doFilter_whenCachedResponseHasNoBody_shouldReplayItWithZeroContentLength() throws Exception {
+    @DisplayName("UT doFilter() when the recorded response has no body should replay it with zero content length")
+    void doFilter_whenRecordedResponseHasNoBody_shouldReplayItWithZeroContentLength() throws Exception {
         // given
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
-        givenCached(new DefaultResponse(204, null, "application/json", null), null);
+        givenRecordedResponse(new DefaultResponse(204, null, "application/json", null), null);
         RecordingFilterChain chain = new RecordingFilterChain();
 
         // when
@@ -342,13 +342,13 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cached response has no content type should replay it without one")
-    void doFilter_whenCachedResponseHasNoContentType_shouldReplayItWithoutOne() throws Exception {
+    @DisplayName("UT doFilter() when the recorded response has no content type should replay it without one")
+    void doFilter_whenRecordedResponseHasNoContentType_shouldReplayItWithoutOne() throws Exception {
         // given
         byte [] body = "paid".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
-        givenCached(new DefaultResponse(200, body, null, null), null);
+        givenRecordedResponse(new DefaultResponse(200, body, null, null), null);
         RecordingFilterChain chain = new RecordingFilterChain();
 
         // when
@@ -360,13 +360,13 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cached response has a blank content type should replay it without one")
-    void doFilter_whenCachedResponseHasBlankContentType_shouldReplayItWithoutOne() throws Exception {
+    @DisplayName("UT doFilter() when the recorded response has a blank content type should replay it without one")
+    void doFilter_whenRecordedResponseHasBlankContentType_shouldReplayItWithoutOne() throws Exception {
         // given
         byte [] body = "paid".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
-        givenCached(new DefaultResponse(200, body, "   ", null), null);
+        givenRecordedResponse(new DefaultResponse(200, body, "   ", null), null);
         RecordingFilterChain chain = new RecordingFilterChain();
 
         // when
@@ -378,13 +378,13 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cache lookup throws should treat it as a miss and call the chain")
-    void doFilter_whenCacheLookupThrows_shouldTreatItAsMissAndCallChain() throws Exception {
+    @DisplayName("UT doFilter() when the response lookup throws should treat it as absent and call the chain")
+    void doFilter_whenResponseLookupThrows_shouldTreatItAsAbsentAndCallChain() throws Exception {
         // given
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
-        when(cache.findByIdempotencyKey(eq(KEY)))
-                .thenThrow(new IllegalStateException("cache is down"));
+        when(responseManager.findByIdempotencyKey(eq(KEY)))
+                .thenThrow(new IllegalStateException("response store is down"));
         RecordingFilterChain chain = respondingChain(201, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
 
         // when
@@ -397,8 +397,8 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cache save throws should still deliver the response to the client")
-    void doFilter_whenCacheSaveThrows_shouldStillDeliverResponseToClient() throws Exception {
+    @DisplayName("UT doFilter() when saving the response throws should still deliver it to the client")
+    void doFilter_whenSavingResponseThrows_shouldStillDeliverItToClient() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().build());
@@ -493,7 +493,7 @@ class ResponseCachingFilterUnitTest {
         assertThat(problem.get("instance").asText()).isEqualTo(URI);
         assertThat(problem.get("idempotencyKey").asText()).isEqualTo(KEY.toString());
         assertThat(mapper.treeToValue(problem.get("timestamp"), Instant.class)).isEqualTo(NOW);
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -512,7 +512,7 @@ class ResponseCachingFilterUnitTest {
         assertThat(chain.calls).isZero();
         assertThat(response.getStatus()).isEqualTo(500);
         assertThat(problem().get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
-        verifyNoInteractions(cache);
+        verifyNoInteractions(responseManager);
     }
 
     @Test
@@ -520,7 +520,7 @@ class ResponseCachingFilterUnitTest {
     void doFilter_whenGivenMapperCarriesNoProblemDetailMixin_shouldStillAnswerFlatProblem() throws Exception {
         // given
         ObjectMapper bare = new ObjectMapper().registerModule(new JavaTimeModule());
-        tested = new OperationResponseCachingFilter(matcher, channel, fingerprintMatcher, keyExtractor, cache, bare, clock);
+        tested = new OperationResponseFilter(matcher, channel, fingerprintMatcher, keyExtractor, responseManager, bare, clock);
         givenIdempotentUri(metadata().useFingerprint(true).fingerprintPolicy(fingerprintPolicy).build());
         givenExtractedKey();
         givenGeneratedFingerprint(null);
@@ -542,21 +542,21 @@ class ResponseCachingFilterUnitTest {
         ObjectMapper bare = new ObjectMapper();
 
         // when
-        new OperationResponseCachingFilter(matcher, channel, fingerprintMatcher, keyExtractor, cache, bare, clock);
+        new OperationResponseFilter(matcher, channel, fingerprintMatcher, keyExtractor, responseManager, bare, clock);
 
         // then
         assertThat(bare.getSerializationConfig().findMixInClassFor(ProblemDetail.class)).isNull();
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cached fingerprint matches should replay the cached response")
-    void doFilter_whenCachedFingerprintMatches_shouldReplayCachedResponse() throws Exception {
+    @DisplayName("UT doFilter() when the recorded fingerprint matches should replay the recorded response")
+    void doFilter_whenRecordedFingerprintMatches_shouldReplayRecordedResponse() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().useFingerprint(true).fingerprintPolicy(fingerprintPolicy).build());
         givenExtractedKey();
         givenGeneratedFingerprint(FINGERPRINT);
-        givenCached(new DefaultResponse(201, body, "application/json", null), PREVIOUS_FINGERPRINT);
+        givenRecordedResponse(new DefaultResponse(201, body, "application/json", null), PREVIOUS_FINGERPRINT);
         RecordingFilterChain chain = new RecordingFilterChain();
 
         // when
@@ -585,7 +585,7 @@ class ResponseCachingFilterUnitTest {
         assertThat(recorded.getHeaders())
                 .describedAs("the record keeps the headers, so what a replay drops it drops on the way out")
                 .containsEntry("Location", "/payments/1");
-        givenCached(recorded, PREVIOUS_FINGERPRINT);
+        givenRecordedResponse(recorded, PREVIOUS_FINGERPRINT);
 
         // when
         tested.doFilter(retry, replay, new RecordingFilterChain());
@@ -596,14 +596,14 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the cached fingerprint does not match should answer 422 and replay nothing")
-    void doFilter_whenCachedFingerprintDoesNotMatch_shouldAnswer422AndReplayNothing() throws Exception {
+    @DisplayName("UT doFilter() when the recorded fingerprint does not match should answer 422 and replay nothing")
+    void doFilter_whenRecordedFingerprintDoesNotMatch_shouldAnswer422AndReplayNothing() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().useFingerprint(true).fingerprintPolicy(fingerprintPolicy).build());
         givenExtractedKey();
         givenGeneratedFingerprint(FINGERPRINT);
-        givenCached(new DefaultResponse(201, body, "application/json", null), PREVIOUS_FINGERPRINT);
+        givenRecordedResponse(new DefaultResponse(201, body, "application/json", null), PREVIOUS_FINGERPRINT);
         givenFingerprintMismatch();
         RecordingFilterChain chain = new RecordingFilterChain();
 
@@ -621,12 +621,12 @@ class ResponseCachingFilterUnitTest {
         assertThat(problem.get("status").asInt()).isEqualTo(422);
         assertThat(problem.get("instance").asText()).isEqualTo(URI);
         assertThat(problem.get("idempotencyKey").asText()).isEqualTo(KEY.toString());
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
-    @DisplayName("UT doFilter() when the chain writes a response should copy it to the real response and cache it")
-    void doFilter_whenChainWritesResponse_shouldCopyItToRealResponseAndCacheIt() throws Exception {
+    @DisplayName("UT doFilter() when the chain writes a response should copy it to the real response and record it")
+    void doFilter_whenChainWritesResponse_shouldCopyItToRealResponseAndRecordIt() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().build());
@@ -666,12 +666,12 @@ class ResponseCachingFilterUnitTest {
         assertThat(response.getContentType()).isEqualTo("application/problem+json");
         assertThat(problem().get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
         assertThat(problem().get("idempotencyKey").asText()).isEqualTo(KEY.toString());
-        verifyNoInteractions(cache);
+        verifyNoInteractions(responseManager);
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is cached should let the entry die together with the recorded operation")
-    void doFilter_whenResponseIsCached_shouldLetEntryDieTogetherWithRecordedOperation() throws Exception {
+    @DisplayName("UT doFilter() when the response is recorded should save it with no lifetime of its own")
+    void doFilter_whenResponseIsRecorded_shouldSaveItWithNoLifetimeOfItsOwn() throws Exception {
         // given
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
@@ -682,7 +682,7 @@ class ResponseCachingFilterUnitTest {
         tested.doFilter(request, response, chain);
 
         // then
-        verify(cache).save(eq(KEY), any(Response.class));
+        verify(responseManager).save(eq(KEY), any(Response.class));
     }
 
     @Test
@@ -700,7 +700,7 @@ class ResponseCachingFilterUnitTest {
         // then
         assertThat(response.getStatus()).isEqualTo(201);
         assertThat(response.getContentAsByteArray()).isEqualTo(body);
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -718,7 +718,7 @@ class ResponseCachingFilterUnitTest {
 
         // then
         assertThat(response.getContentAsByteArray()).isEqualTo(body);
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -736,7 +736,7 @@ class ResponseCachingFilterUnitTest {
                 .isInstanceOf(IllegalStateException.class);
 
         // then
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -744,8 +744,8 @@ class ResponseCachingFilterUnitTest {
     void doFilter_whenChannelFails_shouldStillAnswerClientWithWholeBody() throws Exception {
         // given
         byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
-        OperationResponseCachingFilter tested = new OperationResponseCachingFilter(
-                matcher, new ThrowingOperationStateChannel(), fingerprintMatcher, keyExtractor, cache, mapper, clock);
+        OperationResponseFilter tested = new OperationResponseFilter(
+                matcher, new ThrowingOperationStateChannel(), fingerprintMatcher, keyExtractor, responseManager, mapper, clock);
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
         RecordingFilterChain chain = respondingChain(201, "application/json", body);
@@ -756,7 +756,7 @@ class ResponseCachingFilterUnitTest {
         // then
         assertThat(response.getStatus()).isEqualTo(201);
         assertThat(response.getContentAsByteArray()).isEqualTo(body);
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -805,7 +805,7 @@ class ResponseCachingFilterUnitTest {
         tested.doFilter(request, response, chain);
 
         // then
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -840,7 +840,7 @@ class ResponseCachingFilterUnitTest {
         tested.doFilter(request, response, chain);
 
         // then
-        verify(cache, never()).save(any(), any());
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -879,8 +879,8 @@ class ResponseCachingFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the chain leaves the status untouched should cache it as 200")
-    void doFilter_whenChainLeavesStatusUntouched_shouldCacheItAs200() throws Exception {
+    @DisplayName("UT doFilter() when the chain leaves the status untouched should record it as 200")
+    void doFilter_whenChainLeavesStatusUntouched_shouldRecordItAs200() throws Exception {
         // given
         givenIdempotentUri(metadata().build());
         givenExtractedKey();
@@ -933,7 +933,7 @@ class ResponseCachingFilterUnitTest {
     }
 
     private ch.qos.logback.classic.Logger filterLogger() {
-        return (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OperationResponseCachingFilter.class);
+        return (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OperationResponseFilter.class);
     }
 
     private void givenReplayedOperation() {
@@ -944,8 +944,8 @@ class ResponseCachingFilterUnitTest {
         when(fingerprintPolicy.generate(any(RequestContext.class))).thenReturn(fingerprint);
     }
 
-    private void givenCached(Response response, String fingerprint) {
-        when(cache.findByIdempotencyKey(eq(KEY)))
+    private void givenRecordedResponse(Response response, String fingerprint) {
+        when(responseManager.findByIdempotencyKey(eq(KEY)))
                 .thenReturn(Optional.of(new DefaultResponseContainer(response, fingerprint)));
     }
 
@@ -955,13 +955,13 @@ class ResponseCachingFilterUnitTest {
     }
 
     private void doThrowOnSave() {
-        doThrow(new IllegalStateException("cache is down"))
-                .when(cache).save(any(), any());
+        doThrow(new IllegalStateException("response store is down"))
+                .when(responseManager).save(any(), any());
     }
 
     private Response savedResponse() {
         ArgumentCaptor<Response> saved = ArgumentCaptor.forClass(Response.class);
-        verify(cache).save(eq(KEY), saved.capture());
+        verify(responseManager).save(eq(KEY), saved.capture());
         return saved.getValue();
     }
 
@@ -1012,7 +1012,7 @@ class ResponseCachingFilterUnitTest {
 
     /**
      * Stands in for the core's half of the request: the operation manager publishes here what it actually
-     * wrote to the repository, and the filter reads it back to decide whether there is anything worth caching.
+     * wrote to the repository, and the filter reads it back to decide whether there is anything worth recording.
      */
     /**
      * Collects what the filter logged, so that a branch taken on purpose can be told apart from one that only

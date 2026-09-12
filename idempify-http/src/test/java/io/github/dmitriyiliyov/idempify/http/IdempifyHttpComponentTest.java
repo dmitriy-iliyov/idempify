@@ -65,8 +65,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Drives the module as it is wired by its own auto-configuration: a real {@code RequestMappingHandlerMapping}
  * behind a real registry, matcher, key extractor and filter, in front of a real {@code DispatcherServlet}.
  * <p>
- * Only what belongs to the core is stood in for - the {@code ResponseCache} that has no implementation yet and
- * the {@code OperationMetadataManager} that decides the effective settings of a call site.
+ * Only what belongs to the core is stood in for - the {@code ResponseManager} that keeps the response on the
+ * operation's record and the {@code OperationMetadataManager} that decides the effective settings of a call
+ * site.
  */
 class IdempifyHttpComponentTest {
 
@@ -76,14 +77,14 @@ class IdempifyHttpComponentTest {
     private static final String OTHER_BODY = "{\"amount\":9000}";
     private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
     /**
-     * How long the record of a completed operation lives in the repository. A cache entry must die together
-     * with the record it stands for, so this is the value the filter has to derive its own ttl from.
+     * How long the record of a completed operation lives. The stand-in manager hands it to every call site
+     * that names no ttl of its own, the way resolved metadata does.
      */
     private static final Duration OPERATION_TTL = Duration.ofHours(24);
 
     private AnnotationConfigWebApplicationContext context;
     private MockMvc mockMvc;
-    private RecordingResponseManager cache;
+    private RecordingResponseManager responseManager;
     private PaymentController controller;
 
     @BeforeEach
@@ -93,10 +94,10 @@ class IdempifyHttpComponentTest {
         context.register(WebMvcConfiguration.class, CoreConfiguration.class, IdempifyHttpAutoConfiguration.class);
         context.refresh();
 
-        cache = context.getBean(RecordingResponseManager.class);
+        responseManager = context.getBean(RecordingResponseManager.class);
         controller = context.getBean(PaymentController.class);
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
-                .addFilters(responseCachingFilter())
+                .addFilters(operationResponseFilter())
                 .build();
     }
 
@@ -106,8 +107,8 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT request when the endpoint is idempotent and the key is new should reach the handler and cache its response")
-    void request_whenEndpointIsIdempotentAndKeyIsNew_shouldReachHandlerAndCacheItsResponse() throws Exception {
+    @DisplayName("CT request when the endpoint is idempotent and the key is new should reach the handler and record its response")
+    void request_whenEndpointIsIdempotentAndKeyIsNew_shouldReachHandlerAndRecordItsResponse() throws Exception {
         // when
         mockMvc.perform(payment(KEY))
                 .andExpect(status().isCreated())
@@ -115,12 +116,12 @@ class IdempifyHttpComponentTest {
 
         // then
         assertThat(controller.payCalls).isEqualTo(1);
-        assertThat(cache.storage).containsKey(KEY);
+        assertThat(responseManager.storage).containsKey(KEY);
     }
 
     @Test
-    @DisplayName("CT request when the same key comes back should be answered from the cache without reaching the handler")
-    void request_whenSameKeyComesBack_shouldBeAnsweredFromCacheWithoutReachingHandler() throws Exception {
+    @DisplayName("CT request when the same key comes back should be answered from the record without reaching the handler")
+    void request_whenSameKeyComesBack_shouldBeAnsweredFromRecordWithoutReachingHandler() throws Exception {
         // given
         mockMvc.perform(payment(KEY));
 
@@ -148,15 +149,15 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT request when the endpoint is not idempotent should never be cached")
-    void request_whenEndpointIsNotIdempotent_shouldNeverBeCached() throws Exception {
+    @DisplayName("CT request when the endpoint is not idempotent should never be recorded")
+    void request_whenEndpointIsNotIdempotent_shouldNeverBeRecorded() throws Exception {
         // when
         mockMvc.perform(post("/refunds").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
         mockMvc.perform(post("/refunds").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
 
         // then
         assertThat(controller.refundCalls).isEqualTo(2);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
@@ -172,12 +173,12 @@ class IdempifyHttpComponentTest {
         assertThat(controller.expressionKeyedCalls)
                 .describedAs("the key of the operation is the path variable, so one header must not replay another call")
                 .isEqualTo(2);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
-    @DisplayName("CT request when the idempotency key header is missing should be left to the aspect and not cached")
-    void request_whenIdempotencyKeyHeaderIsMissing_shouldBeLeftToAspectAndNotCached() throws Exception {
+    @DisplayName("CT request when the idempotency key header is missing should be left to the aspect and not recorded")
+    void request_whenIdempotencyKeyHeaderIsMissing_shouldBeLeftToAspectAndNotRecorded() throws Exception {
         // when
         mockMvc.perform(post("/payments").contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isCreated());
@@ -186,12 +187,12 @@ class IdempifyHttpComponentTest {
 
         // then
         assertThat(controller.payCalls).isEqualTo(2);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
-    @DisplayName("CT request when the idempotency key is not a uuid should be left to the aspect and not cached")
-    void request_whenIdempotencyKeyIsNotUuid_shouldBeLeftToAspectAndNotCached() throws Exception {
+    @DisplayName("CT request when the idempotency key is not a uuid should be left to the aspect and not recorded")
+    void request_whenIdempotencyKeyIsNotUuid_shouldBeLeftToAspectAndNotRecorded() throws Exception {
         // when
         mockMvc.perform(post("/payments")
                         .header(HEADER_NAME, "not-a-uuid")
@@ -201,12 +202,12 @@ class IdempifyHttpComponentTest {
 
         // then
         assertThat(controller.payCalls).isEqualTo(1);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
-    @DisplayName("CT request when the endpoint pattern is templated should be matched and cached under its key")
-    void request_whenEndpointPatternIsTemplated_shouldBeMatchedAndCachedUnderItsKey() throws Exception {
+    @DisplayName("CT request when the endpoint pattern is templated should be matched and recorded under its key")
+    void request_whenEndpointPatternIsTemplated_shouldBeMatchedAndRecordedUnderItsKey() throws Exception {
         // given
         mockMvc.perform(post("/orders/42/pay").header(HEADER_NAME, KEY.toString()))
                 .andExpect(status().isOk())
@@ -244,7 +245,7 @@ class IdempifyHttpComponentTest {
 
         // then
         assertThat(controller.rejectedCalls).isEqualTo(2);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
@@ -258,7 +259,7 @@ class IdempifyHttpComponentTest {
 
         // then
         assertThat(controller.uncachedCalls).isEqualTo(1);
-        assertThat(cache.storage).containsKey(KEY);
+        assertThat(responseManager.storage).containsKey(KEY);
     }
 
     @Test
@@ -298,8 +299,8 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT request when the handler reports a conflict should not leave that answer in the cache")
-    void request_whenHandlerReportsConflict_shouldNotLeaveThatAnswerInCache() throws Exception {
+    @DisplayName("CT request when the handler reports a conflict should not leave that answer on the record")
+    void request_whenHandlerReportsConflict_shouldNotLeaveThatAnswerOnRecord() throws Exception {
         // given
         mockMvc.perform(post("/payments/conflicting").header(HEADER_NAME, KEY.toString()))
                 .andExpect(status().isConflict());
@@ -309,29 +310,29 @@ class IdempifyHttpComponentTest {
                 .andExpect(status().isConflict());
 
         // then
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
         assertThat(controller.conflictingCalls).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("CT request when the handler throws should leave nothing in the cache for the next attempt")
-    void request_whenHandlerThrows_shouldLeaveNothingInCacheForNextAttempt() {
+    @DisplayName("CT request when the handler throws should leave nothing on the record for the next attempt")
+    void request_whenHandlerThrows_shouldLeaveNothingOnRecordForNextAttempt() {
         // when / then
         assertThatThrownBy(() -> mockMvc.perform(post("/payments/broken").header(HEADER_NAME, KEY.toString())))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
-    @DisplayName("CT request when the core replays a recorded operation should not copy that answer into the cache")
-    void request_whenCoreReplaysRecordedOperation_shouldNotCopyThatAnswerIntoCache() throws Exception {
+    @DisplayName("CT request when the core replays a recorded operation should not copy that answer onto the record")
+    void request_whenCoreReplaysRecordedOperation_shouldNotCopyThatAnswerOntoRecord() throws Exception {
         // when
         mockMvc.perform(post("/payments/replayed").header(HEADER_NAME, KEY.toString()))
                 .andExpect(status().isOk())
                 .andExpect(content().string("replayed"));
 
         // then
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
@@ -357,7 +358,7 @@ class IdempifyHttpComponentTest {
                 .andExpect(jsonPath("$.idempotencyKey").value(KEY.toString()));
 
         assertThat(controller.payCalls).isZero();
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
@@ -370,7 +371,7 @@ class IdempifyHttpComponentTest {
                 .andExpect(jsonPath("$.type").value(ProblemTypes.INVALID_IDEMPOTENCY_KEY.toString()))
                 .andExpect(jsonPath("$.instance").value("/payments/unkeyed"));
 
-        assertThat(cache.storage).isEmpty();
+        assertThat(responseManager.storage).isEmpty();
     }
 
     @Test
@@ -387,9 +388,9 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT context when the module is auto-configured should put the response caching filter in front of the servlet")
-    void context_whenModuleIsAutoConfigured_shouldPutResponseCachingFilterInFrontOfServlet() {
-        assertThat(responseCachingFilter()).isInstanceOf(OperationResponseCachingFilter.class);
+    @DisplayName("CT context when the module is auto-configured should put the response filter in front of the servlet")
+    void context_whenModuleIsAutoConfigured_shouldPutResponseFilterInFrontOfServlet() {
+        assertThat(operationResponseFilter()).isInstanceOf(OperationResponseFilter.class);
 
         IdempotentHandlerRegistry registry = context.getBean(IdempotentHandlerRegistry.class);
         assertThat(List.of("/payments", "/orders/42/pay", "/payments/rejected", "/payments/uncached",
@@ -400,7 +401,7 @@ class IdempifyHttpComponentTest {
         assertThat(registry.getHandlerMethod("PUT", RequestPath.parse("/payments", null))).isNull();
     }
 
-    private Filter responseCachingFilter() {
+    private Filter operationResponseFilter() {
         return context.getBean(FilterRegistrationBean.class).getFilter();
     }
 
@@ -543,7 +544,7 @@ class IdempifyHttpComponentTest {
 
         /**
          * Stands for the case the core answers from the repository: the operation was recorded by an earlier
-         * request, so what leaves the handler is a replay and not a result worth copying into the cache.
+         * request, so what leaves the handler is a replay and not a result worth copying onto the record.
          */
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/replayed")
@@ -606,9 +607,9 @@ class IdempifyHttpComponentTest {
 
     /**
      * Stands in for the aspect and the operation manager of the core: it is their job to tell the module,
-     * through the {@code OperationStateChannel}, that the repository now holds a record of this operation and
-     * until when. Only what the filter reads back matters here, so the stand-in publishes on the same occasion
-     * the real manager does - after the handler returned - and stays silent when it threw.
+     * through the {@code OperationStateChannel}, that the repository now holds a record of this operation.
+     * Only what the filter reads back matters here, so the stand-in publishes on the same occasion the real
+     * manager does - after the handler returned - and stays silent when it threw.
      */
     static class StubIdempotentCore implements HandlerInterceptor {
 

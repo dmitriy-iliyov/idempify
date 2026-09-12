@@ -228,13 +228,13 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when no existing response caching filter should register it last for every request")
-    void context_whenNoExistingResponseCachingFilter_shouldRegisterItLastForEveryRequest() {
+    @DisplayName("IT context when no existing response filter should register it last for every request")
+    void context_whenNoExistingResponseFilter_shouldRegisterItLastForEveryRequest() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(FilterRegistrationBean.class);
 
             FilterRegistrationBean<?> registration = context.getBean(FilterRegistrationBean.class);
-            assertThat(registration.getFilter()).isInstanceOf(OperationResponseCachingFilter.class);
+            assertThat(registration.getFilter()).isInstanceOf(OperationResponseFilter.class);
             assertThat(registration.getOrder()).isEqualTo(Ordered.LOWEST_PRECEDENCE);
             assertThat(registration.getUrlPatterns()).containsExactly("/*");
         });
@@ -268,8 +268,8 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when existing response caching filter bean should not register another one")
-    void context_whenExistingResponseCachingFilterBean_shouldNotRegisterAnotherOne() {
+    @DisplayName("IT context when existing response filter bean should not register another one")
+    void context_whenExistingResponseFilterBean_shouldNotRegisterAnotherOne() {
         contextRunner
                 .withUserConfiguration(ExistingFilterConfiguration.class)
                 .run(context -> assertThat(context).hasSingleBean(FilterRegistrationBean.class));
@@ -441,9 +441,9 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     static class ExistingFilterConfiguration {
 
         @Bean
-        public FilterRegistrationBean<OperationResponseCachingFilter> existingResponseCachingFilter() {
-            FilterRegistrationBean<OperationResponseCachingFilter> bean = new FilterRegistrationBean<>();
-            bean.setFilter(new OperationResponseCachingFilter(
+        public FilterRegistrationBean<OperationResponseFilter> existingOperationResponseFilter() {
+            FilterRegistrationBean<OperationResponseFilter> bean = new FilterRegistrationBean<>();
+            bean.setFilter(new OperationResponseFilter(
                     mock(IdempotentRequestMatcher.class),
                     mock(OperationStateChannel.class),
                     mock(FingerprintMatcher.class),
