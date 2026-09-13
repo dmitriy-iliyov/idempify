@@ -30,6 +30,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Answers a repeat from the response recorded on the operation, and records the response of a call that was
+ * not one.
+ * <p>
+ * An accelerator and not the guard against a second run: whether an operation has already run is settled by
+ * the core on its own insert, so a lookup this filter could not complete lets the request through instead of
+ * failing it.
+ */
 public class OperationResponseFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(OperationResponseFilter.class);
@@ -84,19 +92,16 @@ public class OperationResponseFilter extends OncePerRequestFilter {
             return;
         }
 
-        // matching fingerprint
         String fingerprint = generateFingerprint(idempotencyKey, metadata, wrappedRequest, response);
         if (metadata.useFingerprint() && fingerprint != null && fingerprint.isBlank()) {
             return;
         }
 
-        // replay
         boolean shouldReturn = replayRecorded(idempotencyKey, metadata, fingerprint, request, response);
         if (shouldReturn) {
             return;
         }
 
-        // record
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);

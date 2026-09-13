@@ -13,10 +13,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Keeps recently replayed responses in redis in front of the store.
+ * Keeps recently replayed responses in Redis in front of the store.
  * <p>
- * A miss never changes the answer: everything not served from redis is asked of the delegate, so an
- * unavailable or empty cache changes how fast a replay is answered and nothing about what it answers.
+ * A miss never changes the answer: everything not served from Redis is asked of the delegate, so an empty
+ * cache changes how fast a replay is answered and nothing about what it answers.
+ * <p>
+ * A failure of Redis is not a miss: both methods let it out, and a caller that does not swallow it turns an
+ * outage of the accelerator into a failed request. What such a caller swallows is wider than Redis - a
+ * failure of the store behind this decorator arrives as the same {@code DataAccessException}.
  */
 public class RedisCacheResponseRepositoryDecorator extends AbstractResponseRepositoryDecorator {
 

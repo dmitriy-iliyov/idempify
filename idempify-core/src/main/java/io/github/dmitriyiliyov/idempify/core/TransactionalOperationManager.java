@@ -39,10 +39,9 @@ public interface TransactionalOperationManager {
      * @param idempotencyKey the key of the operation to complete.
      * @param result         the result to store.
      * @param ttl            how long the stored result stays replayable, counted from now.
-     * @return the completed operation, never {@code null} - the caller's own result, unchanged, plus the
-     *         status the store now holds it in. The result is not read back from the store: what was just
-     *         written is what the caller already has, and a round trip through the serializer would hand
-     *         back a copy instead. The expiry stays on the record and is read from there.
+     * @return the completed operation, never {@code null}: the result is the very object passed in, not a
+     *         copy of it read back through the serializer, and the status is the one the store now holds it
+     *         in. The expiry stays on the record and is read from there.
      */
     OperationDetail complete(UUID idempotencyKey, Object result, Duration ttl);
 }

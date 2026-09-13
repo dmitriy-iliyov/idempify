@@ -21,35 +21,48 @@ under the same key is rejected rather than silently answered from the store.
 
 ## Key Features
 
-- **Atomic operation** - the first-writer-wins guarantee is implemented as a single atomic statement in the storage backend, not application-level locking.
-- **Result caching & replay** - a successful operation's result is serialized and stored; retries with the same
-  key replay it without re-executing business logic.
+- **Atomic claim** - the first-writer-wins guarantee is a single atomic statement in the storage backend, 
+  not application-level locking. A duplicate arriving mid-flight waits on it and is answered with the result.
+- **Result and response replay** - a completed operation keeps both the serialized result and the answer it                                                                                                                                                                                                                                         
+  was given, on one record. A retry with the same key is answered from that record - on HTTP, with the original 
+  status, body and headers reproduced as they were. An optional cache in front of that record answers it sooner and 
+  never differently.
 - **Conflict handling** - a request racing another under the same key is routed to a handler the config picks:
   `REJECT`, `WAIT`, or your own.
-- **Fingerprint validation** - the request's fingerprint is compared against the one stored with the original request,
-  so replaying a key with a different payload is treated as an error rather than silently served from cache.
-- **Layered configuration** - a call site's annotation, the named config it points at, and the global
+- **Fingerprint validation** - the request's fingerprint is compared against the one stored with the original                                                                                                                                                                                                                                       
+  request, so replaying a key with a different payload is treated as an error rather than silently served.
+- **Bounded lifetime** - a result stays replayable for a configurable ttl counted from completion; past it the                                                                                                                                                                                                                                      
+  key is free again and the next request runs as a first attempt.
+- **Machine-readable failures** - every refusal the library makes is answered as an RFC 7807 problem with a                                                                                                                                                                                                                                         
+  stable `type` URI, in the same shape whether it comes from the filter or from the exception handler.
+- **Pluggable by design** - storage, serialization, transport and cache arrive as separate modules, and every                                                                                                                                                                                                                                       
+  bean the library registers steps aside for one of your own.
+- **Layered configuration** - a call site's annotation, the named config it points at, and the global                                                                                                                                                                                                                                               
   `idempify.*` properties, in that order of precedence. What a layer leaves unspecified the next one answers.
-- **Observability** - provides out-of-the-box metrics integration via Micrometer.
+- **Observability** - out-of-the-box metrics via Micrometer.
 
 ## Supported Infrastructure
 
 - **Databases:** PostgreSQL.
 - **Transport:** HTTP, WebFlux(**Coming soon**), gRPC(**Coming soon**).
 - **Serialization:** Jackson.
-- **Response cache:** in-memory (built into core), Redis.
+- **Cache in front of the store:** in-memory (built into core), Redis.
 
 ## Limitations
 
-- **Two sources of truth for a replay.** The repository stores the serialized *method result*; the response
-  cache stores the *HTTP response* (status, content type, bytes). They are filled at different levels, expire
-  independently and are never reconciled, so a replay through the repository loses the status code and
-  `Location` while a replay from the cache keeps them.
+- **A replay is only as literal as the cache allows.** The response lives on the operation's own row, so there
+  is nothing for it to go stale against - but the cache in front of that row is asked first and does not fall
+  through to the row when its backend is down. A repeat arriving while Redis is unavailable is answered by the
+  core from the stored *method result* instead, so its status code and headers are the ones the handler chain
+  produces now rather than the ones recorded then.
 - **`void` and primitive return types.** The result type travels as a `ResultType`, which keeps type
   arguments, so `List<Order>` and `Map<String, Order>` replay correctly. What it does not settle is a method
   returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
   the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
   Jackson cannot rebuild its status and headers - so it is not replayable either.
+- **`@Idempotent` must own its transaction.** The transactional processor refuses to run inside a transaction
+  it did not start, so the annotation goes on an entry point rather than on a method a transactional caller
+  reaches - see [Transaction Boundary](#transaction-boundary).
 - **No automatic table creation** - the DDL is applied by hand.
 
 ## Quick Start
@@ -61,7 +74,8 @@ under the same key is rejected rather than silently answered from the store.
 > `idempify.*` properties. It does **not** include serialization, a transport module, a storage backend or a
 > cache backend - you must add `idempify-jackson` (or your own `ResultSerializer`/`ResultDeserializer`),
 > `idempify-http` (or your own transport integration), `idempify-postgresql` (or your own
-> `TransactionalOperationRepository`) and, if you want response caching, `idempify-cache-redis` explicitly.
+> `TransactionalOperationRepository`) and, if you want a distributed cache in front of the store,
+> `idempify-cache-redis` explicitly.
 
 ```xml
 <dependency>
@@ -93,8 +107,8 @@ psql -f idempify-postgresql/src/main/resources/idempotent_operations_table.sql "
 ```
 
 3. Select the processor. The global default is `LOCK_BASED`, whose processor is still a stub, so a working
-   setup has to ask for `TRANSACTIONAL` - and that processor refuses conflict handling and response caching
-   (see [Limitations](#limitations)):
+   setup has to ask for `TRANSACTIONAL` - and that processor refuses conflict handling and the keeping of
+   error responses (see [Limitations](#limitations)):
 
 ```yaml
 idempify:
@@ -122,8 +136,9 @@ public class IdempotencyBeans {
 > only to send the outcomes somewhere else - see [Observability](#observability).
 
 Everything else - metadata resolution and its cache, the fingerprint and conflict providers, the operation
-mapper, the transactional manager and the processors - is declared by `IdempifyCoreAutoConfiguration`. The
-`TransactionTemplate` it needs is contributed by Spring Boot itself once a transaction manager is present.
+creator, both halves of its serialization, the operation and response managers, and the processors - is
+declared by `IdempifyCoreAutoConfiguration`. The `TransactionTemplate` it needs is contributed by Spring Boot
+itself once a transaction manager is present.
 
 5. Annotate a write endpoint with `@Idempotent`:
 
@@ -157,7 +172,7 @@ curl -X POST https://api.example.com/payments \
 A retry with the same header and body replays the original response instead of charging again; a retry with the
 same header and a **different** body throws `FingerprintMismatchException` by default.
 
-Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-annotation---the-most-specific).
+Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-annotation).
 
 ---
 
@@ -188,7 +203,9 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
    `FingerprintPolicy.generate(...)`.
 4. `DelegatingIdempotentProcessor` routes the call by `metadata.getProcessorType()` -
    `TRANSACTIONAL` to `TransactionalIdempotentProcessor`, `LOCK_BASED` to a stub.
-5. `TransactionalIdempotentProcessor` runs everything inside one `TransactionTemplate.execute(...)`:
+5. `TransactionalIdempotentProcessor` opens a transaction of its own and refuses one it did not start
+   (`status.isNewTransaction()`, see [Transaction Boundary](#transaction-boundary)), then runs everything
+   inside that one `TransactionTemplate.execute(...)`:
    - `TransactionalOperationManager.startOrReply(context, metadata)` calls
      `TransactionalOperationRepository.saveIfAbsent(operation)` - an atomic
      `INSERT ... ON CONFLICT(idempotency_key) DO UPDATE SET is_first_attempt = false RETURNING *`. This is the
@@ -200,13 +217,38 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
      Otherwise the stored result is deserialized and handed back as a replay.
    - Otherwise `startOrReply` answers with an `OperationDetail` still in `IN_PROCESS`, meaning the caller's
      business logic actually runs.
-   - `complete(key, ttl, result)` then serializes the result, dates the expiry from this moment and performs a
+   - `complete(key, result, ttl)` then serializes the result, dates the expiry from this moment and performs a
      conditional `UPDATE ... SET result = ?, status = ?, expires_at = ? WHERE idempotency_key = ? AND
      status = 'IN_PROCESS'`. A condition that matches no row is not a silent no-op but an
-     `OperationStatusMismatchException`.
+     `OperationStatusMismatchException`. What it hands back is the caller's own result object, not a copy read
+     back through the serializer.
 6. Once the transaction has committed - and only then - the processor publishes the operation's state to the
    `OperationStateChannel` and reports the outcome to `IdempotencyEventListener`: `onDuplicate()` for a replay,
    `onSuccess()` for an operation it ran itself.
+
+### The Recorded Response
+
+The flow above replays the **result of the method**. On HTTP there is a second, shorter path that replays the
+**answer itself**, and it is the one a repeat normally takes.
+
+`OperationResponseFilter` sits in front of the `DispatcherServlet` and, for a request whose endpoint carries
+`@Idempotent`:
+
+1. reads the key from the header and, when the call site fingerprints, computes the fingerprint;
+2. asks `ResponseManager` whether the operation's record already carries a response. If it does - and the
+   fingerprint matches - the recorded status, content type, body and headers are written out as they were, and
+   the handler chain is never entered;
+3. otherwise lets the request through and, once the chain returns, records the answer onto the row the core
+   has just committed.
+
+The response is a column on the operation's own row, not a second store: it cannot outlive the record, expire
+separately from it, or disagree with it. What `idempify-cache-redis` and the built-in in-memory cache add is
+an accelerator in front of that row - a miss falls through to it and changes nothing about the answer.
+
+Two consequences are worth knowing. A repeat that reaches the core instead - because no response was recorded,
+or because the lookup failed - is still answered, from the stored result, but by the handler chain's own
+serialization rather than byte for byte. And a call site taking its key from SpEL is skipped by the filter
+entirely; see [Idempotency Keys](#idempotency-keys).
 
 ### Processing Branches
 
@@ -217,10 +259,11 @@ what a duplicate meets while the first call is still running, and what the store
 |                                 | `TRANSACTIONAL`                                                                              | `LOCK_BASED` |
 |---------------------------------|----------------------------------------------------------------------------------------------|--------------|
 | Atomicity                       | commit or roll back together                                                                 | -            |
+| Transaction boundary            | the processor owns it - a transaction it did not start is refused                            | -            |
 | A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | -            |
 | A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | -            |
 | Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | -            |
-| Response cache                  | rejected for the same reason - a cached response would outlive the record it came from       | -            |
+| Error responses on record       | refused at start-up: under this processor a `4xx` or `5xx` answer may not be kept            | -            |
 | Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | -            |
 | Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -            |
 | Today                           | implemented                                                                                  | a stub       |
@@ -252,6 +295,26 @@ threw leaves no row behind, and the next request with the same key is treated as
 again. Only a completed operation is replayable. Keeping a failed result on record is what the lock-based
 branch is for.
 
+#### Transaction Boundary
+
+`@Idempotent` belongs on an entry point. The processor opens the transaction itself and refuses one it did not
+start: inside `TransactionTemplate.execute(...)` it checks `status.isNewTransaction()` and answers
+`IllegalStateException` when the call is already running in somebody else's transaction.
+
+The refusal guards step 6 of the [flow](#processing-flow) - state is published and the outcome reported only
+once the transaction has committed - which holds only while the transaction belongs to the processor. Joined
+to an outer one, it would return while that transaction is still open, and a rollback further out would leave
+a published state and a counted success behind an operation that never existed.
+
+In practice: annotate the endpoint, not a service method that a transactional caller reaches. A method
+carrying both `@Idempotent` and `@Transactional` works only when the idempotency advisor wraps the
+transactional one, and neither declares an order today, so which wraps which follows registration order -
+keep the two apart until that is settled.
+
+The same applies to a `TransactionTemplate` you contribute yourself: it has to be able to start a transaction,
+which means `REQUIRES_NEW`, or `REQUIRED` with no outer transaction around the call. `MANDATORY`, `NESTED`,
+`SUPPORTS`, `NOT_SUPPORTED` and `NEVER` never produce one, so every call through such a template is refused.
+
 #### Isolation
 
 The transactional branch is correct at `READ COMMITTED`, and only there. Under `REPEATABLE READ` or
@@ -274,9 +337,10 @@ A call site takes its key from one of two sources, and naming both is refused wh
 | the call's own arguments | `@Idempotent(idempotencyKey = "#dto.id")`, a SpEL expression | the aspect, once the arguments are known |
 
 > [!NOTE]
-> With a SpEL key the response cache cannot work at all: the cache is read before the handler runs, and a key
-> computed from the arguments does not exist yet at that moment. The filter recognises such a call site by its
-> resolved metadata and steps aside, leaving idempotency to the aspect and the store.
+> With a SpEL key the recorded response cannot be used at all: the filter looks it up before the handler runs,
+> and a key computed from the arguments does not exist yet at that moment. The filter recognises such a call
+> site by its resolved metadata and steps aside, leaving idempotency to the aspect and the store - so a repeat
+> is answered from the result, and nothing is recorded to answer it with.
 
 ### Operation Status
 
@@ -324,8 +388,9 @@ comparison and mismatch handling. The levels are alternatives, not layers - the 
 
 ### Serialization
 
-Result caching is pluggable via `ResultSerializer` / `ResultDeserializer`. `idempify-jackson` provides a
-Jackson-backed implementation, auto-configured from the application's `ObjectMapper` bean.
+A row keeps two things that need rendering - the method's result and the recorded response - so the SPI comes
+in two pairs. `idempify-jackson` provides all four, auto-configured from the application's `ObjectMapper`
+bean.
 
 ```java
 public interface ResultSerializer {
@@ -335,7 +400,18 @@ public interface ResultSerializer {
 public interface ResultDeserializer {
     Object deserialize(String rawResult, ResultType type);
 }
+
+public interface ResponseSerializer {
+    String serialize(Response response);
+}
+
+public interface ResponseDeserializer {
+    Response deserialize(String rawResponse);
+}
 ```
+
+None of the four is ever called with `null` and none may answer it: an operation with no result to keep, or
+none recorded yet, is written as an empty column, and the core decides that before a serializer is asked.
 
 `ResultType` carries a `java.lang.reflect.Type`, not a `Class`, and that is the whole point: a generic return
 type is written into the class file and read back with `Method#getGenericReturnType()`, so `List<Order>`
@@ -358,7 +434,14 @@ The store contract is split by concurrency model rather than by table:
   conditional on the row's current `status`, since concurrent requests for the same key race through this code
   path inside a transaction;
 - `LockBasedOperationRepository` - the write side for a store that gets mutual exclusion from an external lock.
-  Declared, not designed.
+  Declared, not designed;
+- `ResponseRepository` - the recorded response, read and written where it lives: on the row the operation
+  already occupies. Its write is conditional on that operation having completed, and it hands back the
+  replayable part alone - the response, the fingerprint to check it against, and the expiry that bounds both.
+  This is also the seam a cache decorates.
+
+All four deal in rows rather than domain objects: a backend stores the components it is given and returns the
+components it holds, and never learns what they decode into.
 
 ```sql
 CREATE TABLE IF NOT EXISTS idempotent_operations(
@@ -366,7 +449,8 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
     status VARCHAR(20) NOT NULL,
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
-    fingerprint VARCHAR(255) NOT NULL,
+    response TEXT,
+    fingerprint VARCHAR(255),
     expires_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL
 );
@@ -376,13 +460,13 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
 
 `expires_at` is written when the operation **completes** - the moment its result exists, plus the ttl resolved
 for that call site (24 hours by default). Past that moment the key is free again: the next request carrying it
-overwrites the row and runs the business method as a first attempt. A cached response never outlives the
-record it replays, because the writer hands the cache what is left of the operation's lifetime as the entry's
-own ttl.
+overwrites the row and runs the business method as a first attempt. The recorded response is bounded by the
+very same column, and a cache entry standing in for that row reads the expiry off it rather than being given
+one - which is why no entry can outlive what it replays.
 
 Counting from completion rather than from the claim is what keeps a slow operation replayable: one that ran
 longer than its own ttl would otherwise commit a row that is already stale, serve no replay to anybody, and
-miss the response cache as well. The price is that a row being worked on right now has **no** expiry at all -
+be unable to record its response either. The price is that a row being worked on right now has **no** expiry at all -
 the column is nullable, and `expires_at IS NULL` means "still running", never "expired long ago".
 
 Expired rows are **not** deleted by the library - nothing in it schedules a sweep, and an expired row costs
@@ -447,8 +531,9 @@ contributes the micrometer implementation of that hook, and outranks the `Idempo
 registers whenever this module stays out - absent from the classpath, or never switched on. A listener bean of
 your own outranks both, and leaves this meter unregistered.
 
-`idempify.cache.gets` counts lookups in the response cache, and only where a backend applies the registered
-`ResponseCacheWrapper`s. Writes are left uncounted: one happens per completed operation, which `idempify.operations`
+`idempify.cache.gets` counts lookups in the cache standing in front of the response store, and only where a
+backend applies the registered `ResponseRepositoryWrapper`s. Writes are left uncounted: one happens per
+completed operation, which `idempify.operations`
 already reports. A lookup that throws counts as neither `hit` nor `miss` - the cache answered nothing, and
 charging it to the misses would hide an unreachable store inside a plausible ratio.
 
@@ -496,13 +581,16 @@ idempify:
       strategy: LEXICOGRAPHICAL
       included-fields: []
       excluded-fields: []
+  response:
+    should-cache-4xx: false
+    should-cache-5xx: false
+    included-headers: []
+    excluded-headers: []
   cache:
     enabled: false
-    cache-name: payments-service
-    should-cache4xx: false
-    should-cache5xx: false
-    in-memory:
-      capacity: 100
+    type: IN_MEMORY
+    name: payments-service
+    capacity: 100
   metrics:
     enabled: false
 ```
@@ -526,29 +614,38 @@ idempify:
 | `fingerprint.canonicalizer.strategy`        | Order keys are put in before hashing                                                       | `LEXICOGRAPHICAL`         |
 | `fingerprint.canonicalizer.included-fields` | Only these fields take part in the fingerprint; mutually exclusive with the excluded list  | empty                     |
 | `fingerprint.canonicalizer.excluded-fields` | These fields are left out of the fingerprint; mutually exclusive with the included list    | empty                     |
-| `cache.enabled`                             | Whether responses are cached in front of the store                                         | `false`                   |
-| `cache.cache-name`                          | Name the entries are kept under; required once the cache is enabled                        | none                      |
-| `cache.should-cache4xx`                     | Whether a `4xx` answer is worth an entry                                                   | `false`                   |
-| `cache.should-cache5xx`                     | Whether a `5xx` answer is worth an entry                                                   | `false`                   |
-| `cache.in-memory.capacity`                  | Entries the built-in in-memory store holds before evicting the oldest                      | `100`                     |
+| `response.should-cache-4xx`                 | Whether a `4xx` answer is kept on the record and replayed                                  | `false`                   |
+| `response.should-cache-5xx`                 | Whether a `5xx` answer is kept on the record and replayed                                  | `false`                   |
+| `response.included-headers`                 | Only these response headers are recorded; empty keeps every header the answer carries      | empty                     |
+| `response.excluded-headers`                 | These response headers are left out; subtracted after the included set                     | empty                     |
+| `cache.enabled`                             | Whether a cache stands in front of the response store                                      | `false`                   |
+| `cache.type`                                | Which one: `IN_MEMORY` (built into core), `DISTRIBUTED` (a backend module), `CUSTOM`       | `IN_MEMORY`               |
+| `cache.name`                                | Name the entries are kept under; required for `DISTRIBUTED`, unused by `IN_MEMORY`         | none                      |
+| `cache.capacity`                            | Entries `IN_MEMORY` holds before evicting the oldest; must be positive                     | `100`                     |
 | `metrics.enabled`                           | Whether `idempify-metrics` registers its meters; ignored when the module is absent         | `false`                   |
 
 > [!IMPORTANT]
-> Response caching is **off until you ask for it**, and asking means naming it - `cacheName` is what keeps the
-> entries of one application apart from another's in a store they share, so there is no default worth
-> inventing. Turning the cache on without a name fails at start-up with a message naming both ways out.
+> Recording the response is not the same setting as caching it. `response.*` decides what stays **on the
+> record** - which answers are kept and which of their headers survive - and it is always in force. `cache.*`
+> only decides whether an accelerator stands in front of that record; switching it off costs latency, never an
+> answer.
+
+> [!IMPORTANT]
+> The cache is **off until you ask for it**, and a distributed one has to be named: `cache.name` is what keeps
+> the entries of one application apart from another's in a store they share, so there is no default worth
+> inventing. `cache.type: DISTRIBUTED` without a name fails at start-up with a message naming both ways out,
+> and so does a non-positive `cache.capacity` for an in-memory one.
 
 > [!WARNING]
 > Two combinations are refused at start-up rather than at the first request: with
-> `processor-type: TRANSACTIONAL`, neither `conflict.enabled` nor `cache.enabled` may be true. The
-> transactional processor settles duplicates on the store's insert, so no conflict is left to handle, and it
-> writes the response in the same transaction as the operation, so a cache in front of it would serve answers
-> a rollback has already taken back.
+> `processor-type: TRANSACTIONAL`, `conflict.enabled` must be false, and so must both
+> `response.should-cache-4xx` and `response.should-cache-5xx`. The transactional processor settles duplicates
+> on the store's insert, so no conflict is left to handle; and it writes the record in the same transaction as
+> the business operation, so keeping a failed answer is what the lock-based branch is for.
 
-> [!WARNING]
-> Switching the cache off here is **final**: no named config and no `@Idempotent(useCache = ENABLE)` can turn
-> it back on for a single endpoint. The same property keeps the cache backend and the caching filter out of the
-> context, so there would be nothing to cache into.
+> [!NOTE]
+> The cache is governed by properties alone - `@Idempotent` has no attribute for it. A call site allowed to
+> switch it on would get metadata promising a cache that does not exist in the context.
 
 ### 2. Named Configs
 
@@ -579,7 +676,6 @@ IdempotencyConfig idempotencyConfigRegistry(IdempotencyConfigRegistry registry) 
 | `processorType`  | Which processor runs the operation: `TRANSACTIONAL` or `LOCK_BASED`           | `UNSELECTED`      |
 | `onConflict`     | What a duplicate meeting an operation in flight gets: `REJECT` or `WAIT`      | `UNSELECTED`      |
 | `useFingerprint` | Whether a duplicate must match the original request: `ENABLE` or `DISABLE`    | `UNSELECTED`      |
-| `useCache`       | Whether the response is cached in front of the store: `ENABLE` or `DISABLE`   | `UNSELECTED`      |
 | `cache4xx`       | Whether a `4xx` answer is worth an entry: `ENABLE` or `DISABLE`               | `UNSELECTED`      |
 | `cache5xx`       | Whether a `5xx` answer is worth an entry: `ENABLE` or `DISABLE`               | `UNSELECTED`      |
 
@@ -592,8 +688,9 @@ here at all: it is an instance on the config, not a class on the annotation.
 
 #### Transactional, Header Key
 
-What a working setup looks like today: the store decides the races, the key travels in a header, and both
-sections the transactional processor refuses are switched off.
+What a working setup looks like today: the store decides the races, the key travels in a header, and the one
+section the transactional processor refuses is switched off. Error answers stay off the record by default, so
+that half needs no line here.
 
 ```yaml
 idempify:
@@ -601,8 +698,6 @@ idempify:
   header-name: Idempotency-Key
   ttl: 24h
   conflict:
-    enabled: false
-  cache:
     enabled: false
   fingerprint:
     enabled: true
@@ -652,8 +747,9 @@ idempify:
 
 #### Key From the Request Body
 
-An endpoint whose clients cannot send a header takes the key from the call's own arguments. The response cache
-does not apply here - see [Idempotency Keys](#idempotency-keys).
+An endpoint whose clients cannot send a header takes the key from the call's own arguments. The recorded
+response does not apply here - a repeat is answered from the result instead, see
+[Idempotency Keys](#idempotency-keys).
 
 ```java
     @PostMapping("/payments")
@@ -662,10 +758,9 @@ does not apply here - see [Idempotency Keys](#idempotency-keys).
 ```
 
 ## Roadmap
-- A working `LOCK_BASED` processor, and with it conflict handling and response caching end to end
+- A working `LOCK_BASED` processor, and with it conflict handling and a record that survives a failed operation
 - Named configuration profiles declared in YAML
 - Automatic table creation
-- Metrics/observability integration
 - A working `idempify-example` demo application
 - Maven Central publishing
 - gRPC transport support (`RequestType.GRPC` is reserved but unimplemented) and WebFlux support
