@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
 import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempotentEntry;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
@@ -40,8 +41,9 @@ public class IdempifyHttpAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentHandlerRegistry idempifyIdempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping) {
-        return new DefaultIdempotentHandlerRegistry(handlerMapping);
+    public IdempotentHandlerRegistry idempifyIdempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping,
+                                                                      ObjectProvider<IdempotentEntry> entries) {
+        return new DefaultIdempotentHandlerRegistry(handlerMapping, entries.orderedStream().toList());
     }
 
     @Bean

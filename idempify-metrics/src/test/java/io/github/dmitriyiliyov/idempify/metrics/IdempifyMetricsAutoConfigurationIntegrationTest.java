@@ -252,6 +252,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .withBean(ResultDeserializer.class, () -> mock(ResultDeserializer.class))
                 .withBean(OperationStateChannel.class, () -> mock(OperationStateChannel.class))
                 .withBean(KeyExtractor.class, StubKeyExtractor::new)
+                .withBean(IdempotentEntry.class, () -> mock(IdempotentEntry.class))
                 .withBean(BodyCanonicalizerCreator.class, StubCanonicalizerCreator::new)
                 .withBean(Clock.class, Clock::systemUTC)
                 .withBean(TransactionTemplate.class, () -> mock(TransactionTemplate.class));

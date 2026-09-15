@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.http;
 
 import io.github.dmitriyiliyov.idempify.core.Idempotent;
+import io.github.dmitriyiliyov.idempify.core.config.IdempotentEntry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,8 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.util.pattern.PathPatternParser;
 
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
 
 import static io.github.dmitriyiliyov.idempify.http.HttpConstants.SUPPORTED_METHODS;
@@ -32,16 +35,24 @@ class DefaultIdempotentHandlerRegistryUnitTest {
     @Test
     @DisplayName("UT constructor when handlerMapping is null should throw NullPointerException")
     void constructor_whenHandlerMappingIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(null))
+        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(null, List.of()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("handlerMapping cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor when entries is null should throw NullPointerException")
+    void constructor_whenEntriesIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(handlerMapping, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("entries cannot be null");
     }
 
     @Test
     @DisplayName("UT getHandlerMethod() before afterSingletonsInstantiated() should return null")
     void getHandlerMethod_beforeAfterSingletonsInstantiated_shouldReturnNull() {
         // given
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping);
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
 
         // when
         HandlerMethod result = tested.getHandlerMethod(POST, requestPath("/payments"));
@@ -176,15 +187,18 @@ class DefaultIdempotentHandlerRegistryUnitTest {
     }
 
     @Test
-    @DisplayName("UT getHandlerMethod() when the endpoint serves an unsupported http method only should never answer for it")
-    void getHandlerMethod_whenEndpointServesUnsupportedHttpMethodOnly_shouldNeverAnswerForIt() {
+    @DisplayName("UT afterSingletonsInstantiated() when the endpoint serves an unsupported http method should name it and fail")
+    void afterSingletonsInstantiated_whenEndpointServesUnsupportedHttpMethod_shouldNameItAndFail() {
         // given
-        RequestMappingInfo mappingInfo = mappingInfo(RequestMethod.GET, "/payments");
-        DefaultIdempotentHandlerRegistry tested = initializedRegistry(Map.of(mappingInfo, handlerMethod(true)));
+        Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.GET, "/payments"), handlerMethod(true));
+        when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
 
         // when / then
-        assertThat(tested.getHandlerMethod("GET", requestPath("/payments"))).isNull();
-        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isNull();
+        assertThatThrownBy(tested::afterSingletonsInstantiated)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("/payments")
+                .hasMessageContaining("GET");
     }
 
     @Test
@@ -378,7 +392,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         Map<RequestMappingInfo, HandlerMethod> second = Map.of(mappingInfo(RequestMethod.POST, "/orders"), orders);
 
         when(handlerMapping.getHandlerMethods()).thenReturn(first, second);
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping);
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
 
         // when
         tested.afterSingletonsInstantiated();
@@ -389,9 +403,62 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         assertThat(tested.getHandlerMethod(POST, requestPath("/orders"))).isSameAs(orders);
     }
 
+    @Test
+    @DisplayName("UT afterSingletonsInstantiated() when an entry intercepts the endpoint should index it")
+    void afterSingletonsInstantiated_whenEntryInterceptsEndpoint_shouldIndexIt() throws Exception {
+        // given
+        HandlerMethod endpoint = payEndpoint();
+        Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.POST, "/payments"), endpoint);
+        when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(
+                handlerMapping,
+                List.of(new TestIdempotentEntry(true))
+        );
+
+        // when
+        tested.afterSingletonsInstantiated();
+
+        // then
+        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(endpoint);
+    }
+
+    @Test
+    @DisplayName("UT afterSingletonsInstantiated() when no entry intercepts the endpoint should name it and fail")
+    void afterSingletonsInstantiated_whenNoEntryInterceptsEndpoint_shouldNameItAndFail() throws Exception {
+        // given
+        when(handlerMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), payEndpoint()));
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(
+                handlerMapping,
+                List.of(new TestIdempotentEntry(false))
+        );
+
+        // when / then
+        assertThatThrownBy(tested::afterSingletonsInstantiated)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("/payments")
+                .hasMessageContaining("pay");
+    }
+
+    @Test
+    @DisplayName("UT afterSingletonsInstantiated() when no entry is registered should index anyway, the core refusing instead")
+    void afterSingletonsInstantiated_whenNoEntryIsRegistered_shouldIndexAnyway() throws Exception {
+        // given
+        HandlerMethod endpoint = payEndpoint();
+        Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.POST, "/payments"), endpoint);
+        when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+
+        // when
+        tested.afterSingletonsInstantiated();
+
+        // then
+        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(endpoint);
+    }
+
     private DefaultIdempotentHandlerRegistry initializedRegistry(Map<RequestMappingInfo, HandlerMethod> handlerMethods) {
         when(handlerMapping.getHandlerMethods()).thenReturn(handlerMethods);
-        DefaultIdempotentHandlerRegistry registry = new DefaultIdempotentHandlerRegistry(handlerMapping);
+        DefaultIdempotentHandlerRegistry registry = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
         registry.afterSingletonsInstantiated();
         return registry;
     }
@@ -412,5 +479,33 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         HandlerMethod handlerMethod = mock(HandlerMethod.class);
         when(handlerMethod.hasMethodAnnotation(Idempotent.class)).thenReturn(idempotent);
         return handlerMethod;
+    }
+
+    /**
+     * A real {@link HandlerMethod} rather than a mock: asking an entry about an endpoint goes through
+     * {@code createWithResolvedBean()} and the bean behind it, which a mock has nothing to answer with.
+     */
+    private static HandlerMethod payEndpoint() throws NoSuchMethodException {
+        return new HandlerMethod(new TestController(), TestController.class.getMethod("pay"));
+    }
+
+    private static final class TestController {
+
+        @Idempotent
+        public void pay() { }
+    }
+
+    private static final class TestIdempotentEntry implements IdempotentEntry {
+
+        private final boolean intercepts;
+
+        private TestIdempotentEntry(boolean intercepts) {
+            this.intercepts = intercepts;
+        }
+
+        @Override
+        public boolean intercepts(Object bean, Method method) {
+            return intercepts;
+        }
     }
 }

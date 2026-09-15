@@ -76,6 +76,11 @@ under the same key is rejected rather than silently answered from the store.
 > `idempify-http` (or your own transport integration), `idempify-postgresql` (or your own
 > `TransactionalOperationRepository`) and, if you want a distributed cache in front of the store,
 > `idempify-cache-redis` explicitly.
+>
+> An entry is the one part that is not optional. Something has to turn an annotated call into an
+> operation, and if no `IdempotentEntry` is registered - `idempify-aop` registers one - the application
+> refuses to start instead of running with `@Idempotent` doing nothing. See
+> [Start-up Checks](#start-up-checks).
 
 ```xml
 <dependency>
@@ -225,6 +230,23 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
 6. Once the transaction has committed - and only then - the processor publishes the operation's state to the
    `OperationStateChannel` and reports the outcome to `IdempotencyEventListener`: `onDuplicate()` for a replay,
    `onSuccess()` for an operation it ran itself.
+
+### Start-up Checks
+
+A library that protects against duplicates is worse off silent than loud, so the two ways of ending up with
+`@Idempotent` that does nothing are refused while the context is being built, not discovered in production.
+
+- **No entry at all.** The core refuses when no `IdempotentEntry` bean exists, naming what to add:
+  `idempify-aop`, an entry of your own, or `idempify.enabled=false` if the library is meant to be off. This is
+  also what answers for `idempify-aop` present but not started - its auto-configuration stands behind
+  `@ConditionalOnClass` on AspectJ, so a classpath without it contributes no entry.
+- **An endpoint no entry intercepts.** The HTTP registry asks the entry about every endpoint it indexes and
+  refuses by name when the answer is no. The answer is read off the bean rather than off the configuration, so
+  it covers a handler method that is not public, one that is `final` under a class proxy, and an application
+  started with `spring.aop.auto=false`, where the advisor bean exists and weaves nothing.
+
+An endpoint carrying `@Idempotent` on an HTTP method outside `POST`, `PUT`, `PATCH` and `DELETE` is refused by
+name as well: the filter would never match it, and idempotency on a read is not something to arrange silently.
 
 ### The Recorded Response
 

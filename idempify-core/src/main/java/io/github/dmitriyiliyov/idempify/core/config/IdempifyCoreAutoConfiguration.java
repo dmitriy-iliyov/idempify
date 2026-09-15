@@ -10,6 +10,7 @@ import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.response.*;
 import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -19,10 +20,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Objects;
 
 @AutoConfiguration
 @ConditionalOnIdempifyEnabled
 public class IdempifyCoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IdempotentEntryPresenceCheck idempifyIdempotentEntryPresenceCheck(
+            ObjectProvider<IdempotentEntry> entries
+    ) {
+        return new IdempotentEntryPresenceCheck(entries.orderedStream().toList());
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -201,5 +211,19 @@ public class IdempifyCoreAutoConfiguration {
     @Bean
     public IdempotentProcessor idempifyDelegatingIdempotentProcessor(List<TypeAwareIdempotentProcessor> processors) {
         return new DelegatingIdempotentProcessor(processors);
+    }
+
+    public static final class IdempotentEntryPresenceCheck {
+
+        public IdempotentEntryPresenceCheck(List<IdempotentEntry> entries) {
+            Objects.requireNonNull(entries, "entries cannot be null");
+            if (entries.isEmpty()) {
+                throw new IllegalStateException("""
+                    No IdempotentEntry is registered, so nothing turns an annotated call into an operation:
+                    add idempify-aop, register an entry of your own, or switch the library off with
+                    idempify.enabled=false
+            """);
+            }
+        }
     }
 }

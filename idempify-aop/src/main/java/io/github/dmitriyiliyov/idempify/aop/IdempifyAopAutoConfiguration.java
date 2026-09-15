@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempotentEntry;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -37,5 +38,11 @@ public class IdempifyAopAutoConfiguration {
                                                        OperationMetadataResolver metadataResolver,
                                                        IdempotentInterceptor interceptor) {
         return new IdempotentAdvisor(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IdempotentEntry idempifyIdempotentEntry() {
+        return new AdvisorIdempotentEntry();
     }
 }

@@ -103,6 +103,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
             assertThat(context).hasSingleBean(DelegatingKeyExtractor.class);
             assertThat(context).hasSingleBean(DelegatingIdempotentProcessor.class);
+
+            assertThat(context).hasSingleBean(IdempifyCoreAutoConfiguration.IdempotentEntryPresenceCheck.class);
         });
     }
 
@@ -217,6 +219,17 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                     assertThat(context).hasFailed();
                     assertThat(context).getFailure()
                             .hasStackTraceContaining("At least one KeyExtractor must be registered");
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when no module contributes an IdempotentEntry should say so and fail")
+    void context_whenNoModuleContributesIdempotentEntry_shouldSaySoAndFail() {
+        contextRunnerWithout(Dependency.ENTRY)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context).getFailure()
+                            .hasStackTraceContaining("No IdempotentEntry is registered");
                 });
     }
 
@@ -701,6 +714,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         CLOCK(runner -> runner.withBean(Clock.class, TestClock::standingStill)),
         BODY_CANONICALIZER_CREATOR(runner -> runner.withBean(BodyCanonicalizerCreator.class, TestJsonCanonicalizerCreator::new)),
         KEY_EXTRACTOR(runner -> runner.withBean(KeyExtractor.class, TestKeyExtractor::new)),
+        ENTRY(runner -> runner.withBean(IdempotentEntry.class, () -> mock(IdempotentEntry.class))),
         CACHE_PROPERTIES(runner -> runner.withBean(CachePropertiesHolder.class, TestCachePropertiesHolder::new));
 
         private final UnaryOperator<ApplicationContextRunner> registration;

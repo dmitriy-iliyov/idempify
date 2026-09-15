@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.config.IdempotentEntry;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -35,6 +36,9 @@ class IdempifyAopAutoConfigurationIntegrationTest {
 
             assertThat(context).hasSingleBean(IdempotentOperationExpressionEvaluator.class);
             assertThat(context).hasSingleBean(IdempotentAdvisor.class);
+
+            assertThat(context).hasSingleBean(IdempotentEntry.class);
+            assertThat(context).hasSingleBean(AdvisorIdempotentEntry.class);
         });
     }
 
@@ -71,6 +75,17 @@ class IdempifyAopAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when an IdempotentEntry is already defined should back off")
+    void context_whenIdempotentEntryIsAlreadyDefined_shouldBackOff() {
+        contextRunner
+                .withBean(IdempotentEntry.class, () -> mock(IdempotentEntry.class))
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempotentEntry.class);
+                    assertThat(context).doesNotHaveBean(AdvisorIdempotentEntry.class);
+                });
+    }
+
+    @Test
     @DisplayName("IT context when AspectJ is missing from the classpath should not register anything")
     void context_whenAspectJIsMissingFromClasspath_shouldNotRegisterAnything() {
         contextRunner
@@ -80,6 +95,7 @@ class IdempifyAopAutoConfigurationIntegrationTest {
                     assertThat(context).doesNotHaveBean(IdempifyAopAutoConfiguration.class);
                     assertThat(context).doesNotHaveBean(IdempotentInterceptor.class);
                     assertThat(context).doesNotHaveBean(IdempotentOperationExpressionEvaluator.class);
+                    assertThat(context).doesNotHaveBean(IdempotentEntry.class);
                 });
     }
 
