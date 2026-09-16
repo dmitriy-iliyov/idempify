@@ -3,7 +3,6 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.DefaultFingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
@@ -17,6 +16,7 @@ import io.github.dmitriyiliyov.idempify.core.response.Response;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseManager;
 import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
@@ -27,10 +27,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.server.RequestPath;
+import org.springframework.lang.NonNull;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -39,13 +41,18 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
+import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.View;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.view.json.MappingJackson2JsonView;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -81,6 +88,7 @@ class IdempifyHttpComponentTest {
      * that names no ttl of its own, the way resolved metadata does.
      */
     private static final Duration OPERATION_TTL = Duration.ofHours(24);
+    private static final String SWALLOWED_AFTER_COMMIT_PATH = "/payments/swallowed-after-commit";
 
     private AnnotationConfigWebApplicationContext context;
     private MockMvc mockMvc;
@@ -98,6 +106,7 @@ class IdempifyHttpComponentTest {
         controller = context.getBean(PaymentController.class);
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .addFilters(operationResponseFilter())
+                .addFilter(new FailureAnsweringFilter(), SWALLOWED_AFTER_COMMIT_PATH)
                 .build();
     }
 
@@ -233,32 +242,19 @@ class IdempifyHttpComponentTest {
     }
 
     @Test
-    @DisplayName("CT request when the handler answers 4xx and 4xx caching is off should reach the handler every time")
-    void request_whenHandlerAnswers4xxAnd4xxCachingIsOff_shouldReachHandlerEveryTime() throws Exception {
+    @DisplayName("CT request when the handler answers 4xx should replay it without reaching the handler again")
+    void request_whenHandlerAnswers4xx_shouldReplayItWithoutReachingHandler() throws Exception {
         // given
         mockMvc.perform(post("/payments/rejected").header(HEADER_NAME, KEY.toString()))
                 .andExpect(status().isBadRequest());
 
         // when
         mockMvc.perform(post("/payments/rejected").header(HEADER_NAME, KEY.toString()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("rejected"));
 
         // then
-        assertThat(controller.rejectedCalls).isEqualTo(2);
-        assertThat(responseManager.storage).isEmpty();
-    }
-
-    @Test
-    @DisplayName("CT request when the endpoint switched 4xx off should still record and replay an ordinary answer")
-    void request_whenEndpointSwitchedFourXxOff_shouldStillRecordAndReplayOrdinaryAnswer() throws Exception {
-        // given - the toggle governs which failed answers may be replayed, not whether the operation keeps one
-        mockMvc.perform(post("/payments/uncached").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
-
-        // when
-        mockMvc.perform(post("/payments/uncached").header(HEADER_NAME, KEY.toString())).andExpect(status().isOk());
-
-        // then
-        assertThat(controller.uncachedCalls).isEqualTo(1);
+        assertThat(controller.rejectedCalls).isEqualTo(1);
         assertThat(responseManager.storage).containsKey(KEY);
     }
 
@@ -320,6 +316,62 @@ class IdempifyHttpComponentTest {
         // when / then
         assertThatThrownBy(() -> mockMvc.perform(post("/payments/broken").header(HEADER_NAME, KEY.toString())))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(responseManager.storage).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CT request when a failure after the recorded operation reaches no resolver should leave nothing on record")
+    void request_whenFailureAfterRecordedOperationReachesNoResolver_shouldLeaveNothingOnRecord() {
+        // when / then
+        assertThatThrownBy(() -> mockMvc.perform(
+                post("/payments/failing-after-commit").header(HEADER_NAME, KEY.toString())
+        )).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(responseManager.storage).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CT request when the advice answers a failure of the recorded operation should not record that answer")
+    void request_whenAdviceAnswersFailureOfRecordedOperation_shouldNotRecordThatAnswer() throws Exception {
+        // when
+        mockMvc.perform(post("/payments/conflicting-after-commit").header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isConflict());
+
+        // then
+        assertThat(responseManager.storage).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CT request when a view answers a failure of the recorded operation should not record that answer")
+    void request_whenViewAnswersFailureOfRecordedOperation_shouldNotRecordThatAnswer() throws Exception {
+        // when
+        mockMvc.perform(post("/payments/failing-into-view").header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value(ViewRenderingExceptionResolver.ERROR));
+
+        // then
+        assertThat(responseManager.storage).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CT request when a filter nearer the servlet answers a failure of the recorded operation should not record that answer")
+    void request_whenFilterNearerServletAnswersFailureOfRecordedOperation_shouldNotRecordThatAnswer() throws Exception {
+        // when
+        mockMvc.perform(post(SWALLOWED_AFTER_COMMIT_PATH).header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().string(FailureAnsweringFilter.BODY));
+
+        // then
+        assertThat(responseManager.storage).isEmpty();
+    }
+
+    @Test
+    @DisplayName("CT request when rendering fails after the recorded operation should not record the failure as its answer")
+    void request_whenRenderingFailsAfterRecordedOperation_shouldNotRecordFailureAsItsAnswer() throws Exception {
+        // when
+        mockMvc.perform(post("/payments/unrenderable").header(HEADER_NAME, KEY.toString()))
+                .andExpect(status().isInternalServerError());
+
+        // then
         assertThat(responseManager.storage).isEmpty();
     }
 
@@ -393,7 +445,7 @@ class IdempifyHttpComponentTest {
         assertThat(operationResponseFilter()).isInstanceOf(OperationResponseFilter.class);
 
         IdempotentHandlerRegistry registry = context.getBean(IdempotentHandlerRegistry.class);
-        assertThat(List.of("/payments", "/orders/42/pay", "/payments/rejected", "/payments/uncached",
+        assertThat(List.of("/payments", "/orders/42/pay", "/payments/rejected",
                         "/payments/conflicting", "/payments/broken", "/payments/replayed", "/payments/unkeyed"))
                 .allSatisfy(path -> assertThat(registry.getHandlerMethod("POST", RequestPath.parse(path, null)))
                         .isNotNull());
@@ -437,6 +489,11 @@ class IdempifyHttpComponentTest {
         public void addInterceptors(InterceptorRegistry registry) {
             registry.addInterceptor(new StubIdempotentCore(channel, responseManager));
         }
+
+        @Override
+        public void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) {
+            resolvers.add(0, new ViewRenderingExceptionResolver());
+        }
     }
 
     @Configuration(proxyBeanMethods = false)
@@ -478,7 +535,6 @@ class IdempifyHttpComponentTest {
         int refundCalls;
         int orderPayCalls;
         int rejectedCalls;
-        int uncachedCalls;
         int conflictingCalls;
         int expressionKeyedCalls;
         String lastPayBody;
@@ -515,18 +571,11 @@ class IdempifyHttpComponentTest {
             return "paid:" + id;
         }
 
-        @Idempotent(headerName = HEADER_NAME, cache4xx = Toggle.DISABLE)
+        @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/rejected")
         public ResponseEntity<String> rejected() {
             rejectedCalls++;
             return ResponseEntity.badRequest().body("rejected");
-        }
-
-        @Idempotent(headerName = HEADER_NAME, cache4xx = Toggle.DISABLE)
-        @PostMapping("/payments/uncached")
-        public String uncached() {
-            uncachedCalls++;
-            return "uncached";
         }
 
         @Idempotent(headerName = HEADER_NAME)
@@ -540,6 +589,62 @@ class IdempifyHttpComponentTest {
         @PostMapping("/payments/broken")
         public String broken() {
             throw new IllegalStateException("the business operation blew up");
+        }
+
+        /**
+         * Stands for the aspect having committed the operation: the state is published the way the core
+         * publishes it after the commit, and what fails afterwards reaches no exception resolver.
+         */
+        @Idempotent(headerName = HEADER_NAME)
+        @PostMapping("/payments/failing-after-commit")
+        public String failingAfterCommit() {
+            channel.getObject().publish(TestOperationState.of(false));
+            throw new IllegalStateException("failure after the operation was recorded");
+        }
+
+        /**
+         * Same commit as above, and the failure is answered by {@link IdempifyControllerAdvice} - the other
+         * branch in which an exception is resolved inside the chain.
+         */
+        @Idempotent(headerName = HEADER_NAME)
+        @PostMapping("/payments/conflicting-after-commit")
+        public String conflictingAfterCommit() {
+            channel.getObject().publish(TestOperationState.of(false));
+            throw new IdempotencyConflictException("another request is already processing this key");
+        }
+
+        /**
+         * Same commit as above, and the failure is the rendering of a view. It comes after the exception
+         * resolvers, so nothing but the completion mark sees it, and it leaves the servlet to be answered by
+         * {@link FailureAnsweringFilter} standing between the response filter and the servlet.
+         */
+        @Idempotent(headerName = HEADER_NAME)
+        @PostMapping(SWALLOWED_AFTER_COMMIT_PATH)
+        public ModelAndView swallowedAfterCommit() {
+            channel.getObject().publish(TestOperationState.of(false));
+            return new ModelAndView(new UnrenderableView());
+        }
+
+        /**
+         * Same commit as above, and the failure is answered by a resolver that renders a view - the branch in
+         * which Spring MVC exposes the servlet error attributes instead of its own exception attribute.
+         */
+        @Idempotent(headerName = HEADER_NAME)
+        @PostMapping("/payments/failing-into-view")
+        public String failingIntoView() {
+            channel.getObject().publish(TestOperationState.of(false));
+            throw new ViewAnsweredFailure();
+        }
+
+        /**
+         * Same commit as above, but the failure is the rendering of the answer, and Spring MVC resolves it into
+         * a 500 of its own inside the chain.
+         */
+        @Idempotent(headerName = HEADER_NAME)
+        @PostMapping("/payments/unrenderable")
+        public UnrenderableReceipt unrenderable() {
+            channel.getObject().publish(TestOperationState.of(false));
+            return new UnrenderableReceipt();
         }
 
         /**
@@ -567,6 +672,70 @@ class IdempifyHttpComponentTest {
         }
     }
 
+    static class UnrenderableReceipt {
+
+        public String getAmount() {
+            throw new IllegalStateException("receipt cannot be rendered");
+        }
+    }
+
+    static class ViewAnsweredFailure extends RuntimeException {
+        ViewAnsweredFailure() {
+            super("failure after the operation was recorded");
+        }
+    }
+
+    static class UnrenderableView implements View {
+
+        @Override
+        public void render(Map<String, ?> model, HttpServletRequest request, HttpServletResponse response) {
+            throw new IllegalStateException("view cannot be rendered");
+        }
+    }
+
+    /**
+     * The common "exception handler filter": catches whatever leaves the servlet and writes an answer of its own,
+     * so that nothing escapes to the response filter in front of it.
+     */
+    static class FailureAnsweringFilter extends OncePerRequestFilter {
+
+        static final String BODY = "answered by a filter";
+
+        @Override
+        protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                        @NonNull HttpServletResponse response,
+                                        @NonNull FilterChain filterChain) throws IOException {
+            try {
+                filterChain.doFilter(request, response);
+            } catch (Exception e) {
+                response.setStatus(500);
+                response.getWriter().write(BODY);
+            }
+        }
+    }
+
+    /**
+     * Answers {@link ViewAnsweredFailure} with a view to render rather than with a written body, the way
+     * {@code SimpleMappingExceptionResolver} and view-based error pages do.
+     */
+    static class ViewRenderingExceptionResolver implements HandlerExceptionResolver {
+
+        static final String ERROR = "rendered by a view";
+
+        @Override
+        public ModelAndView resolveException(HttpServletRequest request,
+                                             HttpServletResponse response,
+                                             Object handler,
+                                             Exception ex) {
+            if (!(ex instanceof ViewAnsweredFailure)) {
+                return null;
+            }
+            ModelAndView modelAndView = new ModelAndView(new MappingJackson2JsonView(), Map.of("error", ERROR));
+            modelAndView.setStatus(HttpStatus.SERVICE_UNAVAILABLE);
+            return modelAndView;
+        }
+    }
+
     /**
      * Stands in for the core: turns what a call site declares into effective settings, the way an
      * {@code OperationMetadataManager} implementation would.
@@ -585,10 +754,6 @@ class IdempifyHttpComponentTest {
                     .ttl(metadata.getTtl() == null ? OPERATION_TTL : metadata.getTtl())
                     .useFingerprint(metadata.getFingerprintToggle() == Toggle.ENABLE)
                     .fingerprintPolicy(new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback()))
-                    .responseConfig(ResponseConfig.builder()
-                            .shouldCache4xx(metadata.getCache4xxToggle() != Toggle.DISABLE)
-                            .shouldCache5xx(metadata.getCache5xxToggle() == Toggle.ENABLE)
-                            .build())
                     .build();
         }
 

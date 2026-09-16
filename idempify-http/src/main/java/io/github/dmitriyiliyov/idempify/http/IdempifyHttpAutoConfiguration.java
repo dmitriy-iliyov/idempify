@@ -18,6 +18,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.handler.MappedInterceptor;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.time.Clock;
@@ -37,6 +39,19 @@ public class IdempifyHttpAutoConfiguration {
     @ConditionalOnMissingBean
     public OperationStateChannel idempifyHttpAttributesOperationStateChannel() {
         return new HttpAttributesOperationStateChannel();
+    }
+
+    @Bean
+    public MappedInterceptor idempifyDispatchCompletionMarkingMappedInterceptor() {
+        return new MappedInterceptor(
+                new String[] {"/**"},
+                new DispatchCompletionMarkingInterceptor()
+        );
+    }
+
+    @Bean
+    public HandlerExceptionResolver idempifyDispatchFailureMarkingResolver() {
+        return new DispatchFailureMarkingResolver();
     }
 
     @Bean

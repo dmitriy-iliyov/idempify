@@ -5,7 +5,6 @@ import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationState;
 import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
-import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
@@ -105,8 +104,8 @@ public class OperationResponseFilter extends OncePerRequestFilter {
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         try {
             filterChain.doFilter(wrappedRequest, wrappedResponse);
+            recordResponse(idempotencyKey, metadata, wrappedRequest, wrappedResponse);
         } finally {
-            recordResponse(idempotencyKey, metadata, wrappedResponse);
             wrappedResponse.copyBodyToResponse();
         }
     }
@@ -214,24 +213,33 @@ public class OperationResponseFilter extends OncePerRequestFilter {
 
     private void recordResponse(UUID idempotencyKey,
                                 OperationMetadata metadata,
+                                HttpServletRequest request,
                                 ContentCachingResponseWrapper responseWrapper) {
         try {
+            if (!FilterUtils.wasDispatchCompleted(request) || FilterUtils.wasDispatchExceptionally(request)) {
+                log.debug(
+                        "Operation (idempotencyKey={}) response is not recorded: the request failed after it was recorded",
+                        idempotencyKey
+                );
+                return;
+            }
+
             try {
                 OperationState operationState = channel.consume();
                 if (operationState == null || operationState.replayed()) {
+                    log.debug(
+                            "Operation (idempotencyKey={}) response is not recorded: its state is {}",
+                            idempotencyKey,
+                            operationState
+                    );
                     return;
                 }
             } catch (Exception e) {
-                log.error("Channel interrupted when consuming operation state (idempotencyKey={})", idempotencyKey, e);
+                log.error("Error when consuming operation state (idempotencyKey={})", idempotencyKey, e);
                 return;
             }
 
-            ResponseConfig responseConfig = metadata.getResponseConfig();
-            if (!FilterUtils.shouldKeep(responseConfig, responseWrapper.getStatus())) {
-                return;
-            }
-
-            Response operationResponse = new HttpResponseProvider(responseConfig).provide(responseWrapper);
+            Response operationResponse = new HttpResponseProvider(metadata.getResponseConfig()).provide(responseWrapper);
 
             // DISCUSS is concurrently involve possible
             responseManager.save(idempotencyKey, operationResponse);

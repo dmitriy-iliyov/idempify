@@ -26,6 +26,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.servlet.DispatcherServlet;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -760,60 +762,11 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response status belongs to no known class should store it as an ordinary one")
-    void doFilter_whenResponseStatusBelongsToNoKnownClass_shouldStoreItAsOrdinaryOne() throws Exception {
-        // given
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(false, false)).build());
-        givenExtractedKey();
-        givenRecordedOperation();
-        RecordingFilterChain chain = respondingChain(600, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
-
-        // when
-        tested.doFilter(request, response, chain);
-
-        // then
-        assertThat(savedResponse().getStatus()).isEqualTo(600);
-    }
-
-    @Test
-    @DisplayName("UT doFilter() when the error classes are switched off should still record an ordinary answer")
-    void doFilter_whenErrorClassesAreSwitchedOff_shouldStillRecordOrdinaryAnswer() throws Exception {
-        // given - the flags govern which failed answers may be replayed, not whether the operation keeps one
-        givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
-        givenExtractedKey();
-        givenRecordedOperation();
-        RecordingFilterChain chain = respondingChain(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
-
-        // when
-        tested.doFilter(request, response, chain);
-
-        // then
-        assertThat(savedResponse().getStatus()).isEqualTo(200);
-        assertThat(response.getContentAsByteArray()).isEqualTo("{}".getBytes(StandardCharsets.UTF_8));
-    }
-
-    @Test
-    @DisplayName("UT doFilter() when the response is 4xx and 4xx caching is off should not store it")
-    void doFilter_whenResponseIs4xxAnd4xxCachingIsOff_shouldNotStoreIt() throws Exception {
-        // given
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(false, false)).build());
-        givenExtractedKey();
-        givenRecordedOperation();
-        RecordingFilterChain chain = respondingChain(400, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
-
-        // when
-        tested.doFilter(request, response, chain);
-
-        // then
-        verify(responseManager, never()).save(any(), any());
-    }
-
-    @Test
-    @DisplayName("UT doFilter() when the response is 4xx and 4xx caching is on should store it")
-    void doFilter_whenResponseIs4xxAnd4xxCachingIsOn_shouldStoreIt() throws Exception {
+    @DisplayName("UT doFilter() when the response is 4xx should store it whatever the keep flags say")
+    void doFilter_whenResponseIs4xx_shouldStoreItWhateverKeepFlagsSay() throws Exception {
         // given
         byte [] body = "{\"error\":\"bad request\"}".getBytes(StandardCharsets.UTF_8);
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(true, false)).build());
+        givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
         givenExtractedKey();
         givenRecordedOperation();
         RecordingFilterChain chain = respondingChain(400, "application/json", body);
@@ -828,27 +781,11 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 5xx and 5xx caching is off should not store it")
-    void doFilter_whenResponseIs5xxAnd5xxCachingIsOff_shouldNotStoreIt() throws Exception {
-        // given
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(true, false)).build());
-        givenExtractedKey();
-        givenRecordedOperation();
-        RecordingFilterChain chain = respondingChain(500, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
-
-        // when
-        tested.doFilter(request, response, chain);
-
-        // then
-        verify(responseManager, never()).save(any(), any());
-    }
-
-    @Test
-    @DisplayName("UT doFilter() when the response is 5xx and 5xx caching is on should store it")
-    void doFilter_whenResponseIs5xxAnd5xxCachingIsOn_shouldStoreIt() throws Exception {
+    @DisplayName("UT doFilter() when the response is 5xx should store it whatever the keep flags say")
+    void doFilter_whenResponseIs5xx_shouldStoreItWhateverKeepFlagsSay() throws Exception {
         // given
         byte [] body = "{\"error\":\"boom\"}".getBytes(StandardCharsets.UTF_8);
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(false, true)).build());
+        givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
         givenExtractedKey();
         givenRecordedOperation();
         RecordingFilterChain chain = respondingChain(500, "application/json", body);
@@ -863,19 +800,82 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 3xx should store it whatever the 4xx and 5xx switches say")
-    void doFilter_whenResponseIs3xx_shouldStoreItWhateverSwitchesSay() throws Exception {
+    @DisplayName("UT doFilter() when the chain throws after the operation is recorded should store nothing and rethrow")
+    void doFilter_whenChainThrowsAfterOperationIsRecorded_shouldStoreNothingAndRethrow() {
         // given
-        givenIdempotentUri(metadata().responseConfig(cacheConfig(false, false)).build());
+        givenIdempotentUri(metadata().build());
         givenExtractedKey();
         givenRecordedOperation();
-        RecordingFilterChain chain = respondingChain(302, "application/json", new byte [0]);
+        RecordingFilterChain chain = new RecordingFilterChain((req, res) -> {
+            throw new ServletException("rendering failed after the operation was recorded");
+        });
+
+        // when / then
+        assertThatThrownBy(() -> tested.doFilter(request, response, chain))
+                .isInstanceOf(ServletException.class);
+        verify(responseManager, never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when the failure reached the resolvers should store nothing and still answer the client")
+    void doFilter_whenFailureReachedResolvers_shouldStoreNothingAndStillAnswerClient() throws Exception {
+        // given
+        byte [] body = "{\"error\":\"unavailable\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation();
+        RecordingFilterChain chain = resolvedFailureChain(503, body);
 
         // when
         tested.doFilter(request, response, chain);
 
         // then
-        assertThat(savedResponse().getStatus()).isEqualTo(302);
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getContentAsByteArray()).isEqualTo(body);
+        verify(responseManager, never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when a resolver ahead of the marking one wrote the failure should store nothing")
+    void doFilter_whenResolverAheadOfMarkingOneWroteFailure_shouldStoreNothing() throws Exception {
+        // given
+        byte [] body = "{\"error\":\"conflict\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation();
+        RecordingFilterChain chain = new RecordingFilterChain((req, res) -> {
+            req.setAttribute(DispatcherServlet.EXCEPTION_ATTRIBUTE, new IllegalStateException("resolved first"));
+            respond((HttpServletResponse) res, 409, body);
+        });
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(response.getContentAsByteArray()).isEqualTo(body);
+        verify(responseManager, never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when the dispatch did not complete should store nothing and still answer the client")
+    void doFilter_whenDispatchDidNotComplete_shouldStoreNothingAndStillAnswerClient() throws Exception {
+        // given
+        byte [] body = "{\"error\":\"swallowed\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().build());
+        givenExtractedKey();
+        givenRecordedOperation();
+        RecordingFilterChain chain = RecordingFilterChain.incomplete(
+                (req, res) -> respond((HttpServletResponse) res, 500, body)
+        );
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(response.getStatus()).isEqualTo(500);
+        assertThat(response.getContentAsByteArray()).isEqualTo(body);
+        verify(responseManager, never()).save(any(), any());
     }
 
     @Test
@@ -972,14 +972,7 @@ class OperationResponseFilterUnitTest {
     private static TestOperationMetadata.Builder metadata() {
         return TestOperationMetadata.builder()
                 .headerName(HEADER_NAME)
-                .responseConfig(cacheConfig(true, true));
-    }
-
-    private static ResponseConfig cacheConfig(boolean shouldCache4xx, boolean shouldCache5xx) {
-        return ResponseConfig.builder()
-                .shouldCache4xx(shouldCache4xx)
-                .shouldCache5xx(shouldCache5xx)
-                .build();
+                .responseConfig(ResponseConfig.all());
     }
 
     private static MockHttpServletRequest request(String body) {
@@ -1011,9 +1004,27 @@ class OperationResponseFilterUnitTest {
     }
 
     /**
-     * Stands in for the core's half of the request: the operation manager publishes here what it actually
-     * wrote to the repository, and the filter reads it back to decide whether there is anything worth recording.
+     * Answers the way {@code DispatcherServlet} does once an exception reached its resolvers: the marking resolver
+     * has seen it, and another one wrote the answer in full.
      */
+    private static RecordingFilterChain resolvedFailureChain(int status, byte [] body) {
+        return new RecordingFilterChain((req, res) -> {
+            new DispatchFailureMarkingResolver().resolveException(
+                    (HttpServletRequest) req,
+                    (HttpServletResponse) res,
+                    null,
+                    new IllegalStateException("failure after the operation was recorded")
+            );
+            respond((HttpServletResponse) res, status, body);
+        });
+    }
+
+    private static void respond(HttpServletResponse response, int status, byte [] body) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.getOutputStream().write(body);
+    }
+
     /**
      * Collects what the filter logged, so that a branch taken on purpose can be told apart from one that only
      * looks harmless because the surrounding {@code catch} swallowed it.
@@ -1036,6 +1047,10 @@ class OperationResponseFilterUnitTest {
         }
     }
 
+    /**
+     * Stands in for the core's half of the request: the operation manager publishes here what it actually
+     * wrote to the repository, and the filter reads it back to decide whether there is anything worth recording.
+     */
     private static final class RecordingOperationStateChannel implements OperationStateChannel {
 
         private OperationState state;
@@ -1071,10 +1086,15 @@ class OperationResponseFilterUnitTest {
     /**
      * Remembers what the filter handed down the chain - the wrappers it puts on the request and the response
      * are only observable from here.
+     * <p>
+     * Stands for the servlet as well: a behaviour that returns normally leaves the request marked as completed,
+     * the way {@link DispatchCompletionMarkingInterceptor} marks it, and one that throws leaves it unmarked.
+     * {@link #incomplete} returns normally without the mark - a filter nearer the servlet swallowed its failure.
      */
     private static final class RecordingFilterChain implements FilterChain {
 
         private final ChainBehaviour behaviour;
+        private final boolean completes;
 
         ServletRequest request;
         ServletResponse response;
@@ -1085,7 +1105,16 @@ class OperationResponseFilterUnitTest {
         }
 
         RecordingFilterChain(ChainBehaviour behaviour) {
+            this(behaviour, true);
+        }
+
+        private RecordingFilterChain(ChainBehaviour behaviour, boolean completes) {
             this.behaviour = behaviour;
+            this.completes = completes;
+        }
+
+        static RecordingFilterChain incomplete(ChainBehaviour behaviour) {
+            return new RecordingFilterChain(behaviour, false);
         }
 
         @Override
@@ -1094,6 +1123,9 @@ class OperationResponseFilterUnitTest {
             this.request = request;
             this.response = response;
             behaviour.accept(request, response);
+            if (completes) {
+                request.setAttribute(DispatchCompletionMarkingInterceptor.DISPATCH_COMPLETED_ATTRIBUTE, Boolean.TRUE);
+            }
         }
     }
 

@@ -83,10 +83,9 @@ public class DefaultIdempotentHandlerRegistry implements IdempotentHandlerRegist
         }
 
         throw new IllegalStateException("""
-                Endpoint %s carries @Idempotent, but no entry intercepts %s, so the call site runs 
-                unprotected: check that aspect proxying is on (spring.aop.auto) and that the handler 
-                method is public and not final
-        """.formatted(info, resolved.getMethod()));
+                Endpoint %s carries @Idempotent, but no entry intercepts %s, so the call site runs \
+                unprotected: check that aspect proxying is on (spring.aop.auto) and that the handler \
+                method is public and not final""".formatted(info, resolved.getMethod()));
     }
 
     private void verifyRequestMethod(RequestMappingInfo info, RequestMethod method) {

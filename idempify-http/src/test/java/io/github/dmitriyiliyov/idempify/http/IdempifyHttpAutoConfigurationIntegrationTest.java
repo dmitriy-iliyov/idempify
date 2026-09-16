@@ -36,8 +36,12 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.handler.MappedInterceptor;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.util.ServletRequestPathUtils;
 
 import java.time.Clock;
 import java.util.UUID;
@@ -76,6 +80,40 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
 
             assertThat(context).hasSingleBean(IdempifyControllerAdvice.class);
         });
+    }
+
+    @Test
+    @DisplayName("IT context when the module is auto-configured should register both marks the filter records by")
+    void context_whenModuleIsAutoConfigured_shouldRegisterBothMarksFilterRecordsBy() {
+        contextRunner.run(context -> {
+            MappedInterceptor interceptor = context.getBean(
+                    "idempifyDispatchCompletionMarkingMappedInterceptor",
+                    MappedInterceptor.class
+            );
+            assertThat(interceptor.getInterceptor()).isInstanceOf(DispatchCompletionMarkingInterceptor.class);
+            MockHttpServletRequest anyRequest = new MockHttpServletRequest("POST", "/any/path");
+            ServletRequestPathUtils.parseAndCache(anyRequest);
+            assertThat(interceptor.matches(anyRequest)).isTrue();
+
+            assertThat(context.getBean("idempifyDispatchFailureMarkingResolver", HandlerExceptionResolver.class))
+                    .isInstanceOf(DispatchFailureMarkingResolver.class);
+        });
+    }
+
+    @Test
+    @DisplayName("IT context when the application declares its own interceptor and resolver should keep both marks")
+    void context_whenApplicationDeclaresOwnInterceptorAndResolver_shouldKeepBothMarks() {
+        contextRunner
+                .withBean("applicationInterceptor", MappedInterceptor.class,
+                        () -> new MappedInterceptor(null, new HandlerInterceptor() { }))
+                .withBean("applicationResolver", HandlerExceptionResolver.class,
+                        () -> (request, response, handler, ex) -> null)
+                .run(context -> {
+                    assertThat(context.getBeansOfType(MappedInterceptor.class)).hasSize(2);
+                    assertThat(context.getBeansOfType(HandlerExceptionResolver.class)).hasSize(2);
+                    assertThat(context).hasBean("idempifyDispatchCompletionMarkingMappedInterceptor");
+                    assertThat(context).hasBean("idempifyDispatchFailureMarkingResolver");
+                });
     }
 
     @Test

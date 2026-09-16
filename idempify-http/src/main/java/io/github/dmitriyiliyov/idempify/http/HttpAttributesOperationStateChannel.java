@@ -30,9 +30,8 @@ public class HttpAttributesOperationStateChannel implements OperationStateChanne
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes == null) {
             log.warn("""
-                    No HTTP request is bound to the current thread, so there is nowhere to keep the operation state; 
-                    this channel only works on the thread that serves the request
-            """);
+                    No HTTP request is bound to the current thread, so there is nowhere to keep the operation state; \
+                    this channel only works on the thread that serves the request""");
             throw new IllegalStateException("No HTTP request is bound to the current thread");
         }
         return attributes;
