@@ -170,8 +170,9 @@ public class IdempifyCoreAutoConfiguration {
     @ConditionalOnMissingBean
     public ResponseManager idempifyResponseManager(ResponseRepository responseRepository,
                                                    ResponseSerializer responseSerializer,
-                                                   ResponseDeserializer responseDeserializer) {
-        return new DefaultResponseManager(responseRepository, responseSerializer, responseDeserializer);
+                                                   ResponseDeserializer responseDeserializer,
+                                                   Clock clock) {
+        return new DefaultResponseManager(responseRepository, responseSerializer, responseDeserializer, clock);
     }
 
     @Bean
