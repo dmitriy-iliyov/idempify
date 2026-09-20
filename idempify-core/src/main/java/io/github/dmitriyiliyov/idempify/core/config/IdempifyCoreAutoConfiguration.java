@@ -177,16 +177,16 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public TransactionalOperationManager idempifyTransactionalOperationManager(
+    public BlockingOperationManager idempifyBlockingOperationManager(
             OperationCreator mapper,
-            TransactionalOperationRepository repository,
+            BlockingOperationRepository repository,
             FingerprintMatcher fingerprintMatcher,
             OperationSerializer serializer,
             OperationDeserializer deserializer,
             ResultSerializer resultSerializer,
             Clock clock
     ) {
-        return new DefaultTransactionalOperationManager(
+        return new DefaultBlockingOperationManager(
                 mapper,
                 repository,
                 fingerprintMatcher,
@@ -199,13 +199,13 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public TypeAwareIdempotentProcessor idempifyTransactionalTypeAwareIdempotentProcessor(
+    public TypeAwareIdempotentProcessor idempifyBlockingTypeAwareIdempotentProcessor(
             TransactionTemplate transactionTemplate,
-            TransactionalOperationManager manager,
+            BlockingOperationManager manager,
             OperationStateChannel channel,
             IdempotencyEventListener eventListener
     ) {
-        return new TransactionalIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
+        return new BlockingIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
     }
 
     @Primary

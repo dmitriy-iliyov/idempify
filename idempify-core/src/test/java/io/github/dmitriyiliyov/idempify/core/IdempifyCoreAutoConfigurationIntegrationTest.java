@@ -95,11 +95,11 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(ResponseManager.class);
             assertThat(context).hasSingleBean(DefaultResponseManager.class);
 
-            assertThat(context).hasSingleBean(TransactionalOperationManager.class);
-            assertThat(context).hasSingleBean(DefaultTransactionalOperationManager.class);
+            assertThat(context).hasSingleBean(BlockingOperationManager.class);
+            assertThat(context).hasSingleBean(DefaultBlockingOperationManager.class);
 
             assertThat(context).hasSingleBean(TypeAwareIdempotentProcessor.class);
-            assertThat(context).hasSingleBean(TransactionalIdempotentProcessor.class);
+            assertThat(context).hasSingleBean(BlockingIdempotentProcessor.class);
 
             assertThat(context).hasSingleBean(DelegatingKeyExtractor.class);
             assertThat(context).hasSingleBean(DelegatingIdempotentProcessor.class);
@@ -118,7 +118,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
             assertThat(metadata.getHeaderName()).isEqualTo(IdempifyDefaults.HEADER_NAME);
             assertThat(metadata.getTtl()).isEqualTo(Duration.parse(IdempifyDefaults.TTL_VALUE));
-            assertThat(metadata.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+            assertThat(metadata.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
             assertThat(metadata.getConflictHandler()).isInstanceOf(RejectConflictHandler.class);
             assertThat(metadata.useFingerprint()).isTrue();
         });
@@ -356,24 +356,24 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when existing TransactionalOperationManager bean should not register the default one")
-    void context_whenExistingTransactionalOperationManagerBean_shouldNotRegisterDefaultOne() {
+    @DisplayName("IT context when existing BlockingOperationManager bean should not register the default one")
+    void context_whenExistingBlockingOperationManagerBean_shouldNotRegisterDefaultOne() {
         contextRunner
-                .withBean(TransactionalOperationManager.class, () -> mock(TransactionalOperationManager.class))
+                .withBean(BlockingOperationManager.class, () -> mock(BlockingOperationManager.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(TransactionalOperationManager.class);
-                    assertThat(context).doesNotHaveBean(DefaultTransactionalOperationManager.class);
+                    assertThat(context).hasSingleBean(BlockingOperationManager.class);
+                    assertThat(context).doesNotHaveBean(DefaultBlockingOperationManager.class);
                 });
     }
 
     @Test
-    @DisplayName("IT context when the application serves a processor type itself should not register the transactional one")
-    void context_whenApplicationServesProcessorTypeItself_shouldNotRegisterTransactionalOne() {
+    @DisplayName("IT context when the application serves a processor type itself should not register the blocking one")
+    void context_whenApplicationServesProcessorTypeItself_shouldNotRegisterBlockingOne() {
         contextRunner
-                .withBean(TypeAwareIdempotentProcessor.class, LockBasedTestProcessor::new)
+                .withBean(TypeAwareIdempotentProcessor.class, NonBlockingTestProcessor::new)
                 .run(context -> {
                     assertThat(context).hasSingleBean(TypeAwareIdempotentProcessor.class);
-                    assertThat(context).doesNotHaveBean(TransactionalIdempotentProcessor.class);
+                    assertThat(context).doesNotHaveBean(BlockingIdempotentProcessor.class);
                 });
     }
 
@@ -409,16 +409,16 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     @DisplayName("IT context when the application serves a processor type itself should route that type to it")
     void context_whenApplicationServesProcessorTypeItself_shouldRouteThatTypeToIt() {
         contextRunner
-                .withBean(TypeAwareIdempotentProcessor.class, LockBasedTestProcessor::new)
+                .withBean(TypeAwareIdempotentProcessor.class, NonBlockingTestProcessor::new)
                 .run(context -> {
                     IdempotentProcessor processor = context.getBean(IdempotentProcessor.class);
 
                     Object result = processor.process(
                             new DefaultOperationContext(ResultType.ofClass(String.class), () -> "charged", KEY, null),
-                            TestOperationMetadata.builder().processorType(ProcessorType.LOCK_BASED).build()
+                            TestOperationMetadata.builder().processorType(ProcessorType.NON_BLOCKING).build()
                     );
 
-                    assertThat(result).isEqualTo("lock-based");
+                    assertThat(result).isEqualTo("non-blocking");
                 });
     }
 
@@ -700,7 +700,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 DEFAULT_CONFIG_BEAN_NAME, IdempotencyConfig.class,
                 IdempifyCoreAutoConfigurationIntegrationTest::globalConfig)),
         OPERATION_REPOSITORY(runner -> runner.withBean(
-                TransactionalOperationRepository.class, () -> mock(TransactionalOperationRepository.class))),
+                BlockingOperationRepository.class, () -> mock(BlockingOperationRepository.class))),
         READ_REPOSITORY(runner -> runner.withBean(OperationRepository.class, () -> mock(OperationRepository.class))),
         RESPONSE_REPOSITORY(runner -> runner.withBean(ResponseRepository.class, () -> mock(ResponseRepository.class))),
         RESULT_SERIALIZER(runner -> runner.withBean(ResultSerializer.class, () -> mock(ResultSerializer.class))),
@@ -807,16 +807,16 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         }
     }
 
-    private static final class LockBasedTestProcessor implements TypeAwareIdempotentProcessor {
+    private static final class NonBlockingTestProcessor implements TypeAwareIdempotentProcessor {
 
         @Override
         public Object process(OperationContext context, OperationMetadata metadata) {
-            return "lock-based";
+            return "non-blocking";
         }
 
         @Override
         public ProcessorType getType() {
-            return ProcessorType.LOCK_BASED;
+            return ProcessorType.NON_BLOCKING;
         }
     }
 }

@@ -17,8 +17,8 @@ public enum OperationStatus {
     /**
      * Another request is already processing this key, so the current one cannot proceed on its own.
      * <p>
-     * Never persisted, and currently never assigned either: it belongs to the lock-based branch, where a
-     * duplicate can observe an unfinished operation. The transactional branch cannot reach it - there a
+     * Never persisted, and currently never assigned either: it belongs to the non-blocking branch, where a
+     * duplicate can observe an unfinished operation. The blocking branch cannot reach it - there a
      * duplicate blocks until the first request commits and then finds {@link #PROCESSED}.
      */
     CONFLICT,

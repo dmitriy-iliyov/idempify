@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.TransactionalOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
@@ -29,8 +29,8 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
     @DisplayName("IT context when a JdbcClient is present should register all three repositories")
     void context_whenJdbcClientIsPresent_shouldRegisterAllThreeRepositories() {
         contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(PostgreSqlTransactionalOperationRepository.class);
-            assertThat(context).hasSingleBean(TransactionalOperationRepository.class);
+            assertThat(context).hasSingleBean(PostgreSqlBlockingOperationRepository.class);
+            assertThat(context).hasSingleBean(BlockingOperationRepository.class);
 
             assertThat(context).hasSingleBean(PostgreSqlOperationRepository.class);
             assertThat(context).hasSingleBean(OperationRepository.class);
@@ -44,11 +44,11 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
     @DisplayName("IT context when the application brings a store of its own should not register the postgres one")
     void context_whenApplicationBringsStoreOfItsOwn_shouldNotRegisterPostgresOne() {
         contextRunner
-                .withBean("applicationTransactionalOperationRepository", TransactionalOperationRepository.class,
-                        () -> mock(TransactionalOperationRepository.class))
+                .withBean("applicationBlockingOperationRepository", BlockingOperationRepository.class,
+                        () -> mock(BlockingOperationRepository.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(TransactionalOperationRepository.class);
-                    assertThat(context).doesNotHaveBean(PostgreSqlTransactionalOperationRepository.class);
+                    assertThat(context).hasSingleBean(BlockingOperationRepository.class);
+                    assertThat(context).doesNotHaveBean(PostgreSqlBlockingOperationRepository.class);
                 });
     }
 
@@ -110,7 +110,7 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
                 .withClassLoader(new FilteredClassLoader(Driver.class))
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context).hasSingleBean(PostgreSqlTransactionalOperationRepository.class);
+                    assertThat(context).hasSingleBean(PostgreSqlBlockingOperationRepository.class);
                 });
     }
 
@@ -121,8 +121,8 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
                 .withPropertyValues("idempify.enabled=false")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context).doesNotHaveBean(TransactionalOperationRepository.class);
-                    assertThat(context).doesNotHaveBean(PostgreSqlTransactionalOperationRepository.class);
+                    assertThat(context).doesNotHaveBean(BlockingOperationRepository.class);
+                    assertThat(context).doesNotHaveBean(PostgreSqlBlockingOperationRepository.class);
                     assertThat(context).doesNotHaveBean(OperationRepository.class);
                     assertThat(context).doesNotHaveBean(ResponseRepository.class);
                 });
@@ -133,7 +133,7 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
     void context_whenIdempifyIsSwitchedOnByHand_shouldRegisterModuleAllTheSame() {
         contextRunner
                 .withPropertyValues("idempify.enabled=true")
-                .run(context -> assertThat(context).hasSingleBean(PostgreSqlTransactionalOperationRepository.class));
+                .run(context -> assertThat(context).hasSingleBean(PostgreSqlBlockingOperationRepository.class));
     }
 
     /**

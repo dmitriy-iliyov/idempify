@@ -33,8 +33,8 @@ public interface OperationMetadata {
     Duration getTtl();
 
     /**
-     * Returns which {@code IdempotentProcessor} runs this operation - {@code TRANSACTIONAL} keeps the
-     * operation record in the business transaction, {@code LOCK_BASED} keeps it outside so a failed result
+     * Returns which {@code IdempotentProcessor} runs this operation - {@code BLOCKING} keeps the
+     * operation record in the business transaction, {@code NON_BLOCKING} keeps it outside so a failed result
      * survives the rollback. {@code DelegatingIdempotentProcessor} dispatches on this value and fails when no
      * processor serves it.
      */
@@ -43,7 +43,7 @@ public interface OperationMetadata {
     /**
      * Returns whether a concurrent duplicate of this call site is handled by a handler rather than left to the
      * processor - which is to say whether a handler was resolved at all. Always {@code false} under
-     * {@code TRANSACTIONAL}: there the insert lock already settles the race, and a conflict config is
+     * {@code BLOCKING}: there the insert lock already settles the race, and a conflict config is
      * rejected outright.
      */
     default boolean useConflictHandler() {

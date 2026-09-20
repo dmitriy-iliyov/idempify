@@ -25,7 +25,7 @@ public final class IdempifyDefaults {
 
     public static final String TTL_VALUE = "PT24H";
 
-    public static final String PROCESSOR_TYPE_NAME = "LOCK_BASED";
+    public static final String PROCESSOR_TYPE_NAME = "NON_BLOCKING";
 
     public static final String CONFLICT_ENABLED_VALUE = "true";
     public static final String CONFLICT_HANDLE_STRATEGY_VALUE = "REJECT";

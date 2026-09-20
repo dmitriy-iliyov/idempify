@@ -66,12 +66,12 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor() when the library is switched off should not weigh the transactional processor against a section")
-    void constructor_whenLibraryIsSwitchedOff_shouldNotWeighTransactionalProcessorAgainstSection() {
+    @DisplayName("UT constructor() when the library is switched off should not weigh the blocking processor against a section")
+    void constructor_whenLibraryIsSwitchedOff_shouldNotWeighBlockingProcessorAgainstSection() {
         // when
         IdempifyProperties tested = properties()
                 .enabled(false)
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(conflictProperties(true))
                 .build();
 
@@ -182,57 +182,57 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor() when the transactional processor meets conflict handling should name the property to switch off")
-    void constructor_whenTransactionalProcessorMeetsConflictHandling_shouldNamePropertyToSwitchOff() {
+    @DisplayName("UT constructor() when the blocking processor meets conflict handling should name the property to switch off")
+    void constructor_whenBlockingProcessorMeetsConflictHandling_shouldNamePropertyToSwitchOff() {
         // when / then
         assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(conflictProperties(true))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'idempify.conflict.enabled' must be false")
-                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
+                .hasMessageContaining("'idempify.processor-type' is BLOCKING");
     }
 
     @Test
-    @DisplayName("UT constructor() when the transactional processor keeps client errors should name the property to switch off")
-    void constructor_whenTransactionalProcessorKeepsClientErrors_shouldNamePropertyToSwitchOff() {
+    @DisplayName("UT constructor() when the blocking processor keeps client errors should name the property to switch off")
+    void constructor_whenBlockingProcessorKeepsClientErrors_shouldNamePropertyToSwitchOff() {
         // when / then
         assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(conflictProperties(false))
                 .response(new ResponseProperties(true, false, Set.of(), Set.of()))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
-                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
+                .hasMessageContaining("'idempify.processor-type' is BLOCKING");
     }
 
     @Test
-    @DisplayName("UT constructor() when the transactional processor keeps server errors should name the property to switch off")
-    void constructor_whenTransactionalProcessorKeepsServerErrors_shouldNamePropertyToSwitchOff() {
+    @DisplayName("UT constructor() when the blocking processor keeps server errors should name the property to switch off")
+    void constructor_whenBlockingProcessorKeepsServerErrors_shouldNamePropertyToSwitchOff() {
         // when / then
         assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(conflictProperties(false))
                 .response(new ResponseProperties(false, true, Set.of(), Set.of()))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
-                .hasMessageContaining("'idempify.processor-type' is TRANSACTIONAL");
+                .hasMessageContaining("'idempify.processor-type' is BLOCKING");
     }
 
     @Test
-    @DisplayName("UT constructor() when the transactional processor meets neither section should be accepted")
-    void constructor_whenTransactionalProcessorMeetsNeitherSection_shouldBeAccepted() {
+    @DisplayName("UT constructor() when the blocking processor meets neither section should be accepted")
+    void constructor_whenBlockingProcessorMeetsNeitherSection_shouldBeAccepted() {
         // when
         IdempifyProperties tested = properties()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(conflictProperties(false))
                 .build();
 
         // then
-        assertThat(tested.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(tested.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
         tested.provide().validate();
     }
 
@@ -259,7 +259,7 @@ class IdempifyPropertiesUnitTest {
         IdempifyProperties tested = properties()
                 .headerName("X-Request-Id")
                 .ttl(Duration.ofHours(2))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .build();
 
         // when
@@ -268,7 +268,7 @@ class IdempifyPropertiesUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Request-Id");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(2));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
     }
 
     @Test
@@ -441,7 +441,7 @@ class IdempifyPropertiesUnitTest {
                 "enabled=true",
                 "headerName='Idempotency-Key'",
                 "ttl=PT24H",
-                "processorType=LOCK_BASED",
+                "processorType=NON_BLOCKING",
                 "conflict=ConflictProperties{",
                 "fingerprint=FingerprintProperties{",
                 "cache=CacheProperties{",
@@ -477,7 +477,7 @@ class IdempifyPropertiesUnitTest {
         private Boolean enabled = true;
         private String headerName = "Idempotency-Key";
         private Duration ttl = Duration.ofHours(24);
-        private ProcessorType processorType = ProcessorType.LOCK_BASED;
+        private ProcessorType processorType = ProcessorType.NON_BLOCKING;
         private ConflictProperties conflict = conflictProperties(true);
         private FingerprintProperties fingerprint = fingerprintProperties(true);
         private ResponseProperties response = new ResponseProperties(false, false, Set.of(), Set.of());

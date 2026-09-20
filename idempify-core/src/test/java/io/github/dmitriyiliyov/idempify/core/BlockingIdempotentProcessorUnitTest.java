@@ -24,7 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class TransactionalIdempotentProcessorUnitTest {
+class BlockingIdempotentProcessorUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Duration TTL = Duration.parse(IdempifyDefaults.TTL_VALUE);
@@ -34,7 +34,7 @@ class TransactionalIdempotentProcessorUnitTest {
     TransactionTemplate transactionTemplate;
 
     @Mock
-    TransactionalOperationManager operationManager;
+    BlockingOperationManager operationManager;
 
     @Mock
     OperationStateChannel channel;
@@ -43,12 +43,12 @@ class TransactionalIdempotentProcessorUnitTest {
     IdempotencyEventListener eventListener;
 
     @InjectMocks
-    TransactionalIdempotentProcessor tested;
+    BlockingIdempotentProcessor tested;
 
     @Test
     @DisplayName("UT constructor when transactionTemplate is null should throw NullPointerException")
     void constructor_whenTransactionTemplateIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(null, operationManager, channel, eventListener))
+        assertThatThrownBy(() -> new BlockingIdempotentProcessor(null, operationManager, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("transactionTemplate cannot be null");
     }
@@ -56,7 +56,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when operationManager is null should throw NullPointerException")
     void constructor_whenOperationManagerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, null, channel, eventListener))
+        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, null, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationManager cannot be null");
     }
@@ -64,7 +64,7 @@ class TransactionalIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when channel is null should throw NullPointerException")
     void constructor_whenChannelIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
+        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("channel cannot be null");
     }
@@ -72,15 +72,15 @@ class TransactionalIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when eventListener is null should throw NullPointerException")
     void constructor_whenEventListenerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new TransactionalIdempotentProcessor(transactionTemplate, operationManager, channel, null))
+        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, operationManager, channel, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("eventListener cannot be null");
     }
 
     @Test
-    @DisplayName("UT getType() should return TRANSACTIONAL")
-    void getType_shouldReturnTransactional() {
-        assertThat(tested.getType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+    @DisplayName("UT getType() should return BLOCKING")
+    void getType_shouldReturnBlocking() {
+        assertThat(tested.getType()).isEqualTo(ProcessorType.BLOCKING);
     }
 
     @Test

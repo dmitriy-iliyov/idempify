@@ -13,7 +13,7 @@ import java.util.UUID;
  * complete. A duplicate therefore blocks on the insert and then replays the result, rather than being routed
  * to a conflict handler.
  */
-public interface TransactionalOperationManager {
+public interface BlockingOperationManager {
 
     /**
      * Claims the key for this call, or returns the result of an operation that already completed under it.

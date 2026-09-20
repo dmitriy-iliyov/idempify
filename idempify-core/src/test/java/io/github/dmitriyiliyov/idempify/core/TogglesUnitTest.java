@@ -36,10 +36,10 @@ class TogglesUnitTest {
     @Test
     @DisplayName("UT ProcessorTypeToggle.toProcessorType() should map every named choice onto the resolved type")
     void processorTypeToggleToProcessorType_shouldMapEveryNamedChoiceOntoResolvedType() {
-        assertThat(ProcessorTypeToggle.toProcessorType(ProcessorTypeToggle.TRANSACTIONAL))
-                .isEqualTo(ProcessorType.TRANSACTIONAL);
-        assertThat(ProcessorTypeToggle.toProcessorType(ProcessorTypeToggle.LOCK_BASED))
-                .isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(ProcessorTypeToggle.toProcessorType(ProcessorTypeToggle.BLOCKING))
+                .isEqualTo(ProcessorType.BLOCKING);
+        assertThat(ProcessorTypeToggle.toProcessorType(ProcessorTypeToggle.NON_BLOCKING))
+                .isEqualTo(ProcessorType.NON_BLOCKING);
     }
 
     @Test

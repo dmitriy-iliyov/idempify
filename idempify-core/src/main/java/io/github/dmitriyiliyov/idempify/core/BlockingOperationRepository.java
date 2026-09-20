@@ -14,7 +14,7 @@ import java.util.UUID;
  * Like the read side, this interface deals in {@link RawOperation} only - an implementation stores the
  * components it is given and returns the components it holds, and never learns what they decode into.
  */
-public interface TransactionalOperationRepository {
+public interface BlockingOperationRepository {
 
     /**
      * Saves the given row if a row with the same idempotency key is not already present.

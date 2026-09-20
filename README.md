@@ -60,7 +60,7 @@ under the same key is rejected rather than silently answered from the store.
   returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
   the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
   Jackson cannot rebuild its status and headers - so it is not replayable either.
-- **`@Idempotent` must own its transaction.** The transactional processor refuses to run inside a transaction
+- **`@Idempotent` must own its transaction.** The blocking processor refuses to run inside a transaction
   it did not start, so the annotation goes on an entry point rather than on a method a transactional caller
   reaches - see [Transaction Boundary](#transaction-boundary).
 - **No automatic table creation** - the DDL is applied by hand.
@@ -74,7 +74,7 @@ under the same key is rejected rather than silently answered from the store.
 > `idempify.*` properties. It does **not** include serialization, a transport module, a storage backend or a
 > cache backend - you must add `idempify-jackson` (or your own `ResultSerializer`/`ResultDeserializer`),
 > `idempify-http` (or your own transport integration), `idempify-postgresql` (or your own
-> `TransactionalOperationRepository`) and, if you want a distributed cache in front of the store,
+> `BlockingOperationRepository`) and, if you want a distributed cache in front of the store,
 > `idempify-cache-redis` explicitly.
 >
 > An entry is the one part that is not optional. Something has to turn an annotated call into an
@@ -111,15 +111,15 @@ under the same key is rejected rather than silently answered from the store.
 psql -f idempify-postgresql/src/main/resources/idempotent_operations_table.sql "$DATABASE_URL"
 ```
 
-3. Select the processor. The global default is `LOCK_BASED`, whose processor is still a stub, so a working
-   setup has to ask for `TRANSACTIONAL` - and that processor refuses conflict handling and the keeping of
+3. Select the processor. The global default is `NON_BLOCKING`, whose processor is still a stub, so a working
+   setup has to ask for `BLOCKING` - and that processor refuses conflict handling and the keeping of
    error responses (see [Limitations](#limitations)):
 
 ```yaml
 idempify:
-  processor-type: TRANSACTIONAL
+  processor-type: BLOCKING
   conflict:
-    enabled: false               # defaults to true; TRANSACTIONAL rejects it at start-up
+    enabled: false               # defaults to true; BLOCKING rejects it at start-up
 ```
 
 4. Supply the one bean no module contributes:
@@ -207,12 +207,12 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
    `RequestType`, reading the header as a UUID) and, when the call site fingerprints, the fingerprint via
    `FingerprintPolicy.generate(...)`.
 4. `DelegatingIdempotentProcessor` routes the call by `metadata.getProcessorType()` -
-   `TRANSACTIONAL` to `TransactionalIdempotentProcessor`, `LOCK_BASED` to a stub.
-5. `TransactionalIdempotentProcessor` opens a transaction of its own and refuses one it did not start
+   `BLOCKING` to `BlockingIdempotentProcessor`, `NON_BLOCKING` to a stub.
+5. `BlockingIdempotentProcessor` opens a transaction of its own and refuses one it did not start
    (`status.isNewTransaction()`, see [Transaction Boundary](#transaction-boundary)), then runs everything
    inside that one `TransactionTemplate.execute(...)`:
-   - `TransactionalOperationManager.startOrReply(context, metadata)` calls
-     `TransactionalOperationRepository.saveIfAbsent(operation)` - an atomic
+   - `BlockingOperationManager.startOrReply(context, metadata)` calls
+     `BlockingOperationRepository.saveIfAbsent(operation)` - an atomic
      `INSERT ... ON CONFLICT(idempotency_key) DO UPDATE SET is_first_attempt = false RETURNING *`. This is the
      mechanism that guarantees only one concurrent request "wins" for a given key. A row that is `PROCESSED`
      but past its TTL is overwritten as if new.
@@ -274,32 +274,32 @@ entirely; see [Idempotency Keys](#idempotency-keys).
 
 ### Processing Branches
 
-Two processors, and one question tells them apart: **does the operation's record share the transaction of the
-business operation it guards?** Everything else follows from the answer - whether a failed result can be kept,
-what a duplicate meets while the first call is still running, and what the store has to provide.
+Two processors, and one question tells them apart: **can a duplicate that arrives while the first call is
+still running wait for it?** Everything else follows from the answer - whether a conflict handler is ever
+reached, whether a failed result can be kept, and what the store has to provide.
 
-|                                 | `TRANSACTIONAL`                                                                              | `LOCK_BASED` |
-|---------------------------------|----------------------------------------------------------------------------------------------|--------------|
-| Atomicity                       | commit or roll back together                                                                 | -            |
-| Transaction boundary            | the processor owns it - a transaction it did not start is refused                            | -            |
-| A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | -            |
-| A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | -            |
-| Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | -            |
-| Error responses on record       | refused at start-up: under this processor a `4xx` or `5xx` answer may not be kept            | -            |
-| Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | -            |
-| Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -            |
-| Today                           | implemented                                                                                  | a stub       |
+|                                 | `BLOCKING`                                                                                   | `NON_BLOCKING` |
+|---------------------------------|----------------------------------------------------------------------------------------------|----------------|
+| Atomicity                       | commit or roll back together                                                                 | -              |
+| Transaction boundary            | the processor owns it - a transaction it did not start is refused                            | -              |
+| A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | -              |
+| A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | -              |
+| Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | -              |
+| Error responses on record       | refused at start-up: under this processor a `4xx` or `5xx` answer may not be kept            | -              |
+| Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | -              |
+| Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -              |
+| Today                           | implemented                                                                                  | a stub         |
 
-The `LOCK_BASED` column is empty on purpose: the branch does not exist yet, and what it guarantees will be
-written here once it does. What it is *for* is the mirror image of the column beside it - a record that does
-not roll back with the business operation can keep a failed result, can be handed to a conflict handler while
-the first call is still running, and can live in a store that has no transactional compare-and-swap. See
-[Roadmap](#roadmap).
+The `NON_BLOCKING` column is empty on purpose: the branch does not exist yet, and what it guarantees will be
+written here once it does. What it is *for* is the mirror image of the column beside it - a claim that is not
+the business transaction's is met rather than waited on, which is what finally gives a conflict handler
+something to answer; it outlives a rollback, which is what lets a failed result stay on the record; and it
+can be taken in a store that offers no transaction-scoped lock. See [Roadmap](#roadmap).
 
 ### Idempotency Guarantees
 
 > [!WARNING]
-> Everything below describes the `TRANSACTIONAL` processor - the only one implemented. See
+> Everything below describes the `BLOCKING` processor - the only one implemented. See
 > [Processing Branches](#processing-branches) and [Limitations](#limitations).
 
 #### At-Most-Once Execution
@@ -314,8 +314,8 @@ a second time.
 
 The operation's record shares the business transaction, so a rollback takes both away: an operation that
 threw leaves no row behind, and the next request with the same key is treated as a first attempt and runs
-again. Only a completed operation is replayable. Keeping a failed result on record is what the lock-based
-branch is for.
+again. Only a completed operation is replayable. Keeping a failed result on record is what the
+non-blocking branch is for.
 
 #### Transaction Boundary
 
@@ -339,7 +339,7 @@ which means `REQUIRES_NEW`, or `REQUIRED` with no outer transaction around the c
 
 #### Isolation
 
-The transactional branch is correct at `READ COMMITTED`, and only there. Under `REPEATABLE READ` or
+The blocking branch is correct at `READ COMMITTED`, and only there. Under `REPEATABLE READ` or
 `SERIALIZABLE` the duplicate that waited on `ON CONFLICT DO UPDATE` does not see the winner's committed row -
 it fails with `could not serialize access due to concurrent update` (SQLSTATE 40001) instead of replaying the
 result. Nothing in the library checks the level of the transaction it is given, so run the datasource behind
@@ -379,9 +379,9 @@ IN_PROCESS --complete()--> PROCESSED
 ### Conflict Handling
 
 > [!NOTE]
-> Conflict handling belongs to the lock-based branch and is unreachable today: the transactional processor
+> Conflict handling belongs to the non-blocking branch and is unreachable today: the blocking processor
 > settles a duplicate on the store's own insert - the loser blocks, then replays - so `IdempotencyConfig`
-> rejects an enabled `conflictConfig` under `TRANSACTIONAL`. The handlers below are implemented and unit-tested,
+> rejects an enabled `conflictConfig` under `BLOCKING`. The handlers below are implemented and unit-tested,
 > waiting for the processor that uses them.
 
 | Strategy           | Behavior                                                                                                                                                                                                                                                                                                                   |
@@ -451,11 +451,11 @@ your own rather than the `@Idempotent` aspect - casts once at its own boundary.
 The store contract is split by concurrency model rather than by table:
 
 - `OperationRepository` - the read side (`findByIdempotencyKey`), shared by everything;
-- `TransactionalOperationRepository` - the write side that relies on the store's own atomicity: `saveIfAbsent`
+- `BlockingOperationRepository` - the write side that relies on the store's own atomicity: `saveIfAbsent`
   must let exactly one concurrent request claim a key, and `update` / `saveResultAndUpdateStatus` must be
   conditional on the row's current `status`, since concurrent requests for the same key race through this code
   path inside a transaction;
-- `LockBasedOperationRepository` - the write side for a store that gets mutual exclusion from an external lock.
+- `NonBlockingOperationRepository` - the write side for a store that gets mutual exclusion from an external lock.
   Declared, not designed;
 - `ResponseRepository` - the recorded response, read and written where it lives: on the row the operation
   already occupies. Its write is conditional on that operation having completed, and it hands back the
@@ -585,7 +585,7 @@ idempify:
   enabled: true
   header-name: Idempotency-Key
   ttl: 24h
-  processor-type: LOCK_BASED
+  processor-type: NON_BLOCKING
   conflict:
     enabled: true
     strategy: REJECT
@@ -622,7 +622,7 @@ idempify:
 | `enabled`                                   | Switches the library on. `false` keeps every idempify bean out of the context              | `true`                    |
 | `header-name`                               | Header the idempotency key is read from                                                    | `Idempotency-Key`         |
 | `ttl`                                       | How long a completed operation's result stays replayable                                   | `24h`                     |
-| `processor-type`                            | Which processor runs the operation: `LOCK_BASED` or `TRANSACTIONAL`                        | `LOCK_BASED`              |
+| `processor-type`                            | Which processor runs the operation: `NON_BLOCKING` or `BLOCKING`                           | `NON_BLOCKING`            |
 | `conflict.enabled`                          | Whether a duplicate that meets an operation still in flight is handled                     | `true`                    |
 | `conflict.strategy`                         | What such a duplicate gets: `REJECT` answers at once, `WAIT` polls for the result          | `REJECT`                  |
 | `conflict.wait.delay`                       | First pause between polls, `WAIT` only                                                     | `5s`                      |
@@ -660,10 +660,10 @@ idempify:
 
 > [!WARNING]
 > Two combinations are refused at start-up rather than at the first request: with
-> `processor-type: TRANSACTIONAL`, `conflict.enabled` must be false, and so must both
-> `response.should-cache-4xx` and `response.should-cache-5xx`. The transactional processor settles duplicates
+> `processor-type: BLOCKING`, `conflict.enabled` must be false, and so must both
+> `response.should-cache-4xx` and `response.should-cache-5xx`. The blocking processor settles duplicates
 > on the store's insert, so no conflict is left to handle; and it writes the record in the same transaction as
-> the business operation, so keeping a failed answer is what the lock-based branch is for.
+> the business operation, so keeping a failed answer is what the non-blocking branch is for.
 
 > [!NOTE]
 > The cache is governed by properties alone - `@Idempotent` has no attribute for it. A call site allowed to
@@ -695,7 +695,7 @@ IdempotencyConfig idempotencyConfigRegistry(IdempotencyConfigRegistry registry) 
 | `headerName`     | Header this call site reads the key from                                      | `""`              |
 | `ttl`            | How long the result stays replayable, counted in `timeUnit`                   | `-1`              |
 | `timeUnit`       | Unit `ttl` is written in; read only when `ttl` is non-negative                | `HOURS`           |
-| `processorType`  | Which processor runs the operation: `TRANSACTIONAL` or `LOCK_BASED`           | `UNSELECTED`      |
+| `processorType`  | Which processor runs the operation: `BLOCKING` or `NON_BLOCKING`              | `UNSELECTED`      |
 | `onConflict`     | What a duplicate meeting an operation in flight gets: `REJECT` or `WAIT`      | `UNSELECTED`      |
 | `useFingerprint` | Whether a duplicate must match the original request: `ENABLE` or `DISABLE`    | `UNSELECTED`      |
 | `cache4xx`       | Whether a `4xx` answer is worth an entry: `ENABLE` or `DISABLE`               | `UNSELECTED`      |
@@ -708,15 +708,15 @@ here at all: it is an instance on the config, not a class on the annotation.
 
 ### Examples
 
-#### Transactional, Header Key
+#### Blocking, Header Key
 
 What a working setup looks like today: the store decides the races, the key travels in a header, and the one
-section the transactional processor refuses is switched off. Error answers stay off the record by default, so
+section the blocking processor refuses is switched off. Error answers stay off the record by default, so
 that half needs no line here.
 
 ```yaml
 idempify:
-  processor-type: TRANSACTIONAL
+  processor-type: BLOCKING
   header-name: Idempotency-Key
   ttl: 24h
   conflict:
@@ -740,7 +740,7 @@ endpoint narrows it through a named config:
 
 ```yaml
 idempify:
-  processor-type: TRANSACTIONAL
+  processor-type: BLOCKING
   conflict:
     enabled: false
   fingerprint:
@@ -780,7 +780,7 @@ response does not apply here - a repeat is answered from the result instead, see
 ```
 
 ## Roadmap
-- A working `LOCK_BASED` processor, and with it conflict handling and a record that survives a failed operation
+- A working `NON_BLOCKING` processor, and with it conflict handling and a record that survives a failed operation
 - Named configuration profiles declared in YAML
 - Automatic table creation
 - A working `idempify-example` demo application

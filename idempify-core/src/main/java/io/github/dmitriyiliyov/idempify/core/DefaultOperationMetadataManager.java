@@ -68,7 +68,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
      * Layers the call site over the config already resolved for it, and refuses a result that contradicts
      * itself.
      * <p>
-     * A call site that goes {@link ProcessorType#TRANSACTIONAL} has its conflict handling switched off here
+     * A call site that goes {@link ProcessorType#BLOCKING} has its conflict handling switched off here
      * instead of being refused, because it is the only layer that cannot switch it off itself: an annotation
      * attribute has no value for "handle no conflicts", while a named config and the global properties both
      * say it in one call. Every other contradiction travels on to {@link IdempotencyConfig#validate()} and is
@@ -85,7 +85,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
             configBuilder.processorType(processorType);
         }
 
-        if (ProcessorType.TRANSACTIONAL.equals(processorType)) {
+        if (ProcessorType.BLOCKING.equals(processorType)) {
             configBuilder.conflict(ConflictConfig.disabled());
             logDroppedConflictHandling(config.getConflictConfig());
         } else {
@@ -122,7 +122,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
     private void logDroppedConflictHandling(ConflictConfig conflictConfig) {
         if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
             log.info("Conflict handling (strategy={}) is dropped: {} leaves a duplicate no conflict to arrive at",
-                     conflictConfig.getStrategy(), ProcessorType.TRANSACTIONAL);
+                     conflictConfig.getStrategy(), ProcessorType.BLOCKING);
         }
     }
 

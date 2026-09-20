@@ -12,12 +12,12 @@ public enum ProcessorType {
      * Record and business effect share one transaction and so commit or roll back together. A failed
      * operation leaves nothing behind, which also means its failure cannot be replayed.
      */
-    TRANSACTIONAL,
+    BLOCKING,
 
     /**
      * Record is written outside the business transaction and guarded by an external lock, so it survives a
      * rollback. That is what makes a failed result replayable and a store without transactional
      * compare-and-swap usable.
      */
-    LOCK_BASED
+    NON_BLOCKING
 }

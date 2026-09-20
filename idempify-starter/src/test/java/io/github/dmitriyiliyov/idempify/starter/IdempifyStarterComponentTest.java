@@ -37,7 +37,7 @@ class IdempifyStarterComponentTest {
 
             assertThat(config.getHeaderName()).isEqualTo("Idempotency-Key");
             assertThat(config.getTtl()).isEqualTo(Duration.ofHours(24));
-            assertThat(config.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+            assertThat(config.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
 
             assertThat(config.getConflictConfig().isEnabled()).isTrue();
             assertThat(config.getConflictConfig().getStrategy()).isEqualTo(ConflictHandleStrategy.REJECT);
@@ -62,7 +62,7 @@ class IdempifyStarterComponentTest {
                 .withPropertyValues(
                         "idempify.header-name=X-Request-Id",
                         "idempify.ttl=30m",
-                        "idempify.processor-type=LOCK_BASED",
+                        "idempify.processor-type=NON_BLOCKING",
                         "idempify.conflict.enabled=true",
                         "idempify.conflict.strategy=WAIT",
                         "idempify.conflict.wait.delay=250ms",
@@ -234,10 +234,10 @@ class IdempifyStarterComponentTest {
     }
 
     @Test
-    @DisplayName("CT application when the transactional processor is chosen alone should refuse to start naming the conflict property")
-    void application_whenTransactionalProcessorIsChosenAlone_shouldRefuseToStartNamingConflictProperty() {
+    @DisplayName("CT application when the blocking processor is chosen alone should refuse to start naming the conflict property")
+    void application_whenBlockingProcessorIsChosenAlone_shouldRefuseToStartNamingConflictProperty() {
         contextRunner
-                .withPropertyValues("idempify.processor-type=TRANSACTIONAL")
+                .withPropertyValues("idempify.processor-type=BLOCKING")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
@@ -247,11 +247,11 @@ class IdempifyStarterComponentTest {
     }
 
     @Test
-    @DisplayName("CT application when the transactional processor keeps the response cache should refuse to start naming the cache property")
-    void application_whenTransactionalProcessorKeepsResponseCache_shouldRefuseToStartNamingCacheProperty() {
+    @DisplayName("CT application when the blocking processor keeps the response cache should refuse to start naming the cache property")
+    void application_whenBlockingProcessorKeepsResponseCache_shouldRefuseToStartNamingCacheProperty() {
         contextRunner
                 .withPropertyValues(
-                        "idempify.processor-type=TRANSACTIONAL",
+                        "idempify.processor-type=BLOCKING",
                         "idempify.conflict.enabled=false",
                         "idempify.response.should-cache-4xx=true"
                 )
@@ -264,17 +264,17 @@ class IdempifyStarterComponentTest {
     }
 
     @Test
-    @DisplayName("CT application when the transactional processor switches both sections off should start")
-    void application_whenTransactionalProcessorSwitchesBothSectionsOff_shouldStart() {
+    @DisplayName("CT application when the blocking processor switches both sections off should start")
+    void application_whenBlockingProcessorSwitchesBothSectionsOff_shouldStart() {
         contextRunner
                 .withPropertyValues(
-                        "idempify.processor-type=TRANSACTIONAL",
+                        "idempify.processor-type=BLOCKING",
                         "idempify.conflict.enabled=false"
                 )
                 .run(context -> {
                     IdempotencyConfig config = configOf(context);
 
-                    assertThat(config.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+                    assertThat(config.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
                     assertThat(config.getConflictConfig().isEnabled()).isFalse();
                     config.validate();
                 });

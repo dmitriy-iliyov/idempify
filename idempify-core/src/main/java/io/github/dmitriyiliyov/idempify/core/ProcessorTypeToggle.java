@@ -21,22 +21,22 @@ public enum ProcessorTypeToggle {
     UNSELECTED,
 
     /**
-     * Explicitly {@link ProcessorType#TRANSACTIONAL}, overriding whatever a broader layer says.
+     * Explicitly {@link ProcessorType#BLOCKING}, overriding whatever a broader layer says.
      */
-    TRANSACTIONAL,
+    BLOCKING,
 
     /**
-     * Explicitly {@link ProcessorType#LOCK_BASED}, overriding whatever a broader layer says.
+     * Explicitly {@link ProcessorType#NON_BLOCKING}, overriding whatever a broader layer says.
      */
-    LOCK_BASED;
+    NON_BLOCKING;
 
     /**
      * Maps to the resolved type, returning {@code null} for {@link #UNSELECTED} - "this layer did not say".
      */
     public static ProcessorType toProcessorType(ProcessorTypeToggle toggle) {
         return switch (toggle) {
-            case TRANSACTIONAL -> ProcessorType.TRANSACTIONAL;
-            case LOCK_BASED -> ProcessorType.LOCK_BASED;
+            case BLOCKING -> ProcessorType.BLOCKING;
+            case NON_BLOCKING -> ProcessorType.NON_BLOCKING;
             case UNSELECTED -> null;
         };
     }

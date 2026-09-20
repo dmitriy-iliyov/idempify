@@ -151,7 +151,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
             Objects.requireNonNull(processorType, "processorType cannot be null");
             Objects.requireNonNull(responseConfig, "responseConfig cannot be null");
 
-            if (ProcessorType.TRANSACTIONAL.equals(processorType) &&
+            if (ProcessorType.BLOCKING.equals(processorType) &&
                     (responseConfig.shouldCache4xx() || responseConfig.shouldCache5xx())) {
                 throw new IllegalStateException("""
                         if processorType is %s responses with 4xx or 5xx cannot be cached: the operation record 

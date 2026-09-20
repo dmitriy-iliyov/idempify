@@ -12,7 +12,7 @@ import java.util.UUID;
  * result it never reads.
  * <p>
  * Write access lives in the sub-interfaces because the guarantees differ:
- * {@link TransactionalOperationRepository} needs an atomic insert-or-fetch and compare-and-swap updates,
+ * {@link BlockingOperationRepository} needs an atomic insert-or-fetch and compare-and-swap updates,
  * while a lock-based store gets mutual exclusion from an external lock instead.
  */
 public interface OperationRepository {

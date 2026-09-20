@@ -71,7 +71,7 @@ final class TestOperationMetadata implements OperationMetadata {
 
         private String headerName = "Idempotency-Key";
         private Duration ttl = Duration.ofHours(24);
-        private ProcessorType processorType = ProcessorType.TRANSACTIONAL;
+        private ProcessorType processorType = ProcessorType.BLOCKING;
         private ConflictHandler conflictHandler;
         private boolean useFingerprint;
         private FingerprintPolicy fingerprintPolicy;

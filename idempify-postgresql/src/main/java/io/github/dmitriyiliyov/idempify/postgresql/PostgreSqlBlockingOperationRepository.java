@@ -3,7 +3,7 @@ package io.github.dmitriyiliyov.idempify.postgresql;
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
 import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
 import io.github.dmitriyiliyov.idempify.core.RawOperation;
-import io.github.dmitriyiliyov.idempify.core.TransactionalOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.sql.Timestamp;
@@ -11,11 +11,11 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-public class PostgreSqlTransactionalOperationRepository implements TransactionalOperationRepository {
+public class PostgreSqlBlockingOperationRepository implements BlockingOperationRepository {
 
     private final JdbcClient jdbcClient;
 
-    public PostgreSqlTransactionalOperationRepository(JdbcClient jdbcClient) {
+    public PostgreSqlBlockingOperationRepository(JdbcClient jdbcClient) {
         this.jdbcClient = Objects.requireNonNull(jdbcClient, "jdbcClient cannot be null");
     }
 

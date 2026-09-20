@@ -45,7 +45,7 @@ public final class IdempotencyConfig {
      * Refuses a resolved config whose sections contradict the processor it chose, rather than hand a
      * processor settings it would have to ignore.
      * <p>
-     * Both refusals concern {@link ProcessorType#TRANSACTIONAL}, which keeps the operation's record inside
+     * Both refusals concern {@link ProcessorType#BLOCKING}, which keeps the operation's record inside
      * the business transaction. A conflict handler has nothing to handle there: a duplicate waits on the
      * store's own insert instead of arriving at a conflict. And keeping an error response is checked against
      * the same constraint, the response being written in the operation's own transaction.
@@ -58,7 +58,7 @@ public final class IdempotencyConfig {
      */
     public void validate() {
         Objects.requireNonNull(processorType, "processorType cannot be null");
-        if (ProcessorType.TRANSACTIONAL.equals(processorType)) {
+        if (ProcessorType.BLOCKING.equals(processorType)) {
             if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
                 throw new IllegalStateException("conflictConfig cannot be enabled if processorType is %s".formatted(processorType));
             }

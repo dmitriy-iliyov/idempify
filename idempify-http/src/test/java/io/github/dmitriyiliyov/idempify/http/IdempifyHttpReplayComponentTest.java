@@ -61,7 +61,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * not carry. Here the count is asked for through a method, so it comes from the target.
  * <p>
  * Standing in for the core is the processor: it holds the row and decides replay, the way
- * {@code TransactionalIdempotentProcessor} over a repository would.
+ * {@code BlockingIdempotentProcessor} over a repository would.
  */
 class IdempifyHttpReplayComponentTest {
 

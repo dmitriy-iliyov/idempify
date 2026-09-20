@@ -50,7 +50,7 @@ class IdempifyCoreComponentTest {
         clock = TestClock.fixedAt(TestClock.EPOCH);
         PassThroughResultSerializer resultSerializer = new PassThroughResultSerializer();
         PassThroughResponseSerializer responseSerializer = new PassThroughResponseSerializer();
-        TransactionalOperationManager operationManager = new DefaultTransactionalOperationManager(
+        BlockingOperationManager operationManager = new DefaultBlockingOperationManager(
                 new DefaultOperationCreator(),
                 repository,
                 new DefaultFingerprintMatcher(IdempotencyEventListener.NOOP),
@@ -59,7 +59,7 @@ class IdempifyCoreComponentTest {
                 resultSerializer,
                 clock
         );
-        processor = new DelegatingIdempotentProcessor(List.of(new TransactionalIdempotentProcessor(
+        processor = new DelegatingIdempotentProcessor(List.of(new BlockingIdempotentProcessor(
                 new TransactionTemplate(transactionManager),
                 operationManager,
                 channel,
@@ -325,7 +325,7 @@ class IdempifyCoreComponentTest {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         OperationMetadata metadata = TestOperationMetadata.builder()
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .build();
 
         // when / then
@@ -385,7 +385,7 @@ class IdempifyCoreComponentTest {
      * the two updates are compare-and-swap on the current status.
      */
     private static final class InMemoryOperationRepository
-            implements TransactionalOperationRepository, OperationRepository {
+            implements BlockingOperationRepository, OperationRepository {
 
         private final Map<UUID, RawOperation> rows = new HashMap<>();
 

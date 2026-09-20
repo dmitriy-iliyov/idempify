@@ -76,7 +76,7 @@ final class TestOperationMetadata implements OperationMetadata {
         private boolean useFingerprint;
         private FingerprintPolicy fingerprintPolicy;
         private ResponseConfig responseConfig = ResponseConfig.defaults();
-        private ProcessorType processorType = ProcessorType.TRANSACTIONAL;
+        private ProcessorType processorType = ProcessorType.BLOCKING;
 
         private Builder() {}
 

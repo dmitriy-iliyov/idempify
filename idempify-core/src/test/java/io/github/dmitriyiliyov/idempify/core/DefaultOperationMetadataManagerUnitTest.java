@@ -69,7 +69,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
     }
 
     @Test
@@ -164,10 +164,10 @@ class DefaultOperationMetadataManagerUnitTest {
         DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
     }
 
     @Test
@@ -177,7 +177,7 @@ class DefaultOperationMetadataManagerUnitTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.builder().bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH).build())
                 .response(ResponseConfig.disabled())
@@ -188,7 +188,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.UNSELECTED).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
     }
 
     @Test
@@ -296,7 +296,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // then
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(15));
         assertThat(result.getHeaderName()).isEqualTo("X-Named-Key");
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
     }
 
     @Test
@@ -335,7 +335,7 @@ class DefaultOperationMetadataManagerUnitTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .build();
 
         // when / then
@@ -386,45 +386,45 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes transactional should leave it no conflict handler")
-    void merge_whenCallSiteGoesTransactional_shouldLeaveItNoConflictHandler() {
+    @DisplayName("UT merge() when the call site goes blocking should leave it no conflict handler")
+    void merge_whenCallSiteGoesBlocking_shouldLeaveItNoConflictHandler() {
         // given
         DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
 
         // then
         assertThat(result.getConflictHandler()).isNull();
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes transactional over a global that keeps failures should refuse to resolve")
-    void merge_whenCallSiteGoesTransactionalOverGlobalThatKeepsFailures_shouldRefuseToResolve() {
+    @DisplayName("UT merge() when the call site goes blocking over a global that keeps failures should refuse to resolve")
+    void merge_whenCallSiteGoesBlockingOverGlobalThatKeepsFailures_shouldRefuseToResolve() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
 
         // when / then
-        assertThatThrownBy(() -> tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build()))
+        assertThatThrownBy(() -> tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be cached if processorType is TRANSACTIONAL");
+                .hasMessageContaining("cannot be cached if processorType is BLOCKING");
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes transactional and drops the failures itself should resolve")
-    void merge_whenCallSiteGoesTransactionalAndDropsFailuresItself_shouldResolve() {
+    @DisplayName("UT merge() when the call site goes blocking and drops the failures itself should resolve")
+    void merge_whenCallSiteGoesBlockingAndDropsFailuresItself_shouldResolve() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
 
         // when
         OperationMetadata result = tested.merge(raw()
-                .processorType(ProcessorTypeToggle.TRANSACTIONAL)
+                .processorType(ProcessorTypeToggle.BLOCKING)
                 .cache4xxToggle(Toggle.DISABLE)
                 .cache5xxToggle(Toggle.DISABLE)
                 .build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
         assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
         assertThat(result.getConflictHandler()).isNull();
     }
@@ -602,7 +602,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // given
         IdempotencyConfigRegistry registry = new DefaultIdempotencyConfigRegistry();
         registry.register(CONFIG_NAME, IdempotencyConfig.builder()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(ConflictConfig.disabled())
                 .response(ResponseConfig.disabled())
                 .build());
@@ -612,12 +612,12 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().build(), CONFIG_NAME);
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
     }
 
     @Test
-    @DisplayName("UT merge(name) when the call site goes transactional over a named config that handles conflicts should drop them")
-    void mergeWithName_whenCallSiteGoesTransactionalOverNamedConfigThatHandlesConflicts_shouldDropThem() {
+    @DisplayName("UT merge(name) when the call site goes blocking over a named config that handles conflicts should drop them")
+    void mergeWithName_whenCallSiteGoesBlockingOverNamedConfigThatHandlesConflicts_shouldDropThem() {
         // given
         IdempotencyConfigRegistry registry = new DefaultIdempotencyConfigRegistry();
         registry.register(CONFIG_NAME, IdempotencyConfig.builder()
@@ -627,10 +627,10 @@ class DefaultOperationMetadataManagerUnitTest {
 
         // when
         OperationMetadata result = tested.merge(
-                raw().processorType(ProcessorTypeToggle.TRANSACTIONAL).build(), CONFIG_NAME);
+                raw().processorType(ProcessorTypeToggle.BLOCKING).build(), CONFIG_NAME);
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
         assertThat(result.getConflictHandler()).isNull();
     }
 
@@ -657,14 +657,14 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     /**
-     * A global config an application using every feature would hand over: lock-based, so that conflict
+     * A global config an application using every feature would hand over: non-blocking, so that conflict
      * handling and response caching are allowed beside fingerprinting.
      */
     private static IdempotencyConfig global() {
         return IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.defaults()))
                 .fingerprint(FingerprintConfig.builder()
                         .bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH)

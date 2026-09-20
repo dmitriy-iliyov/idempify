@@ -31,7 +31,7 @@ import static org.mockito.Mockito.*;
  * caller was told.
  */
 @ExtendWith(MockitoExtension.class)
-class DefaultTransactionalOperationManagerUnitTest {
+class DefaultBlockingOperationManagerUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
@@ -42,7 +42,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @Mock
     private OperationCreator creator;
     @Mock
-    private TransactionalOperationRepository repository;
+    private BlockingOperationRepository repository;
     @Mock
     private FingerprintMatcher fingerprintMatcher;
 
@@ -51,7 +51,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     private final ResultSerializer resultSerializer = new TextResultSerializer();
 
     private TestClock clock;
-    private DefaultTransactionalOperationManager tested;
+    private DefaultBlockingOperationManager tested;
 
     @BeforeEach
     void setUp() {
@@ -63,7 +63,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when creator is null should throw NullPointerException")
     void constructor_whenCreatorIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 null, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("creator cannot be null");
@@ -73,7 +73,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, null, fingerprintMatcher, serializer, deserializer, resultSerializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("repository cannot be null");
@@ -83,7 +83,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when fingerprintMatcher is null should throw NullPointerException")
     void constructor_whenFingerprintMatcherIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, repository, null, serializer, deserializer, resultSerializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("fingerprintMatcher cannot be null");
@@ -93,7 +93,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when serializer is null should throw NullPointerException")
     void constructor_whenSerializerIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, repository, fingerprintMatcher, null, deserializer, resultSerializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("serializer cannot be null");
@@ -103,7 +103,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when deserializer is null should throw NullPointerException")
     void constructor_whenDeserializerIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, repository, fingerprintMatcher, serializer, null, resultSerializer, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("deserializer cannot be null");
@@ -113,7 +113,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when resultSerializer is null should throw NullPointerException")
     void constructor_whenResultSerializerIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, repository, fingerprintMatcher, serializer, deserializer, null, clock))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("resultSerializer cannot be null");
@@ -123,7 +123,7 @@ class DefaultTransactionalOperationManagerUnitTest {
     @DisplayName("UT constructor() when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultTransactionalOperationManager(
+        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
                 creator, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("clock cannot be null");
@@ -419,8 +419,8 @@ class DefaultTransactionalOperationManagerUnitTest {
         return expiresAt.getValue();
     }
 
-    private DefaultTransactionalOperationManager manager(Clock clock) {
-        return new DefaultTransactionalOperationManager(
+    private DefaultBlockingOperationManager manager(Clock clock) {
+        return new DefaultBlockingOperationManager(
                 creator, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, clock);
     }
 

@@ -9,7 +9,7 @@ package io.github.dmitriyiliyov.idempify.core;
  * Declared, not designed: it carries no methods yet, and how the lock is taken and what happens when its
  * holder dies are still open questions.
  *
- * @see TransactionalOperationManager
+ * @see BlockingOperationManager
  */
-public interface LockBasedOperationManager {
+public interface NonBlockingOperationManager {
 }

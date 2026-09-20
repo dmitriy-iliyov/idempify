@@ -35,13 +35,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * hand-picked assertion there is.
  */
 @Testcontainers
-class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
+class PostgreSqlBlockingOperationRepositoryIntegrationTest {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private static JdbcClient jdbcClient;
-    private PostgreSqlTransactionalOperationRepository tested;
+    private PostgreSqlBlockingOperationRepository tested;
     private PostgreSqlOperationRepository reader;
 
     @BeforeAll
@@ -62,7 +62,7 @@ class PostgreSqlTransactionalOperationRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        tested = new PostgreSqlTransactionalOperationRepository(jdbcClient);
+        tested = new PostgreSqlBlockingOperationRepository(jdbcClient);
         reader = new PostgreSqlOperationRepository(jdbcClient);
         jdbcClient.sql("DELETE FROM idempotent_operations").update();
     }

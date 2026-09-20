@@ -35,7 +35,7 @@ class DefaultRawOperationMetadataUnitTest {
                 .headerName("X-Payment-Key")
                 .ttl(30)
                 .timeUnit(TimeUnit.MINUTES)
-                .processorType(ProcessorTypeToggle.TRANSACTIONAL)
+                .processorType(ProcessorTypeToggle.BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
                 .cache4xxToggle(Toggle.DISABLE)
@@ -45,7 +45,7 @@ class DefaultRawOperationMetadataUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Payment-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(30));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.BLOCKING);
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
         assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
@@ -271,8 +271,8 @@ class DefaultRawOperationMetadataUnitTest {
     @DisplayName("UT equals() when the processor type differs should treat the metadata as different")
     void equals_whenProcessorTypeDiffers_shouldTreatMetadataAsDifferent() {
         // given
-        RawOperationMetadata one = fullyConfigured().processorType(ProcessorTypeToggle.TRANSACTIONAL).build();
-        RawOperationMetadata other = fullyConfigured().processorType(ProcessorTypeToggle.LOCK_BASED).build();
+        RawOperationMetadata one = fullyConfigured().processorType(ProcessorTypeToggle.BLOCKING).build();
+        RawOperationMetadata other = fullyConfigured().processorType(ProcessorTypeToggle.NON_BLOCKING).build();
 
         // then
         assertThat(one).isNotEqualTo(other);
@@ -295,7 +295,7 @@ class DefaultRawOperationMetadataUnitTest {
         assertThat(result).contains(
                 "headerName='X-Payment-Key'",
                 "ttl=PT30M",
-                "processorType=TRANSACTIONAL",
+                "processorType=BLOCKING",
                 "conflictHandleStrategy=WAIT",
                 "fingerprintToggle=ENABLE",
                 "cache4xxToggle=DISABLE",
@@ -308,7 +308,7 @@ class DefaultRawOperationMetadataUnitTest {
                 .headerName("X-Payment-Key")
                 .ttl(30)
                 .timeUnit(TimeUnit.MINUTES)
-                .processorType(ProcessorTypeToggle.TRANSACTIONAL)
+                .processorType(ProcessorTypeToggle.BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
                 .cache4xxToggle(Toggle.DISABLE)

@@ -44,7 +44,7 @@ class IdempotencyConfigMergeComponentTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Payment-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(15));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
 
         assertThat(result.getConflictConfig().getStrategy()).isEqualTo(ConflictHandleStrategy.WAIT);
         WaitConflictHandlerConfig backoff = (WaitConflictHandlerConfig) result.getConflictConfig().getHandlerConfig();
@@ -154,7 +154,7 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
                 .build();
@@ -166,27 +166,27 @@ class IdempotencyConfigMergeComponentTest {
     }
 
     @Test
-    @DisplayName("CT resolution when the call site goes transactional while the global handles conflicts should refuse to resolve")
-    void resolution_whenCallSiteGoesTransactionalWhileGlobalHandlesConflicts_shouldRefuseToResolve() {
+    @DisplayName("CT resolution when the call site goes blocking while the global handles conflicts should refuse to resolve")
+    void resolution_whenCallSiteGoesBlockingWhileGlobalHandlesConflicts_shouldRefuseToResolve() {
         // given
         IdempotencyConfig callSite = IdempotencyConfig.builder()
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .build();
 
         // when / then
         assertThatThrownBy(() -> IdempotencyConfig.merge(global(), callSite))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("conflictConfig cannot be enabled if processorType is TRANSACTIONAL");
+                .hasMessageContaining("conflictConfig cannot be enabled if processorType is BLOCKING");
     }
 
     @Test
-    @DisplayName("CT resolution when the call site asks a transactional global to keep failures should refuse to resolve")
-    void resolution_whenCallSiteAsksTransactionalGlobalToKeepFailures_shouldRefuseToResolve() {
+    @DisplayName("CT resolution when the call site asks a blocking global to keep failures should refuse to resolve")
+    void resolution_whenCallSiteAsksBlockingGlobalToKeepFailures_shouldRefuseToResolve() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.defaults())
                 .response(ResponseConfig.disabled())
@@ -198,7 +198,7 @@ class IdempotencyConfigMergeComponentTest {
         // when / then
         assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be cached if processorType is TRANSACTIONAL");
+                .hasMessageContaining("cannot be cached if processorType is BLOCKING");
     }
 
     @Test
@@ -221,7 +221,7 @@ class IdempotencyConfigMergeComponentTest {
     }
 
     /**
-     * The least specific source, as an application that uses every feature would hand it over: lock-based, so
+     * The least specific source, as an application that uses every feature would hand it over: non-blocking, so
      * that conflict handling and response caching are allowed alongside fingerprinting, and tuned away from
      * every built-in default so that a merge keeping a setting cannot be mistaken for one falling back to it.
      */
@@ -238,7 +238,7 @@ class IdempotencyConfigMergeComponentTest {
         return IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.builder()
                         .delay(50)
                         .maxAttempts(3)

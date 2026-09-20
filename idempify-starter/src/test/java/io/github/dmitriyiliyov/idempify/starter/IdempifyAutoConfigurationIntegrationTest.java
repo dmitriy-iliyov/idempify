@@ -220,7 +220,7 @@ class IdempifyAutoConfigurationIntegrationTest {
         return IdempotencyConfig.builder()
                 .headerName("X-Hand-Written")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .build();
     }
 

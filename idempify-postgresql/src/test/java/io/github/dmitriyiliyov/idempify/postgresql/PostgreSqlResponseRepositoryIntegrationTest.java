@@ -39,7 +39,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
 
     private static JdbcClient jdbcClient;
     private PostgreSqlResponseRepository tested;
-    private PostgreSqlTransactionalOperationRepository operations;
+    private PostgreSqlBlockingOperationRepository operations;
 
     @BeforeAll
     static void setUpDatabase() {
@@ -60,7 +60,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
     @BeforeEach
     void setUp() {
         tested = new PostgreSqlResponseRepository(jdbcClient);
-        operations = new PostgreSqlTransactionalOperationRepository(jdbcClient);
+        operations = new PostgreSqlBlockingOperationRepository(jdbcClient);
         jdbcClient.sql("DELETE FROM idempotent_operations").update();
     }
 

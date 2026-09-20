@@ -39,7 +39,7 @@ class DefaultOperationMetadataUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.LOCK_BASED);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
         assertThat(result.getConflictHandler()).isSameAs(handler);
         assertThat(result.getFingerprintPolicy()).isSameAs(policy);
         assertThat(result.getResponseConfig()).isNotNull();
@@ -51,7 +51,7 @@ class DefaultOperationMetadataUnitTest {
         // when
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .responseConfig(ResponseConfig.disabled())
                 .build();
 
@@ -67,7 +67,7 @@ class DefaultOperationMetadataUnitTest {
     void build_whenTtlWasNeverDecided_shouldRefuseToBuild() {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .responseConfig(ResponseConfig.disabled())
                 .build())
                 .isInstanceOf(NullPointerException.class)
@@ -92,7 +92,7 @@ class DefaultOperationMetadataUnitTest {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("responseConfig cannot be null");
@@ -178,12 +178,12 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT build() when the processor is TRANSACTIONAL and caching is on should refuse the pair")
-    void build_whenProcessorIsTransactionalAndCachingIsOn_shouldRefusePair() {
+    @DisplayName("UT build() when the processor is BLOCKING and caching is on should refuse the pair")
+    void build_whenProcessorIsBlockingAndCachingIsOn_shouldRefusePair() {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .responseConfig(ResponseConfig.all())
                 .build())
                 .isInstanceOf(IllegalStateException.class)
@@ -191,12 +191,12 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT build() when the processor is TRANSACTIONAL and only 5xx is kept should refuse the pair")
-    void build_whenProcessorIsTransactionalAndOnly5xxIsKept_shouldRefusePair() {
+    @DisplayName("UT build() when the processor is BLOCKING and only 5xx is kept should refuse the pair")
+    void build_whenProcessorIsBlockingAndOnly5xxIsKept_shouldRefusePair() {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .responseConfig(ResponseConfig.builder().shouldCache4xx(false).shouldCache5xx(true).build())
                 .build())
                 .isInstanceOf(IllegalStateException.class)
@@ -204,18 +204,18 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT build() when the processor is TRANSACTIONAL and caching is off should accept the pair")
-    void build_whenProcessorIsTransactionalAndCachingIsOff_shouldAcceptPair() {
+    @DisplayName("UT build() when the processor is BLOCKING and caching is off should accept the pair")
+    void build_whenProcessorIsBlockingAndCachingIsOff_shouldAcceptPair() {
         // when
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.TRANSACTIONAL)
+                .processorType(ProcessorType.BLOCKING)
                 .responseConfig(ResponseConfig.disabled())
                 .build();
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
         assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
     }
 
@@ -223,7 +223,7 @@ class DefaultOperationMetadataUnitTest {
         return DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.LOCK_BASED)
+                .processorType(ProcessorType.NON_BLOCKING)
                 .responseConfig(ResponseConfig.all());
     }
 
@@ -238,6 +238,6 @@ class DefaultOperationMetadataUnitTest {
         String result = full().build().toString();
 
         // then
-        assertThat(result).contains("headerName='Idempotency-Key'", "ttl=PT24H", "processorType=LOCK_BASED");
+        assertThat(result).contains("headerName='Idempotency-Key'", "ttl=PT24H", "processorType=NON_BLOCKING");
     }
 }

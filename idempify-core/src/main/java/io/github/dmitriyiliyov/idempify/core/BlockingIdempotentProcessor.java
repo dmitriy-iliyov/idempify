@@ -7,18 +7,18 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Objects;
 
-public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProcessor {
+public class BlockingIdempotentProcessor implements TypeAwareIdempotentProcessor {
 
-    private static final Logger log = LoggerFactory.getLogger(TransactionalIdempotentProcessor.class);
+    private static final Logger log = LoggerFactory.getLogger(BlockingIdempotentProcessor.class);
     private final TransactionTemplate transactionTemplate;
-    private final TransactionalOperationManager operationManager;
+    private final BlockingOperationManager operationManager;
     private final OperationStateChannel channel;
     private final IdempotencyEventListener eventListener;
 
-    public TransactionalIdempotentProcessor(TransactionTemplate transactionTemplate,
-                                            TransactionalOperationManager operationManager,
-                                            OperationStateChannel channel,
-                                            IdempotencyEventListener eventListener) {
+    public BlockingIdempotentProcessor(TransactionTemplate transactionTemplate,
+                                       BlockingOperationManager operationManager,
+                                       OperationStateChannel channel,
+                                       IdempotencyEventListener eventListener) {
         this.transactionTemplate = Objects.requireNonNull(transactionTemplate, "transactionTemplate cannot be null");
         this.operationManager = Objects.requireNonNull(operationManager, "operationManager cannot be null");
         this.channel = Objects.requireNonNull(channel, "channel cannot be null");
@@ -81,6 +81,6 @@ public class TransactionalIdempotentProcessor implements TypeAwareIdempotentProc
 
     @Override
     public ProcessorType getType() {
-        return ProcessorType.TRANSACTIONAL;
+        return ProcessorType.BLOCKING;
     }
 }

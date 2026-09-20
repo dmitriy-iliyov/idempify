@@ -16,24 +16,24 @@ import java.util.UUID;
  * one place that knows what those rows decode into. The declared type of a result comes from the call site
  * rather than the row, so a caller without one - the response path - never has to invent it.
  */
-public class DefaultTransactionalOperationManager implements TransactionalOperationManager {
+public class DefaultBlockingOperationManager implements BlockingOperationManager {
 
-    private static final Logger log = LoggerFactory.getLogger(DefaultTransactionalOperationManager.class);
+    private static final Logger log = LoggerFactory.getLogger(DefaultBlockingOperationManager.class);
     private final OperationCreator creator;
-    private final TransactionalOperationRepository repository;
+    private final BlockingOperationRepository repository;
     private final FingerprintMatcher fingerprintMatcher;
     private final OperationSerializer serializer;
     private final OperationDeserializer deserializer;
     private final ResultSerializer resultSerializer;
     private final Clock clock;
 
-    public DefaultTransactionalOperationManager(OperationCreator creator,
-                                                TransactionalOperationRepository repository,
-                                                FingerprintMatcher fingerprintMatcher,
-                                                OperationSerializer serializer,
-                                                OperationDeserializer deserializer,
-                                                ResultSerializer resultSerializer,
-                                                Clock clock) {
+    public DefaultBlockingOperationManager(OperationCreator creator,
+                                           BlockingOperationRepository repository,
+                                           FingerprintMatcher fingerprintMatcher,
+                                           OperationSerializer serializer,
+                                           OperationDeserializer deserializer,
+                                           ResultSerializer resultSerializer,
+                                           Clock clock) {
         this.creator = Objects.requireNonNull(creator, "creator cannot be null");
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
