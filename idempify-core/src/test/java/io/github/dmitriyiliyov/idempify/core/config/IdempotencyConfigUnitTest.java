@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -98,6 +100,36 @@ class IdempotencyConfigUnitTest {
     }
 
     @Test
+    @DisplayName("UT lockTtl() when the lock ttl is negative should throw IllegalArgumentException")
+    void lockTtl_whenLockTtlIsNegative_shouldThrowIllegalArgumentException() {
+        assertThatThrownBy(() -> IdempotencyConfig.builder().lockTtl(Duration.ofMinutes(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lockTtl cannot be negative");
+    }
+
+    @Test
+    @DisplayName("UT lockTtl() when given an amount with a TimeUnit should convert it")
+    void lockTtl_whenGivenAmountWithTimeUnit_shouldConvertIt() {
+        assertThat(IdempotencyConfig.builder().lockTtl(5, TimeUnit.MINUTES).build().getLockTtl())
+                .isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    @DisplayName("UT lockTtl() when given an amount with a ChronoUnit should convert it")
+    void lockTtl_whenGivenAmountWithChronoUnit_shouldConvertIt() {
+        assertThat(IdempotencyConfig.builder().lockTtl(30, ChronoUnit.SECONDS).build().getLockTtl())
+                .isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    @DisplayName("UT lockTtl() when the unit is null should throw NullPointerException")
+    void lockTtl_whenUnitIsNull_shouldThrowNullPointerException() {
+        assertThatThrownBy(() -> IdempotencyConfig.builder().lockTtl(5, (ChronoUnit) null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("unit cannot be null");
+    }
+
+    @Test
     @DisplayName("UT fingerprint() when the section is null should throw NullPointerException")
     void fingerprint_whenSectionIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> IdempotencyConfig.builder().fingerprint(null))
@@ -110,12 +142,11 @@ class IdempotencyConfigUnitTest {
     void responseCache_whenBuiltFromConsumer_shouldCarryWhatConsumerSet() {
         // when
         IdempotencyConfig result = IdempotencyConfig.builder()
-                .response(builder -> builder.shouldCache4xx(false).shouldCache5xx(true))
+                .response(builder -> builder.releaseFor(List.of(IllegalStateException.class)))
                 .build();
 
         // then
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -258,6 +289,33 @@ class IdempotencyConfigUnitTest {
     }
 
     @Test
+    @DisplayName("UT merge() when the target names its own lock ttl should take it")
+    void merge_whenTargetNamesItsOwnLockTtl_shouldTakeIt() {
+        // given
+        IdempotencyConfig reference = full().lockTtl(Duration.ofMinutes(5)).build();
+        IdempotencyConfig target = IdempotencyConfig.builder().lockTtl(Duration.ofMinutes(1)).build();
+
+        // when
+        IdempotencyConfig result = IdempotencyConfig.merge(reference, target);
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(1));
+    }
+
+    @Test
+    @DisplayName("UT merge() when the target says nothing about the lock ttl should keep the reference one")
+    void merge_whenTargetSaysNothingAboutLockTtl_shouldKeepReferenceOne() {
+        // given
+        IdempotencyConfig reference = full().lockTtl(Duration.ofMinutes(5)).build();
+
+        // when
+        IdempotencyConfig result = IdempotencyConfig.merge(reference, IdempotencyConfig.builder().build());
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
     @DisplayName("UT merge() when the target says nothing should keep the reference untouched")
     void merge_whenTargetSaysNothing_shouldKeepReferenceUntouched() {
         // given
@@ -309,27 +367,29 @@ class IdempotencyConfigUnitTest {
                 .response(ResponseConfig.all())
                 .build();
         IdempotencyConfig target = IdempotencyConfig.builder()
-                .response(builder -> builder.shouldCache4xx(false))
+                .response(builder -> builder.includedHeaders(Set.of("Location")))
                 .build();
 
         // when
         IdempotencyConfig result = IdempotencyConfig.merge(reference, target);
 
         // then
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().getIncludedHeaders()).containsExactly("location");
+        assertThat(result.getResponseConfig().getReleaseFor()).isEmpty();
     }
 
     @Test
     @DisplayName("UT merge() when a blocking target meets a reference that handles conflicts should throw IllegalStateException")
     void merge_whenBlockingTargetMeetsReferenceThatHandlesConflicts_shouldThrowIllegalStateException() {
         // given
+        // a reference without a lease, so that conflict handling is the one thing the blocking target contradicts
+        IdempotencyConfig reference = full().lockTtl(null).build();
         IdempotencyConfig target = IdempotencyConfig.builder()
                 .processorType(ProcessorType.BLOCKING)
                 .build();
 
         // when / then
-        assertThatThrownBy(() -> IdempotencyConfig.merge(full().build(), target))
+        assertThatThrownBy(() -> IdempotencyConfig.merge(reference, target))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("conflictConfig cannot be enabled if processorType is BLOCKING");
     }
@@ -366,6 +426,27 @@ class IdempotencyConfigUnitTest {
     }
 
     @Test
+    @DisplayName("UT validate() when a blocking config names a lock ttl should throw IllegalStateException")
+    void validate_whenBlockingConfigNamesLockTtl_shouldThrowIllegalStateException() {
+        // given
+        IdempotencyConfig config = blocking().lockTtl(Duration.ofMinutes(5)).build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("lockTtl cannot be passed")
+                .hasMessageContaining("BLOCKING");
+    }
+
+    @Test
+    @DisplayName("UT lockTtl() when the lock ttl is negative should refuse it")
+    void lockTtl_whenLockTtlIsNegative_shouldRefuseIt() {
+        assertThatThrownBy(() -> IdempotencyConfig.builder().lockTtl(Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lockTtl cannot be negative");
+    }
+
+    @Test
     @DisplayName("UT validate() when a blocking config handles conflicts should throw IllegalStateException")
     void validate_whenBlockingConfigHandlesConflicts_shouldThrowIllegalStateException() {
         // given
@@ -378,39 +459,67 @@ class IdempotencyConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT validate() when a blocking config caches responses should throw IllegalStateException")
-    void validate_whenBlockingConfigCachesResponses_shouldThrowIllegalStateException() {
+    @DisplayName("UT validate() when a blocking config keeps failures should throw IllegalStateException")
+    void validate_whenBlockingConfigKeepsFailures_shouldThrowIllegalStateException() {
         // given
         IdempotencyConfig config = blocking().response(ResponseConfig.all()).build();
 
         // when / then
         assertThatThrownBy(config::validate)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("response with 4xx or 5xx cannot be cached if processorType is BLOCKING");
+                .hasMessageContaining("releaseFor cannot keep a failed operation on the record")
+                .hasMessageContaining("BLOCKING");
     }
 
     @Test
-    @DisplayName("UT validate() when a blocking config keeps 4xx alone should throw IllegalStateException")
-    void validate_whenBlockingConfigKeeps4xxAlone_shouldThrowIllegalStateException() {
-        // given
-        IdempotencyConfig config = blocking()
-                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(false).build())
-                .build();
-
-        // when / then
-        assertThatThrownBy(config::validate)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("response with 4xx or 5xx cannot be cached if processorType is BLOCKING");
-    }
-
-    @Test
-    @DisplayName("UT validate() when a blocking config turns both sections off should accept it")
-    void validate_whenBlockingConfigTurnsBothSectionsOff_shouldAcceptIt() {
+    @DisplayName("UT validate() when a blocking config turns conflicts off should accept it")
+    void validate_whenBlockingConfigTurnsConflictsOff_shouldAcceptIt() {
         // given
         IdempotencyConfig config = blocking().build();
 
         // when / then
         config.validate();
+    }
+
+    @Test
+    @DisplayName("UT validate() when a non-blocking config names no lock ttl should throw IllegalStateException")
+    void validate_whenNonBlockingConfigNamesNoLockTtl_shouldThrowIllegalStateException() {
+        // given
+        IdempotencyConfig config = full().lockTtl(null).build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("lockTtl cannot be null if processorType is NON_BLOCKING");
+    }
+
+    @Test
+    @DisplayName("UT validate() when a non-blocking config turns conflict handling off should throw IllegalStateException")
+    void validate_whenNonBlockingConfigTurnsConflictHandlingOff_shouldThrowIllegalStateException() {
+        // given
+        IdempotencyConfig config = full().conflict(ConflictConfig.disabled()).build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("if processorType is NON_BLOCKING");
+    }
+
+    @Test
+    @DisplayName("UT validate() when a non-blocking config leaves conflict handling out should throw IllegalStateException")
+    void validate_whenNonBlockingConfigLeavesConflictHandlingOut_shouldThrowIllegalStateException() {
+        // given
+        IdempotencyConfig config = IdempotencyConfig.builder()
+                .headerName("Idempotency-Key")
+                .ttl(Duration.ofHours(24))
+                .lockTtl(Duration.ofMinutes(5))
+                .processorType(ProcessorType.NON_BLOCKING)
+                .build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("if processorType is NON_BLOCKING");
     }
 
     @Test
@@ -498,6 +607,7 @@ class IdempotencyConfigUnitTest {
         IdempotencyConfig reference = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
+                .lockTtl(Duration.ofMinutes(5))
                 .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.disabled())
@@ -510,6 +620,7 @@ class IdempotencyConfigUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo(reference.getHeaderName());
         assertThat(result.getTtl()).isEqualTo(reference.getTtl());
+        assertThat(result.getLockTtl()).isEqualTo(reference.getLockTtl());
         assertThat(result.getProcessorType()).isEqualTo(reference.getProcessorType());
         assertThat(result.getConflictConfig()).isEqualTo(reference.getConflictConfig());
         assertThat(result.getResponseConfig()).isEqualTo(reference.getResponseConfig());
@@ -584,6 +695,7 @@ class IdempotencyConfigUnitTest {
         return IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
+                .lockTtl(Duration.ofMinutes(5))
                 .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())

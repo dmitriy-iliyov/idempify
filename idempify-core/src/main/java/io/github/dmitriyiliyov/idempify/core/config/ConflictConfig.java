@@ -58,6 +58,12 @@ public final class ConflictConfig {
                         "ConflictHandleStrategy must be WAIT when ConflictHandlerConfig is instance of WaitConflictHandlerConfig.class"
                 );
             }
+
+            if (strategy == null && handler == null) {
+                throw new IllegalStateException(
+                        "conflictConfig is enabled, but names neither a ConflictHandleStrategy nor a ConflictHandler"
+                );
+            }
         }
     }
 

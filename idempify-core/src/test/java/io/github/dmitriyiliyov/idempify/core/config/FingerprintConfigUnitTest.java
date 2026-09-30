@@ -801,4 +801,32 @@ class FingerprintConfigUnitTest {
             // nothing to do
         }
     }
+
+    @Test
+    @DisplayName("UT build() when an empty-body fallback comes with a hand-written canonicalizer alone should accept it")
+    void build_whenEmptyBodyFallbackComesWithHandWrittenCanonicalizerAlone_shouldAcceptIt() {
+        // when
+        FingerprintConfig result = FingerprintConfig.builder()
+                .emptyBodyFallback(EmptyBodyFallback.NOOP)
+                .bodyCanonicalizer(body -> new String(body, StandardCharsets.UTF_8))
+                .build();
+
+        // then
+        assertThat(result.getEmptyBodyFallback()).isSameAs(EmptyBodyFallback.NOOP);
+        assertThat(result.getBodyHandleStrategy()).isEqualTo(BodyHandleStrategy.CANONICALIZED_BODY_HASH);
+    }
+
+    @Test
+    @DisplayName("UT build() when an empty-body fallback comes with canonicalizer settings alone should accept it")
+    void build_whenEmptyBodyFallbackComesWithCanonicalizerSettingsAlone_shouldAcceptIt() {
+        // when
+        FingerprintConfig result = FingerprintConfig.builder()
+                .emptyBodyFallback(EmptyBodyFallback.NOOP)
+                .bodyCanonicalizerConfig(builder -> builder.includedFields("amount"))
+                .build();
+
+        // then
+        assertThat(result.getEmptyBodyFallback()).isSameAs(EmptyBodyFallback.NOOP);
+        assertThat(result.enabledAndEmpty()).isFalse();
+    }
 }

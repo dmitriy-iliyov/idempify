@@ -22,10 +22,9 @@ public class OnMetricsDisabledCondition extends SpringBootCondition {
         String missingClass = firstMissingClass(context.getClassLoader());
         if (missingClass != null) {
             throw new IllegalStateException("""
-                Property 'idempify.metrics.enabled' is true, but %s is not on the classpath, so no listener answers 
-                the metrics hook. Add the idempify-metrics module together with micrometer-core, or set the property 
-                to false
-            """.formatted(missingClass));
+                    Property 'idempify.metrics.enabled' is true, but %s is not on the classpath, so no listener \
+                    answers the metrics hook. Add the idempify-metrics module together with micrometer-core, or set \
+                    the property to false""".formatted(missingClass));
         }
 
         return ConditionOutcome.noMatch("Metrics are enabled and the metrics module supplies the listeners");

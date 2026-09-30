@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperation;
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictContext;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,7 +37,7 @@ class IdempotencyConfigMergeComponentTest {
                 .fingerprint(FingerprintConfig.builder()
                         .bodyCanonicalizerConfig(builder -> builder.includedFields("amount", "currency"))
                         .build())
-                .response(ResponseConfig.builder().shouldCache4xx(false).build())
+                .response(ResponseConfig.builder().releaseFor(List.of(IllegalStateException.class)).build())
                 .build();
 
         // when
@@ -59,8 +61,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(canonicalizer.getIncludedFields()).containsExactlyInAnyOrder("amount", "currency");
         assertThat(canonicalizer.getExcludedFields()).isEmpty();
 
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -82,11 +83,10 @@ class IdempotencyConfigMergeComponentTest {
     }
 
     @Test
-    @DisplayName("CT resolution when the call site turns every optional section off should keep only the header and the ttl")
-    void resolution_whenCallSiteTurnsEveryOptionalSectionOff_shouldKeepOnlyHeaderAndTtl() {
+    @DisplayName("CT resolution when the call site turns every optional section off should keep the header, the ttl and conflict handling")
+    void resolution_whenCallSiteTurnsEveryOptionalSectionOff_shouldKeepHeaderTtlAndConflictHandling() {
         // given
         IdempotencyConfig callSite = IdempotencyConfig.builder()
-                .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.disabled())
                 .response(ResponseConfig.disabled())
                 .build();
@@ -97,9 +97,24 @@ class IdempotencyConfigMergeComponentTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
-        assertThat(result.getConflictConfig().isEnabled()).isFalse();
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(result.getConflictConfig().isEnabled()).isTrue();
         assertThat(result.getFingerprintConfig().isEnabled()).isFalse();
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+    }
+
+    @Test
+    @DisplayName("CT resolution when a non-blocking call site turns conflict handling off should refuse to resolve")
+    void resolution_whenNonBlockingCallSiteTurnsConflictHandlingOff_shouldRefuseToResolve() {
+        // given
+        IdempotencyConfig callSite = IdempotencyConfig.builder()
+                .conflict(ConflictConfig.disabled())
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> IdempotencyConfig.merge(global(), callSite))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("if processorType is NON_BLOCKING");
     }
 
     @Test
@@ -169,18 +184,20 @@ class IdempotencyConfigMergeComponentTest {
     @DisplayName("CT resolution when the call site goes blocking while the global handles conflicts should refuse to resolve")
     void resolution_whenCallSiteGoesBlockingWhileGlobalHandlesConflicts_shouldRefuseToResolve() {
         // given
+        // a global without a lease, so that conflict handling is the one thing the blocking call site contradicts
+        IdempotencyConfig global = IdempotencyConfig.builder(global()).lockTtl(null).build();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
                 .processorType(ProcessorType.BLOCKING)
                 .build();
 
         // when / then
-        assertThatThrownBy(() -> IdempotencyConfig.merge(global(), callSite))
+        assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("conflictConfig cannot be enabled if processorType is BLOCKING");
     }
 
     @Test
-    @DisplayName("CT resolution when the call site asks a blocking global to keep failures should refuse to resolve")
+    @DisplayName("CT resolution when the call site asks a blocking global to keep failures should resolve")
     void resolution_whenCallSiteAsksBlockingGlobalToKeepFailures_shouldRefuseToResolve() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder()
@@ -198,7 +215,7 @@ class IdempotencyConfigMergeComponentTest {
         // when / then
         assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be cached if processorType is BLOCKING");
+                .hasMessageContaining("releaseFor cannot keep a failed operation on the record");
     }
 
     @Test
@@ -238,6 +255,7 @@ class IdempotencyConfigMergeComponentTest {
         return IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
+                .lockTtl(Duration.ofMinutes(5))
                 .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.builder()
                         .delay(50)
@@ -252,13 +270,8 @@ class IdempotencyConfigMergeComponentTest {
     private static final class TestConflictHandler implements ConflictHandler {
 
         @Override
-        public Object handle(ConflictContext context) {
+        public NonBlockingOperation handle(ConflictContext context) {
             return null;
-        }
-
-        @Override
-        public boolean requiresTransaction() {
-            return false;
         }
     }
 

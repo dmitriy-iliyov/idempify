@@ -3,13 +3,14 @@ package io.github.dmitriyiliyov.idempify.core.config;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * A partial description: every flag may be left undecided, and merging is what turns a stack of layers into
+ * A partial description: every setting may be left undecided, and merging is what turns a stack of layers into
  * one answer. The tests judge that layering, not the getters.
  */
 class ResponseConfigUnitTest {
@@ -21,41 +22,48 @@ class ResponseConfigUnitTest {
         ResponseConfig result = ResponseConfig.defaults();
 
         // then
-        assertThat(result.shouldCache4xx()).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_4XX);
-        assertThat(result.shouldCache5xx()).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_5XX);
+        assertThat(result.getReleaseFor()).isEqualTo(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
     }
 
     @Test
-    @DisplayName("UT all() should keep every response, failures included")
-    void all_shouldKeepEveryResponseFailuresIncluded() {
+    @DisplayName("UT all() should release the key for no exception, so every outcome is kept")
+    void all_shouldReleaseKeyForNoException() {
         // when
         ResponseConfig result = ResponseConfig.all();
 
         // then
-        assertThat(result.shouldCache4xx()).isTrue();
-        assertThat(result.shouldCache5xx()).isTrue();
+        assertThat(result.getReleaseFor()).isEmpty();
     }
 
     @Test
-    @DisplayName("UT disabled() should keep no failure response at all")
-    void disabled_shouldKeepNoFailureResponseAtAll() {
+    @DisplayName("UT disabled() should release the key for any exception, so no failure is kept")
+    void disabled_shouldReleaseKeyForAnyException() {
         // when
         ResponseConfig result = ResponseConfig.disabled();
 
         // then
-        assertThat(result.shouldCache4xx()).isFalse();
-        assertThat(result.shouldCache5xx()).isFalse();
+        assertThat(result.getReleaseFor()).containsExactly(Throwable.class);
     }
 
     @Test
-    @DisplayName("UT builder() when nothing is told should leave every flag undecided")
-    void builder_whenNothingIsTold_shouldLeaveEveryFlagUndecided() {
+    @DisplayName("UT builder() when nothing is told should leave every setting undecided")
+    void builder_whenNothingIsTold_shouldLeaveEverySettingUndecided() {
         // when
         ResponseConfig result = ResponseConfig.builder().build();
 
         // then
-        assertThat(result.shouldCache4xx()).isNull();
-        assertThat(result.shouldCache5xx()).isNull();
+        assertThat(result.getReleaseFor()).isNull();
+        assertThat(result.getIncludedHeaders()).isNull();
+        assertThat(result.getExcludedHeaders()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT releaseFor() when the list is null should throw NullPointerException")
+    void releaseFor_whenListIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> ResponseConfig.builder().releaseFor(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("releaseFor cannot be null");
     }
 
     @Test
@@ -72,37 +80,51 @@ class ResponseConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the target drops 4xx should keep 5xx from the reference")
-    void merge_whenTargetDrops4xx_shouldKeep5xxFromReference() {
-        // given
-        ResponseConfig reference = ResponseConfig.all();
-
-        // when
-        ResponseConfig result = ResponseConfig.merge(
-                reference,
-                ResponseConfig.builder().shouldCache4xx(false).build()
-        );
-
-        // then
-        assertThat(result.shouldCache4xx()).isFalse();
-        assertThat(result.shouldCache5xx()).isTrue();
-    }
-
-    @Test
-    @DisplayName("UT merge() when the target keeps 5xx should take it over the reference")
-    void merge_whenTargetKeeps5xx_shouldTakeItOverReference() {
+    @DisplayName("UT merge() when the target names releaseFor should take it over the reference")
+    void merge_whenTargetNamesReleaseFor_shouldTakeItOverReference() {
         // given
         ResponseConfig reference = ResponseConfig.disabled();
 
         // when
         ResponseConfig result = ResponseConfig.merge(
                 reference,
-                ResponseConfig.builder().shouldCache5xx(true).build()
+                ResponseConfig.builder().releaseFor(List.of(IllegalStateException.class)).build()
         );
 
         // then
-        assertThat(result.shouldCache5xx()).isTrue();
-        assertThat(result.shouldCache4xx()).isFalse();
+        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("UT merge() when the target releases for nothing with an empty list should take it over the reference")
+    void merge_whenTargetReleasesForNothingWithEmptyList_shouldTakeItOverReference() {
+        // given
+        ResponseConfig reference = ResponseConfig.disabled();
+
+        // when
+        ResponseConfig result = ResponseConfig.merge(
+                reference,
+                ResponseConfig.builder().releaseFor(List.of()).build()
+        );
+
+        // then
+        assertThat(result.getReleaseFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the target leaves releaseFor undecided should keep the one of the reference")
+    void merge_whenTargetLeavesReleaseForUndecided_shouldKeepOneOfReference() {
+        // given
+        ResponseConfig reference = ResponseConfig.disabled();
+
+        // when
+        ResponseConfig result = ResponseConfig.merge(
+                reference,
+                ResponseConfig.builder().includedHeaders(Set.of("Location")).build()
+        );
+
+        // then
+        assertThat(result.getReleaseFor()).containsExactly(Throwable.class);
     }
 
     @Test
@@ -201,11 +223,23 @@ class ResponseConfigUnitTest {
         ResponseConfig original = ResponseConfig.all();
 
         // when
-        ResponseConfig copy = ResponseConfig.builder(original).shouldCache4xx(false).build();
+        ResponseConfig copy = ResponseConfig.builder(original)
+                .releaseFor(List.of(IllegalStateException.class))
+                .build();
 
         // then
-        assertThat(original.shouldCache4xx()).isTrue();
-        assertThat(copy.shouldCache4xx()).isFalse();
+        assertThat(original.getReleaseFor()).isEmpty();
+        assertThat(copy.getReleaseFor()).containsExactly(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("UT builder(config) when nothing is tuned should carry releaseFor over")
+    void builderFromConfig_whenNothingIsTuned_shouldCarryReleaseForOver() {
+        // when
+        ResponseConfig copy = ResponseConfig.builder(ResponseConfig.disabled()).build();
+
+        // then
+        assertThat(copy).isEqualTo(ResponseConfig.disabled());
     }
 
     @Test
@@ -223,8 +257,8 @@ class ResponseConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT equals() when every flag matches should be equal and share a hash code")
-    void equals_whenEveryFlagMatches_shouldBeEqualAndShareHashCode() {
+    @DisplayName("UT equals() when every setting matches should be equal and share a hash code")
+    void equals_whenEverySettingMatches_shouldBeEqualAndShareHashCode() {
         // when
         ResponseConfig first = ResponseConfig.all();
         ResponseConfig second = ResponseConfig.all();
@@ -235,11 +269,10 @@ class ResponseConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT equals() when only the 5xx flag differs should not be equal")
-    void equals_whenOnly5xxFlagDiffers_shouldNotBeEqual() {
+    @DisplayName("UT equals() when only releaseFor differs should not be equal")
+    void equals_whenOnlyReleaseForDiffers_shouldNotBeEqual() {
         // when / then
-        assertThat(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(true).build())
-                .isNotEqualTo(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(false).build());
+        assertThat(ResponseConfig.all()).isNotEqualTo(ResponseConfig.disabled());
     }
 
     @Test
@@ -270,7 +303,27 @@ class ResponseConfigUnitTest {
     @DisplayName("UT toString() should name every setting it carries")
     void toString_shouldNameEverySettingItCarries() {
         // when / then
-        assertThat(ResponseConfig.all().toString())
-                .contains("shouldCache4xx=true", "shouldCache5xx=true");
+        assertThat(ResponseConfig.disabled().toString())
+                .contains("releaseFor=[class java.lang.Throwable]");
+    }
+
+    @Test
+    @DisplayName("UT equals() when compared with null directly should not be equal")
+    void equals_whenComparedWithNullDirectly_shouldNotBeEqual() {
+        assertThat(ResponseConfig.defaults().equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the included headers differ should not be equal")
+    void equals_whenOnlyIncludedHeadersDiffer_shouldNotBeEqual() {
+        assertThat(ResponseConfig.builder().releaseFor(List.of()).includedHeaders(Set.of("ETag")).build())
+                .isNotEqualTo(ResponseConfig.builder().releaseFor(List.of()).includedHeaders(Set.of("Location")).build());
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the excluded headers differ should not be equal")
+    void equals_whenOnlyExcludedHeadersDiffer_shouldNotBeEqual() {
+        assertThat(ResponseConfig.builder().includedHeaders(Set.of()).excludedHeaders(Set.of("ETag")).build())
+                .isNotEqualTo(ResponseConfig.builder().includedHeaders(Set.of()).excludedHeaders(Set.of("Location")).build());
     }
 }

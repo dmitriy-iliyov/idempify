@@ -1,5 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperation;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictContext;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
@@ -84,6 +85,20 @@ class ConflictConfigUnitTest {
                 .build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must be a WaitConflictHandlerConfig");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the target brings a backoff without a strategy over a disabled reference should refuse")
+    void merge_whenTargetBringsBackoffWithoutStrategyOverDisabledReference_shouldRefuse() {
+        // given
+        ConflictConfig target = ConflictConfig.builder()
+                .handlerConfig(WaitConflictHandlerConfig.builder().maxAttempts(9).build())
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> ConflictConfig.merge(ConflictConfig.disabled(), target))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ConflictHandleStrategy must be WAIT");
     }
 
     @Test
@@ -249,13 +264,8 @@ class ConflictConfigUnitTest {
     private static final class TestConflictHandler implements ConflictHandler {
 
         @Override
-        public Object handle(ConflictContext context) {
+        public NonBlockingOperation handle(ConflictContext context) {
             return null;
-        }
-
-        @Override
-        public boolean requiresTransaction() {
-            return false;
         }
     }
 
@@ -410,6 +420,50 @@ class ConflictConfigUnitTest {
     @DisplayName("UT validate() when a handler of its own carries no strategy should accept it")
     void validate_whenHandlerOfItsOwnCarriesNoStrategy_shouldAcceptIt() {
         ConflictConfig.custom(new TestConflictHandler()).validate();
+    }
+
+    @Test
+    @DisplayName("UT validate() when handling is on without a strategy or a handler should refuse it")
+    void validate_whenHandlingIsOnWithoutStrategyOrHandler_shouldRefuseIt() {
+        // given
+        ConflictConfig config = ConflictConfig.builder()
+                .enabled(true)
+                .build();
+
+        // when / then
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("names neither a ConflictHandleStrategy nor a ConflictHandler");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the target only switches handling on should take the strategy from the reference")
+    void merge_whenTargetOnlySwitchesHandlingOn_shouldTakeStrategyFromReference() {
+        // given
+        ConflictConfig target = ConflictConfig.builder()
+                .enabled(true)
+                .build();
+
+        // when
+        ConflictConfig result = ConflictConfig.merge(ConflictConfig.reject(), target);
+
+        // then
+        assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getStrategy()).isEqualTo(ConflictHandleStrategy.REJECT);
+    }
+
+    @Test
+    @DisplayName("UT merge() when neither side names how to handle a conflict switched on should refuse")
+    void merge_whenNeitherSideNamesHowToHandleConflictSwitchedOn_shouldRefuse() {
+        // given
+        ConflictConfig target = ConflictConfig.builder()
+                .enabled(true)
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> ConflictConfig.merge(ConflictConfig.disabled(), target))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("names neither a ConflictHandleStrategy nor a ConflictHandler");
     }
 
     @Test

@@ -27,6 +27,7 @@ public final class IdempotencyConfig {
 
     private final String headerName;
     private final Duration ttl;
+    private final Duration lockTtl;
     private final ProcessorType processorType;
     private final ConflictConfig conflictConfig;
     private final FingerprintConfig fingerprintConfig;
@@ -35,6 +36,7 @@ public final class IdempotencyConfig {
     private IdempotencyConfig(Builder builder) {
         this.headerName = builder.headerName;
         this.ttl = builder.ttl;
+        this.lockTtl = builder.lockTtl;
         this.processorType = builder.processorType;
         this.conflictConfig = builder.conflictConfig;
         this.fingerprintConfig = builder.fingerprintConfig;
@@ -43,12 +45,13 @@ public final class IdempotencyConfig {
 
     /**
      * Refuses a resolved config whose sections contradict the processor it chose, rather than hand a
-     * processor settings it would have to ignore.
+     * processor settings it would have to ignore or leave it without one it needs.
      * <p>
-     * Both refusals concern {@link ProcessorType#BLOCKING}, which keeps the operation's record inside
-     * the business transaction. A conflict handler has nothing to handle there: a duplicate waits on the
-     * store's own insert instead of arriving at a conflict. And keeping an error response is checked against
-     * the same constraint, the response being written in the operation's own transaction.
+     * Under {@link ProcessorType#BLOCKING} the claim is the business transaction's own, so a lock TTL has no
+     * claim to time, a conflict handler has nothing to handle - a duplicate waits on the store's own insert -
+     * and every failure releases the key, since the rollback takes the record away. Under
+     * {@link ProcessorType#NON_BLOCKING} a duplicate meets the unfinished operation, so the claim needs a lock
+     * TTL and conflicts need handling.
      * <p>
      * Called after a merge rather than from {@link Builder#build()}: a single layer is allowed to be partial,
      * so only the resolved config is worth judging.
@@ -59,21 +62,39 @@ public final class IdempotencyConfig {
     public void validate() {
         Objects.requireNonNull(processorType, "processorType cannot be null");
         if (ProcessorType.BLOCKING.equals(processorType)) {
+            if (lockTtl != null) {
+                throw new IllegalStateException("lockTtl cannot be passed if processorType is %s".formatted(processorType));
+            }
+
             if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
                 throw new IllegalStateException("conflictConfig cannot be enabled if processorType is %s".formatted(processorType));
             }
 
-            if (responseConfig != null && shouldCache4xxOr5xx()) {
-                throw new IllegalStateException("response with 4xx or 5xx cannot be cached if processorType is %s".formatted(processorType));
+            if (responseConfig != null && responseConfig.getReleaseFor() != null
+                    && !responseConfig.getReleaseFor().contains(Throwable.class)) {
+                throw new IllegalStateException(
+                        "releaseFor cannot keep a failed operation on the record if processorType is %s".formatted(processorType)
+                );
             }
         }
+
+        if (ProcessorType.NON_BLOCKING.equals(processorType)) {
+            if (lockTtl == null) {
+                throw new IllegalStateException("lockTtl cannot be null if processorType is %s".formatted(processorType));
+            }
+
+            if (conflictConfig == null || Boolean.FALSE.equals(conflictConfig.isEnabled())) {
+                throw new IllegalStateException("""
+                        conflict handling cannot be disabled if processorType is %s: a duplicate meets the \
+                        unfinished operation there, and only a conflict handler can answer it"""
+                        .formatted(processorType)
+                );
+            }
+        }
+
         if (conflictConfig != null) {
             conflictConfig.validate();
         }
-    }
-
-    private boolean shouldCache4xxOr5xx() {
-        return Boolean.TRUE.equals(responseConfig.shouldCache4xx()) || Boolean.TRUE.equals(responseConfig.shouldCache5xx());
     }
 
     public String getHeaderName() {
@@ -82,6 +103,10 @@ public final class IdempotencyConfig {
 
     public Duration getTtl() {
         return ttl;
+    }
+
+    public Duration getLockTtl() {
+        return lockTtl;
     }
 
     public ProcessorType getProcessorType() {
@@ -114,6 +139,7 @@ public final class IdempotencyConfig {
         return "IdempotencyConfig{" +
                 "headerName='" + headerName + '\'' +
                 ", ttl=" + ttl +
+                ", lockTtl=" + lockTtl +
                 ", processorType=" + processorType +
                 ", conflictConfig=" + conflictConfig +
                 ", fingerprintConfig=" + fingerprintConfig +
@@ -148,6 +174,11 @@ public final class IdempotencyConfig {
         Duration ttl = target.getTtl();
         if (ttl != null && !ttl.isNegative() && ttl.compareTo(reference.getTtl()) != 0) {
             mergedConfigBuilder.ttl(ttl);
+        }
+
+        Duration lockTtl = target.getLockTtl();
+        if (lockTtl != null && !lockTtl.isNegative() && !lockTtl.equals(reference.getLockTtl())) {
+            mergedConfigBuilder.lockTtl(lockTtl);
         }
 
         ProcessorType processorType = target.getProcessorType();
@@ -189,6 +220,7 @@ public final class IdempotencyConfig {
 
         private String headerName;
         private Duration ttl;
+        private Duration lockTtl;
         private ProcessorType processorType;
         private ConflictConfig conflictConfig;
         private FingerprintConfig fingerprintConfig;
@@ -199,6 +231,7 @@ public final class IdempotencyConfig {
         private Builder(IdempotencyConfig config) {
             this.headerName = config.headerName;
             this.ttl = config.ttl;
+            this.lockTtl = config.lockTtl;
             this.processorType = config.processorType;
             this.conflictConfig = config.conflictConfig;
             this.fingerprintConfig = config.fingerprintConfig;
@@ -226,6 +259,24 @@ public final class IdempotencyConfig {
         public Builder ttl(long amount, ChronoUnit unit) {
             Objects.requireNonNull(unit, "unit cannot be null");
             return ttl(Duration.of(amount, unit));
+        }
+
+        public Builder lockTtl(Duration lockTtl) {
+            if (lockTtl != null && lockTtl.isNegative()) {
+                throw new IllegalArgumentException("lockTtl cannot be negative");
+            }
+            this.lockTtl = lockTtl;
+            return this;
+        }
+
+        public Builder lockTtl(long amount, TimeUnit unit) {
+            Objects.requireNonNull(unit, "unit cannot be null");
+            return lockTtl(Duration.of(amount, unit.toChronoUnit()));
+        }
+
+        public Builder lockTtl(long amount, ChronoUnit unit) {
+            Objects.requireNonNull(unit, "unit cannot be null");
+            return lockTtl(Duration.of(amount, unit));
         }
 
         public Builder processorType(ProcessorType processorType) {

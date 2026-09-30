@@ -1,6 +1,16 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
+import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
+import io.github.dmitriyiliyov.idempify.core.conflict.WaitAbortedException;
+import io.github.dmitriyiliyov.idempify.core.conflict.WaitAttemptsExhaustedException;
+import io.github.dmitriyiliyov.idempify.core.conflict.WaitTimeoutException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
+
 import java.time.Duration;
+import java.util.List;
 
 /**
  * The answers the library gives when no configuration source decides a setting.
@@ -11,9 +21,8 @@ import java.time.Duration;
  * same string, so the two cannot say different things.
  * <p>
  * The config classes read these strings for their own {@code DEFAULT_*} constants, so a default is written
- * here once and answered the same way from both sides. Two of the answers are a plain "no": no error response
- * stays on the record, neither a 4xx nor a 5xx, and no cache stands in front of the store - both wait to be
- * asked for.
+ * here once and answered the same way from both sides. One of the answers is a plain "no": no cache stands in
+ * front of the store until it is asked for.
  */
 public final class IdempifyDefaults {
 
@@ -21,9 +30,28 @@ public final class IdempifyDefaults {
 
     public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
 
+    public static final List<Class<? extends Throwable>> DEFAULT_RELEASE_FOR_LIST = List.of(
+            IdempotentProcessingException.class,
+            IdempotencyKeyException.class,
+            OperationStatusMismatchException.class,
+            SerializationProcessingException.class,
+            SerializationException.class,
+            DeserializationException.class,
+            EmptyRequestBodyException.class,
+            InvalidFingerprintException.class,
+            FingerprintMismatchException.class,
+            IdempotencyConflictException.class,
+            OperationDisappearedException.class,
+            WaitAbortedException.class,
+            WaitAttemptsExhaustedException.class,
+            WaitTimeoutException.class
+    );
+
     public static final String HEADER_NAME = "Idempotency-Key";
 
     public static final String TTL_VALUE = "PT24H";
+
+    public static final String LOCK_TTL_VALUE = "PT5M";
 
     public static final String PROCESSOR_TYPE_NAME = "NON_BLOCKING";
 
@@ -40,9 +68,6 @@ public final class IdempifyDefaults {
     public static final String EMPTY_BODY_FALLBACK_VALUE = "THROWING";
     public static final String BODY_FORMAT_VALUE = "JSON";
     public static final String CANONICALIZE_STRATEGY_VALUE = "LEXICOGRAPHICAL";
-
-    public static final String RESPONSE_CACHE_4XX_VALUE = "false";
-    public static final String RESPONSE_CACHE_5XX_VALUE = "false";
 
     public static final String CACHE_ENABLED_VALUE = "false";
     public static final String CACHE_TYPE_VALUE = "IN_MEMORY";

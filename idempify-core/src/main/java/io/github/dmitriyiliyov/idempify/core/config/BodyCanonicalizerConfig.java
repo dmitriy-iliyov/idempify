@@ -36,12 +36,10 @@ public final class BodyCanonicalizerConfig {
         boolean hasIncludedFields = builder.includedFields != null && !builder.includedFields.isEmpty();
         boolean hasExcludedFields = builder.excludedFields != null && !builder.excludedFields.isEmpty();
         if (hasIncludedFields && hasExcludedFields) {
-            throw new IllegalStateException(
-                    """
-                        includedFields and excludedFields select the body in opposite ways and cannot be combined, 
-                        but includedFields=%s and excludedFields=%s were both given
-                    """.formatted(builder.includedFields, builder.excludedFields)
-            );
+            throw new IllegalStateException("""
+                    includedFields and excludedFields select the body in opposite ways and cannot be combined, \
+                    but includedFields=%s and excludedFields=%s were both given\
+                    """.formatted(builder.includedFields, builder.excludedFields));
         }
         this.includedFields = builder.includedFields == null ? DEFAULT_INCLUDED_FIELDS : builder.includedFields;
         this.excludedFields = builder.excludedFields == null ? DEFAULT_EXCLUDED_FIELDS : builder.excludedFields;
