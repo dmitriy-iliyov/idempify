@@ -1,18 +1,17 @@
 package io.github.dmitriyiliyov.idempify.core.response;
 
-import java.time.Instant;
 import java.util.Objects;
 
 public final class DefaultRawResponseContainer implements RawResponseContainer {
 
     private final String response;
     private final String fingerprint;
-    private final Instant expiresAt;
+    private final Long remainingMillis;
 
-    public DefaultRawResponseContainer(String response, String fingerprint, Instant expiresAt) {
+    public DefaultRawResponseContainer(String response, String fingerprint, Long remainingMillis) {
         this.response = response;
         this.fingerprint = fingerprint;
-        this.expiresAt = expiresAt;
+        this.remainingMillis = remainingMillis;
     }
 
     @Override
@@ -26,8 +25,8 @@ public final class DefaultRawResponseContainer implements RawResponseContainer {
     }
 
     @Override
-    public Instant getExpiresAt() {
-        return expiresAt;
+    public Long getRemainingMillis() {
+        return remainingMillis;
     }
 
     @Override
@@ -40,12 +39,12 @@ public final class DefaultRawResponseContainer implements RawResponseContainer {
         }
         return Objects.equals(response, that.response)
                 && Objects.equals(fingerprint, that.fingerprint)
-                && Objects.equals(expiresAt, that.expiresAt);
+                && Objects.equals(remainingMillis, that.remainingMillis);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(response, fingerprint, expiresAt);
+        return Objects.hash(response, fingerprint, remainingMillis);
     }
 
     @Override
@@ -53,7 +52,7 @@ public final class DefaultRawResponseContainer implements RawResponseContainer {
         return "DefaultRawResponseContainer{" +
                 "hasResponse=" + (response != null) +
                 ", fingerprint='" + fingerprint + '\'' +
-                ", expiresAt=" + expiresAt +
+                ", remainingMillis=" + remainingMillis +
                 '}';
     }
 }

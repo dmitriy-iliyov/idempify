@@ -3,8 +3,6 @@ package io.github.dmitriyiliyov.idempify.core.response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Clock;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,16 +13,13 @@ public class DefaultResponseManager implements ResponseManager {
     private final ResponseRepository repository;
     private final ResponseSerializer serializer;
     private final ResponseDeserializer deserializer;
-    private final Clock clock;
 
     public DefaultResponseManager(ResponseRepository repository,
                                   ResponseSerializer serializer,
-                                  ResponseDeserializer deserializer,
-                                  Clock clock) {
+                                  ResponseDeserializer deserializer) {
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
         this.serializer = Objects.requireNonNull(serializer, "serializer cannot be null");
         this.deserializer = Objects.requireNonNull(deserializer, "deserializer cannot be null");
-        this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
     @Override
@@ -49,17 +44,17 @@ public class DefaultResponseManager implements ResponseManager {
             return Optional.empty();
         }
 
-        Instant expiresAt = container.getExpiresAt();
-        if (expiresAt == null) {
+        Long remainingMillis = container.getRemainingMillis();
+        if (remainingMillis == null) {
             log.warn("Operation (idempotencyKey={}) carries a response but no expiry, so it is not replayed", idempotencyKey);
             return Optional.empty();
         }
 
-        if (expiresAt.isBefore(clock.instant())) {
+        if (remainingMillis <= 0) {
             log.debug(
-                    "Operation (idempotencyKey={}) response expired at {}, so it is not replayed",
+                    "Operation (idempotencyKey={}) response expired {} ms ago, so it is not replayed",
                     idempotencyKey,
-                    expiresAt
+                    -remainingMillis
             );
             return Optional.empty();
         }

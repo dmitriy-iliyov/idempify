@@ -81,4 +81,24 @@ class DefaultResponseUnitTest {
         assertThat(new DefaultResponse(200, new byte[]{1}, "text/plain", null))
                 .isNotEqualTo("not a response");
     }
+
+    @Test
+    @DisplayName("UT equals() when compared with null should not be equal")
+    void equals_whenComparedWithNull_shouldNotBeEqual() {
+        assertThat(new DefaultResponse(201, BODY, "application/json", HEADERS).equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT equals() when the content type differs should treat the responses as different")
+    void equals_whenContentTypeDiffers_shouldTreatResponsesAsDifferent() {
+        assertThat(new DefaultResponse(201, BODY, "application/json", HEADERS))
+                .isNotEqualTo(new DefaultResponse(201, BODY, "text/plain", HEADERS));
+    }
+
+    @Test
+    @DisplayName("UT equals() when the headers differ should treat the responses as different")
+    void equals_whenHeadersDiffer_shouldTreatResponsesAsDifferent() {
+        assertThat(new DefaultResponse(201, BODY, "application/json", HEADERS))
+                .isNotEqualTo(new DefaultResponse(201, BODY, "application/json", Map.of("Location", "/orders/2")));
+    }
 }

@@ -1,13 +1,12 @@
 package io.github.dmitriyiliyov.idempify.core.response;
 
-import java.time.Instant;
-
 /**
  * The replayable part of an operation's row, as the store holds it - the response still serialized, the
- * fingerprint to check it against, and the moment the whole record stops being replayable.
+ * fingerprint to check it against, and how long the whole record stays replayable.
  * <p>
- * The expiry is part of it because a cache in front of the store has to let its copy die together with the
- * record it stands for, and this is where it learns when that is.
+ * The remaining time is part of it because a cache in front of the store has to let its copy die together with
+ * the record it stands for, and this is where it learns how long that is. It is a duration rather than an
+ * instant so that nobody downstream compares the store's expiry against a clock of its own.
  */
 public interface RawResponseContainer {
 
@@ -19,8 +18,9 @@ public interface RawResponseContainer {
     String getFingerprint();
 
     /**
-     * Returns when the record stops being replayable, or {@code null} while the operation is still running -
-     * an expiry is written only on completion.
+     * Returns how long the record stays replayable, measured by the store's clock when it was read: zero or
+     * negative once it has expired, {@code null} while the operation is still running - an expiry is written
+     * only on completion.
      */
-    Instant getExpiresAt();
+    Long getRemainingMillis();
 }

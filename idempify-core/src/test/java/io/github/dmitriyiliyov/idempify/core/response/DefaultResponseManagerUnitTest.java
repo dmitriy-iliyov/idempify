@@ -6,10 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,8 +24,7 @@ import static org.mockito.Mockito.*;
 class DefaultResponseManagerUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-    private static final Instant NOW = Instant.parse("2026-08-10T11:00:00Z");
-    private static final Instant EXPIRES_AT = NOW.plus(Duration.ofHours(1));
+    private static final long REMAINING_MILLIS = Duration.ofHours(1).toMillis();
 
     @Mock
     private ResponseRepository repository;
@@ -37,13 +33,11 @@ class DefaultResponseManagerUnitTest {
     @Mock
     private ResponseDeserializer deserializer;
 
-    private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-
     @Test
     @DisplayName("UT constructor() when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultResponseManager(null, serializer, deserializer, clock))
+        assertThatThrownBy(() -> new DefaultResponseManager(null, serializer, deserializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("repository cannot be null");
     }
@@ -52,7 +46,7 @@ class DefaultResponseManagerUnitTest {
     @DisplayName("UT constructor() when serializer is null should throw NullPointerException")
     void constructor_whenSerializerIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultResponseManager(repository, null, deserializer, clock))
+        assertThatThrownBy(() -> new DefaultResponseManager(repository, null, deserializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("serializer cannot be null");
     }
@@ -61,18 +55,9 @@ class DefaultResponseManagerUnitTest {
     @DisplayName("UT constructor() when deserializer is null should throw NullPointerException")
     void constructor_whenDeserializerIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultResponseManager(repository, serializer, null, clock))
+        assertThatThrownBy(() -> new DefaultResponseManager(repository, serializer, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("deserializer cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor() when clock is null should throw NullPointerException")
-    void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new DefaultResponseManager(repository, serializer, deserializer, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("clock cannot be null");
     }
 
     @Test
@@ -160,7 +145,7 @@ class DefaultResponseManagerUnitTest {
     void findByIdempotencyKey_whenResponseIsPastItsExpiry_shouldAnswerEmptyWithoutReadingIt() {
         // given
         when(repository.findByIdempotencyKey(KEY))
-                .thenReturn(Optional.of(container("raw-response", NOW.minusMillis(1))));
+                .thenReturn(Optional.of(container("raw-response", -1L)));
 
         // when
         Optional<ResponseContainer> result = tested().findByIdempotencyKey(KEY);
@@ -171,19 +156,18 @@ class DefaultResponseManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT findByIdempotencyKey() when the response expires this very instant should still hand it back")
-    void findByIdempotencyKey_whenResponseExpiresThisVeryInstant_shouldStillHandItBack() {
+    @DisplayName("UT findByIdempotencyKey() when the response has exactly no time left should answer empty without reading it")
+    void findByIdempotencyKey_whenResponseHasExactlyNoTimeLeft_shouldAnswerEmptyWithoutReadingIt() {
         // given
-        Response response = response();
         when(repository.findByIdempotencyKey(KEY))
-                .thenReturn(Optional.of(container("raw-response", NOW)));
-        when(deserializer.deserialize("raw-response")).thenReturn(response);
+                .thenReturn(Optional.of(container("raw-response", 0L)));
 
         // when
         Optional<ResponseContainer> result = tested().findByIdempotencyKey(KEY);
 
         // then
-        assertThat(result).map(ResponseContainer::getResponse).containsSame(response);
+        assertThat(result).isEmpty();
+        verifyNoInteractions(deserializer);
     }
 
     @Test
@@ -216,7 +200,7 @@ class DefaultResponseManagerUnitTest {
     }
 
     private DefaultResponseManager tested() {
-        return new DefaultResponseManager(repository, serializer, deserializer, clock);
+        return new DefaultResponseManager(repository, serializer, deserializer);
     }
 
     private static Response response() {
@@ -224,10 +208,10 @@ class DefaultResponseManagerUnitTest {
     }
 
     private static RawResponseContainer container(String rawResponse) {
-        return container(rawResponse, EXPIRES_AT);
+        return container(rawResponse, REMAINING_MILLIS);
     }
 
-    private static RawResponseContainer container(String rawResponse, Instant expiresAt) {
-        return new DefaultRawResponseContainer(rawResponse, "fingerprint", expiresAt);
+    private static RawResponseContainer container(String rawResponse, Long remainingMillis) {
+        return new DefaultRawResponseContainer(rawResponse, "fingerprint", remainingMillis);
     }
 }

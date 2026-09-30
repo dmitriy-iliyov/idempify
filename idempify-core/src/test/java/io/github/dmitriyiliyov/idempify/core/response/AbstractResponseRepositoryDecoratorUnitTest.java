@@ -3,7 +3,6 @@ package io.github.dmitriyiliyov.idempify.core.response;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -73,7 +72,7 @@ class AbstractResponseRepositoryDecoratorUnitTest {
         return new DefaultRawResponseContainer(
                 "raw-response",
                 "fingerprint",
-                Instant.parse("2026-08-10T12:00:00Z")
+                86_400_000L
         );
     }
 

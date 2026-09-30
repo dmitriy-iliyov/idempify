@@ -9,7 +9,7 @@ import java.util.UUID;
  * <p>
  * This is not a store of its own: an implementation writes onto the row the operation already occupies and
  * reads back from that same row, so there is no second copy to go stale. It carries the replayable part
- * alone - the response, the fingerprint to check it against, and the expiry that bounds both - which is what
+ * alone - the response, the fingerprint to check it against, and the time the record has left - which is what
  * lets a repeat be answered without decoding a result nobody asked for.
  * <p>
  * This is also the seam a cache decorates: a lookup here is what an entry kept in front of the store stands
@@ -29,7 +29,7 @@ public interface ResponseRepository {
      * @param idempotencyKey the key the operation was claimed under.
      * @param response       the answer to replay.
      * @return the record as it now stands - the response just written, the fingerprint it was claimed with,
-     *         and the expiry that bounds how long it may be replayed.
+     *         and how long it may still be replayed.
      */
     RawResponseContainer save(UUID idempotencyKey, String response);
 
