@@ -64,6 +64,14 @@ class DefaultFingerprintMismatchContextUnitTest {
     }
 
     @Test
+    @DisplayName("UT equals() when called on itself directly should be equal")
+    void equals_whenCalledOnItselfDirectly_shouldBeEqual() {
+        DefaultFingerprintMismatchContext tested = new DefaultFingerprintMismatchContext(
+                java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), "a", "b");
+        assertThat(tested.equals(tested)).isTrue();
+    }
+
+    @Test
     @DisplayName("UT equals() when compared with null should not be equal")
     void equals_whenComparedWithNull_shouldNotBeEqual() {
         assertThat(new DefaultFingerprintMismatchContext(java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), "a", "b")).isNotEqualTo(null);
@@ -87,5 +95,16 @@ class DefaultFingerprintMismatchContextUnitTest {
         java.util.UUID key = java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         assertThat(new DefaultFingerprintMismatchContext(key, "one", "current"))
                 .isNotEqualTo(new DefaultFingerprintMismatchContext(key, "other", "current"));
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the current fingerprints differ should tell the contexts apart")
+    void equals_whenOnlyCurrentFingerprintsDiffer_shouldTellContextsApart() {
+        // given
+        java.util.UUID key = java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+        // when / then
+        assertThat(new DefaultFingerprintMismatchContext(key, "stored", "one"))
+                .isNotEqualTo(new DefaultFingerprintMismatchContext(key, "stored", "other"));
     }
 }

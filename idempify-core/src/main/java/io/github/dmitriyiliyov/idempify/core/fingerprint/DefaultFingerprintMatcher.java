@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core.fingerprint;
 
 import io.github.dmitriyiliyov.idempify.core.IdempotencyEventListener;
+import io.github.dmitriyiliyov.idempify.core.SwallowIdempotencyEventListenerDecorator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +14,9 @@ public class DefaultFingerprintMatcher implements FingerprintMatcher {
     private final IdempotencyEventListener eventListener;
 
     public DefaultFingerprintMatcher(IdempotencyEventListener eventListener) {
-        this.eventListener = Objects.requireNonNull(eventListener, "eventListener cannot be null");
+        this.eventListener = new SwallowIdempotencyEventListenerDecorator(
+                Objects.requireNonNull(eventListener, "eventListener cannot be null")
+        );
     }
 
     @Override
