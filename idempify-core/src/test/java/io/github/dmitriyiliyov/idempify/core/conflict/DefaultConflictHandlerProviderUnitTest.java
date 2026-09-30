@@ -1,18 +1,16 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.TestClock;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
-import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 /**
  * Written from the contract of {@link ConflictHandlerProvider}: it resolves the handler that implements a
@@ -25,23 +23,23 @@ class DefaultConflictHandlerProviderUnitTest {
     @Test
     @DisplayName("UT constructor when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(null, resultDeserializer(), clock()))
+        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(null, operationDeserializer(), clock()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("repository cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when resultDeserializer is null should throw NullPointerException")
-    void constructor_whenResultDeserializerIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor when operationDeserializer is null should throw NullPointerException")
+    void constructor_whenOperationDeserializerIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultConflictHandlerProvider(repository(), null, clock()))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("resultDeserializer cannot be null");
+                .hasMessageContaining("operationDeserializer cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(repository(), resultDeserializer(), null))
+        assertThatThrownBy(() -> new DefaultConflictHandlerProvider(repository(), operationDeserializer(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clock cannot be null");
     }
@@ -132,19 +130,18 @@ class DefaultConflictHandlerProviderUnitTest {
         // then
         assertThat(first).isInstanceOf(RejectConflictHandler.class);
         assertThat(second).isInstanceOf(RejectConflictHandler.class);
-        assertThat(first.requiresTransaction()).isEqualTo(second.requiresTransaction());
     }
 
     private static DefaultConflictHandlerProvider tested() {
-        return new DefaultConflictHandlerProvider(repository(), resultDeserializer(), clock());
+        return new DefaultConflictHandlerProvider(repository(), operationDeserializer(), clock());
     }
 
-    private static OperationRepository repository() {
-        return idempotencyKey -> Optional.empty();
+    private static NonBlockingOperationRepository repository() {
+        return mock(NonBlockingOperationRepository.class);
     }
 
-    private static ResultDeserializer resultDeserializer() {
-        return (rawResult, type) -> rawResult;
+    private static OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> operationDeserializer() {
+        return (rawOperation, type) -> null;
     }
 
     private static Clock clock() {

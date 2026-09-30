@@ -4,4 +4,8 @@ public class WaitAbortedException extends RuntimeException {
     public WaitAbortedException(String message) {
         super(message);
     }
+
+    public WaitAbortedException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RejectConflictHandlerUnitTest {
@@ -23,9 +22,4 @@ class RejectConflictHandlerUnitTest {
                 .hasMessageContaining("already in progress");
     }
 
-    @Test
-    @DisplayName("UT requiresTransaction() should return true")
-    void requiresTransaction_shouldReturnTrue() {
-        assertThat(tested.requiresTransaction()).isTrue();
-    }
 }

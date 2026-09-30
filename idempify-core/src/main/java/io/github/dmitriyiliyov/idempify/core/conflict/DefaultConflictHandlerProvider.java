@@ -1,10 +1,12 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperation;
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.OperationDeserializer;
+import io.github.dmitriyiliyov.idempify.core.RawNonBlockingOperation;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictConfig;
 import io.github.dmitriyiliyov.idempify.core.config.ConflictHandlerConfig;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
-import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 
 import java.time.Clock;
 import java.util.Objects;
@@ -18,15 +20,15 @@ import java.util.Objects;
  */
 public class DefaultConflictHandlerProvider implements ConflictHandlerProvider {
 
-    private final OperationRepository repository;
-    private final ResultDeserializer resultDeserializer;
+    private final NonBlockingOperationRepository repository;
+    private final OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> operationDeserializer;
     private final Clock clock;
 
-    public DefaultConflictHandlerProvider(OperationRepository repository,
-                                          ResultDeserializer resultDeserializer,
+    public DefaultConflictHandlerProvider(NonBlockingOperationRepository repository,
+                                          OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> operationDeserializer,
                                           Clock clock) {
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
-        this.resultDeserializer = Objects.requireNonNull(resultDeserializer, "resultDeserializer cannot be null");
+        this.operationDeserializer = Objects.requireNonNull(operationDeserializer, "operationDeserializer cannot be null");
         this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
@@ -55,7 +57,7 @@ public class DefaultConflictHandlerProvider implements ConflictHandlerProvider {
 
     /**
      * Answers {@code null} when the backoff was never decided: a handler polling on settings this class made
-     * up would wait on a schedule nobody chose, which is worse than leaving the duplicate to the caller.
+     * up would wait on a schedule nobody chose.
      * A backoff of the wrong type is a different matter - somebody did decide it, and decided it wrong.
      */
     private ConflictHandler waitHandler(ConflictConfig config) {
@@ -71,6 +73,6 @@ public class DefaultConflictHandlerProvider implements ConflictHandlerProvider {
             );
         }
 
-        return new WaitConflictHandler(waitConflictHandlerConfig, repository, resultDeserializer, clock);
+        return new WaitConflictHandler(waitConflictHandlerConfig, repository, operationDeserializer, clock);
     }
 }

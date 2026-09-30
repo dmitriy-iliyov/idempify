@@ -1,11 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core.conflict;
 
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
-import io.github.dmitriyiliyov.idempify.core.OperationStatus;
-import io.github.dmitriyiliyov.idempify.core.RawOperation;
-import io.github.dmitriyiliyov.idempify.core.TestClock;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
-import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,14 +26,13 @@ class WaitConflictHandlerUnitTest {
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     @Mock
-    OperationRepository repository;
-
+    NonBlockingOperationRepository repository;
 
     @Test
     @DisplayName("UT constructor when config is null should throw NullPointerException")
     void constructor_whenConfigIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new WaitConflictHandler(
-                null, repository, resultDeserializer(), TestClock.standingStill()))
+                null, repository, deserializer(), TestClock.standingStill()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("config cannot be null");
     }
@@ -54,7 +49,7 @@ class WaitConflictHandlerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> new WaitConflictHandler(
-                config, repository, resultDeserializer(), TestClock.standingStill()))
+                config, repository, deserializer(), TestClock.standingStill()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("config must decide every setting before it reaches a handler");
     }
@@ -63,68 +58,96 @@ class WaitConflictHandlerUnitTest {
     @DisplayName("UT constructor when repository is null should throw NullPointerException")
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new WaitConflictHandler(
-                WaitConflictHandlerConfig.defaults(), null, resultDeserializer(), TestClock.standingStill()))
+                WaitConflictHandlerConfig.defaults(), null, deserializer(), TestClock.standingStill()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("repository cannot be null");
     }
 
     @Test
-    @DisplayName("UT constructor when resultDeserializer is null should throw NullPointerException")
-    void constructor_whenResultDeserializerIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor when deserialize is null should throw NullPointerException")
+    void constructor_whenDeserializeIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new WaitConflictHandler(
                 WaitConflictHandlerConfig.defaults(), repository, null, TestClock.standingStill()))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("resultDeserializer cannot be null");
+                .hasMessageContaining("deserialize cannot be null");
     }
 
     @Test
     @DisplayName("UT constructor when clock is null should throw NullPointerException")
     void constructor_whenClockIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new WaitConflictHandler(
-                WaitConflictHandlerConfig.defaults(), repository, resultDeserializer(), null))
+                WaitConflictHandlerConfig.defaults(), repository, deserializer(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clock cannot be null");
     }
 
     @Test
-    @DisplayName("UT requiresTransaction() should return false")
-    void requiresTransaction_shouldReturnFalse() {
-        assertThat(handler(TestClock.standingStill()).requiresTransaction()).isFalse();
-    }
-
-    @Test
-    @DisplayName("UT handle() when the operation is already processed should return its deserialized result")
-    void handle_whenOperationIsAlreadyProcessed_shouldReturnItsDeserializedResult() {
+    @DisplayName("UT handle() when the operation is already processed should return it deserialized")
+    void handle_whenOperationIsAlreadyProcessed_shouldReturnItDeserialized() {
         // given
         WaitConflictHandler tested = handler(TestClock.standingStill());
 
-        when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(operation(OperationStatus.PROCESSED)));
+        when(repository.find(KEY)).thenReturn(Optional.of(operation(OperationStatus.PROCESSED)));
 
         // when
-        Object result = tested.handle(context());
+        NonBlockingOperation result = tested.handle(context());
 
         // then
-        assertThat(result).isEqualTo("raw");
-        verify(repository, times(1)).findByIdempotencyKey(KEY);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.getResult()).isEqualTo("raw");
+        assertThat(result.getResultType()).isEqualTo(RESULT_TYPE);
+        verify(repository, times(1)).find(KEY);
     }
 
     @Test
-    @DisplayName("UT handle() when the operation completes on a later attempt should return its deserialized result")
-    void handle_whenOperationCompletesOnLaterAttempt_shouldReturnItsDeserializedResult() {
+    @DisplayName("UT handle() when the processed operation returned null should hand back an operation without a result")
+    void handle_whenProcessedOperationReturnedNull_shouldHandBackOperationWithoutResult() {
         // given
         WaitConflictHandler tested = handler(TestClock.standingStill());
 
-        when(repository.findByIdempotencyKey(KEY)).thenReturn(
+        when(repository.find(KEY)).thenReturn(Optional.of(operation(OperationStatus.PROCESSED, null)));
+
+        // when
+        NonBlockingOperation result = tested.handle(context());
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.getResult()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT handle() when the operation completes on a later attempt should return it deserialized")
+    void handle_whenOperationCompletesOnLaterAttempt_shouldReturnItDeserialized() {
+        // given
+        WaitConflictHandler tested = handler(TestClock.standingStill());
+
+        when(repository.find(KEY)).thenReturn(
                 Optional.of(operation(OperationStatus.IN_PROCESS)),
                 Optional.of(operation(OperationStatus.PROCESSED))
         );
 
         // when
-        Object result = tested.handle(context());
+        NonBlockingOperation result = tested.handle(context());
 
         // then
-        assertThat(result).isEqualTo("raw");
-        verify(repository, times(2)).findByIdempotencyKey(KEY);
+        assertThat(result.getResult()).isEqualTo("raw");
+        verify(repository, times(2)).find(KEY);
+    }
+
+    @Test
+    @DisplayName("UT handle() when the operation kept a failure should hand it back without waiting any further")
+    void handle_whenOperationKeptFailure_shouldHandItBackWithoutWaitingAnyFurther() {
+        // given
+        WaitConflictHandler tested = handler(TestClock.standingStill());
+
+        when(repository.find(KEY)).thenReturn(Optional.of(operation(OperationStatus.EXCEPTIONALLY_PROCESSED)));
+
+        // when
+        NonBlockingOperation result = tested.handle(context());
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.EXCEPTIONALLY_PROCESSED);
+        verify(repository, times(1)).find(KEY);
     }
 
     @Test
@@ -133,7 +156,7 @@ class WaitConflictHandlerUnitTest {
         // given
         WaitConflictHandler tested = handler(TestClock.standingStill());
 
-        when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
+        when(repository.find(KEY)).thenReturn(Optional.empty());
 
         // when / then
         assertThatThrownBy(() -> tested.handle(context()))
@@ -148,14 +171,14 @@ class WaitConflictHandlerUnitTest {
         // given
         WaitConflictHandler tested = handler(TestClock.standingStill());
 
-        when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(operation(OperationStatus.IN_PROCESS)));
+        when(repository.find(KEY)).thenReturn(Optional.of(operation(OperationStatus.IN_PROCESS)));
 
         // when / then
         assertThatThrownBy(() -> tested.handle(context()))
                 .isInstanceOf(WaitAttemptsExhaustedException.class)
                 .hasMessageContaining(KEY.toString());
 
-        verify(repository, times(3)).findByIdempotencyKey(KEY);
+        verify(repository, times(3)).find(KEY);
     }
 
     @Test
@@ -179,11 +202,11 @@ class WaitConflictHandlerUnitTest {
         WaitConflictHandler tested = new WaitConflictHandler(
                 WaitConflictHandlerConfig.builder(WaitConflictHandlerConfig.defaults()).delay(50).maxAttempts(3).build(),
                 repository,
-                resultDeserializer(),
+                deserializer(),
                 TestClock.standingStill()
         );
 
-        when(repository.findByIdempotencyKey(KEY)).thenReturn(Optional.of(operation(OperationStatus.IN_PROCESS)));
+        when(repository.find(KEY)).thenReturn(Optional.of(operation(OperationStatus.IN_PROCESS)));
 
         // when / then
         try {
@@ -207,27 +230,49 @@ class WaitConflictHandlerUnitTest {
                 .maxAttempts(3)
                 .maxDuration(Duration.ofMillis(500))
                 .build();
-        return new WaitConflictHandler(config, repository, resultDeserializer(), clock);
+        return new WaitConflictHandler(config, repository, deserializer(), clock);
     }
 
     private static ConflictContext context() {
         return new DefaultConflictContext(KEY, RESULT_TYPE);
     }
 
-    private static ResultDeserializer resultDeserializer() {
-        return (rawResult, type) -> rawResult;
+    /**
+     * Decodes the row as it is, the result staying the raw text: what the handler owes is choosing which row to
+     * decode and handing the call site's type along, not the decoding itself.
+     */
+    private static OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> deserializer() {
+        return (row, type) -> new NonBlockingOperation(
+                row.idempotencyKey(),
+                row.status(),
+                row.isFirstAttempt(),
+                row.result(),
+                type,
+                null,
+                row.fingerprint(),
+                row.remainingMillis(),
+                row.createdAt(),
+                row.lockToken(),
+                row.remainingLockMillis()
+        );
     }
 
-    private static RawOperation operation(OperationStatus status) {
-        return new RawOperation(
+    private static RawNonBlockingOperation operation(OperationStatus status) {
+        return operation(status, "raw");
+    }
+
+    private static RawNonBlockingOperation operation(OperationStatus status, String result) {
+        return new RawNonBlockingOperation(
                 KEY,
                 status,
                 false,
-                "raw",
+                result,
                 null,
                 "fingerprint",
-                Instant.parse("2026-01-02T00:00:00Z"),
-                Instant.parse("2026-01-01T00:00:00Z")
+                OperationStatus.PROCESSED.equals(status) ? 60_000L : null,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                null,
+                null
         );
     }
 }
