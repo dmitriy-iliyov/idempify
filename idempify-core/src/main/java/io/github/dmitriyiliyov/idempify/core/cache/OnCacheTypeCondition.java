@@ -1,12 +1,11 @@
 package io.github.dmitriyiliyov.idempify.core.cache;
 
+import io.github.dmitriyiliyov.idempify.core.config.AnnotationAttributeUtils;
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.type.AnnotatedTypeMetadata;
-
-import java.util.Map;
 
 public class OnCacheTypeCondition extends SpringBootCondition {
 
@@ -23,21 +22,7 @@ public class OnCacheTypeCondition extends SpringBootCondition {
 
     private CacheType getAnnotationCacheType(AnnotatedTypeMetadata metadata) {
         String annotationClassName = ConditionalOnCacheType.class.getName();
-        Map<String, Object> attributes = metadata.getAnnotationAttributes(annotationClassName);
-        if (attributes == null) {
-            throw new IllegalStateException("Attributes for %s annotation is null".formatted(annotationClassName));
-        }
-
-        if (attributes.isEmpty()) {
-            throw new IllegalStateException("Attributes for %s annotation is empty".formatted(annotationClassName));
-        }
-
-        Object rawCacheType = attributes.get("type");
-        if (rawCacheType == null) {
-            throw new IllegalStateException("Attribute 'type' for %s annotation is null".formatted(annotationClassName));
-        }
-
-        return (CacheType) rawCacheType;
+        return (CacheType) AnnotationAttributeUtils.getAttribute(annotationClassName, "type", metadata);
     }
 
     private CacheType getEnvCacheType(ConditionContext context) {

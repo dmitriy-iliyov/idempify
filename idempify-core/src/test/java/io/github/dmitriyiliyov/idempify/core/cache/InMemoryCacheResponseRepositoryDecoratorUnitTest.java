@@ -137,7 +137,7 @@ class InMemoryCacheResponseRepositoryDecoratorUnitTest {
         Optional<RawResponseContainer> result = tested.findByIdempotencyKey(KEY);
 
         // then
-        assertThat(result).containsSame(stored);
+        assertThat(result).contains(stored);
         assertThat(repository.lookups).containsExactly(KEY);
         assertThat(listener.hits).isEqualTo(1);
     }
@@ -290,7 +290,7 @@ class InMemoryCacheResponseRepositoryDecoratorUnitTest {
     }
 
     private static RawResponseContainer answered() {
-        return new DefaultRawResponseContainer("raw-response", "fingerprint", NOW.plus(TTL));
+        return new DefaultRawResponseContainer("raw-response", "fingerprint", TTL.toMillis());
     }
 
     private static RawResponseContainer claimed() {
@@ -319,7 +319,7 @@ class InMemoryCacheResponseRepositoryDecoratorUnitTest {
         public RawResponseContainer save(UUID idempotencyKey, String response) {
             saves.add(idempotencyKey);
             RawResponseContainer saved =
-                    new DefaultRawResponseContainer(response, "fingerprint", NOW.plus(TTL));
+                    new DefaultRawResponseContainer(response, "fingerprint", TTL.toMillis());
             byKey.put(idempotencyKey, saved);
             return saved;
         }
