@@ -42,9 +42,11 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ConflictHandlerProvider idempifyConflictHandlerProvider(OperationRepository repository,
-                                                                   ResultDeserializer resultDeserializer,
-                                                                   Clock clock) {
+    public ConflictHandlerProvider idempifyConflictHandlerProvider(
+            NonBlockingOperationRepository repository,
+            OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> resultDeserializer,
+            Clock clock
+    ) {
         return new DefaultConflictHandlerProvider(
                 repository,
                 resultDeserializer,
@@ -119,22 +121,20 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OperationSerializer idempifyOperationSerializer(ResultSerializer resultSerializer,
-                                                           ResponseSerializer responseSerializer) {
+    public OperationSerializer<Operation, RawOperation> idempifyOperationSerializer(
+            ResultSerializer resultSerializer,
+            ResponseSerializer responseSerializer
+    ) {
         return new DefaultOperationSerializer(resultSerializer, responseSerializer);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public OperationDeserializer idempifyOperationDeserializer(ResultDeserializer resultDeserializer,
-                                                               ResponseDeserializer responseDeserializer) {
+    public OperationDeserializer<RawOperation, Operation> idempifyOperationDeserializer(
+            ResultDeserializer resultDeserializer,
+            ResponseDeserializer responseDeserializer
+    ) {
         return new DefaultOperationDeserializer(resultDeserializer, responseDeserializer);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public OperationCreator idempifyOperationCreator() {
-        return new DefaultOperationCreator();
     }
 
     @Bean
@@ -170,35 +170,31 @@ public class IdempifyCoreAutoConfiguration {
     @ConditionalOnMissingBean
     public ResponseManager idempifyResponseManager(ResponseRepository responseRepository,
                                                    ResponseSerializer responseSerializer,
-                                                   ResponseDeserializer responseDeserializer,
-                                                   Clock clock) {
-        return new DefaultResponseManager(responseRepository, responseSerializer, responseDeserializer, clock);
+                                                   ResponseDeserializer responseDeserializer) {
+        return new DefaultResponseManager(responseRepository, responseSerializer, responseDeserializer);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public BlockingOperationManager idempifyBlockingOperationManager(
-            OperationCreator mapper,
             BlockingOperationRepository repository,
             FingerprintMatcher fingerprintMatcher,
-            OperationSerializer serializer,
-            OperationDeserializer deserializer,
-            ResultSerializer resultSerializer,
-            Clock clock
+            OperationSerializer<Operation, RawOperation> serializer,
+            OperationDeserializer<RawOperation, Operation> deserializer,
+            ResultSerializer resultSerializer
     ) {
         return new DefaultBlockingOperationManager(
-                mapper,
                 repository,
                 fingerprintMatcher,
                 serializer,
                 deserializer,
-                resultSerializer,
-                clock
+                resultSerializer
         );
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingProcessorType(type = ProcessorType.BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.BLOCKING)
     public TypeAwareIdempotentProcessor idempifyBlockingTypeAwareIdempotentProcessor(
             TransactionTemplate transactionTemplate,
             BlockingOperationManager manager,
@@ -206,6 +202,63 @@ public class IdempifyCoreAutoConfiguration {
             IdempotencyEventListener eventListener
     ) {
         return new BlockingIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public OperationSerializer<NonBlockingOperation, RawNonBlockingOperation> idempifyNonBlockingOperationSerializer(
+            ResultSerializer resultSerializer,
+            ResponseSerializer responseSerializer
+    ) {
+        return new NonBlockingOperationSerializer(resultSerializer, responseSerializer);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> idempifyNonBlockingOperationDeserializer(
+            ResultDeserializer resultDeserializer,
+            ResponseDeserializer responseDeserializer
+    ) {
+        return new NonBlockingOperationDeserializer(resultDeserializer, responseDeserializer);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LockTokenGenerator idempifyLockTokenGenerator() {
+        return new DefaultLockTokenGenerator();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public NonBlockingOperationManager idempifyNonBlockingOperationManager(
+            NonBlockingOperationRepository repository,
+            LockTokenGenerator lockTokenGenerator,
+            OperationSerializer<NonBlockingOperation, RawNonBlockingOperation> serializer,
+            OperationDeserializer<RawNonBlockingOperation, NonBlockingOperation> deserializer,
+            FingerprintMatcher fingerprintMatcher,
+            ResultSerializer resultSerializer,
+            IdempotencyEventListener eventListener
+    ) {
+        return new DefaultNonBlockingOperationManager(
+                repository,
+                lockTokenGenerator,
+                serializer,
+                deserializer,
+                fingerprintMatcher,
+                resultSerializer,
+                eventListener
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingProcessorType(type = ProcessorType.NON_BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.NON_BLOCKING)
+    public TypeAwareIdempotentProcessor idempifyNonBlockingTypeAwareIdempotentProcessor(
+            NonBlockingOperationManager manager,
+            OperationStateChannel channel,
+            IdempotencyEventListener eventListener
+    ) {
+        return new NonBlockingIdempotentProcessor(manager, channel, eventListener);
     }
 
     @Primary
@@ -220,10 +273,9 @@ public class IdempifyCoreAutoConfiguration {
             Objects.requireNonNull(entries, "entries cannot be null");
             if (entries.isEmpty()) {
                 throw new IllegalStateException("""
-                    No IdempotentEntry is registered, so nothing turns an annotated call into an operation:
-                    add idempify-aop, register an entry of your own, or switch the library off with
-                    idempify.enabled=false
-            """);
+                        No IdempotentEntry is registered, so nothing turns an annotated call into an operation: \
+                        add idempify-aop, register an entry of your own, or switch the library off with \
+                        idempify.enabled=false""");
             }
         }
     }

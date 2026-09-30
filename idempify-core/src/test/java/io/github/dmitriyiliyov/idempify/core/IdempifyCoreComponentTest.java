@@ -36,28 +36,25 @@ class IdempifyCoreComponentTest {
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID OTHER_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
-    private final InMemoryOperationRepository repository = new InMemoryOperationRepository();
+    private final TestClock clock = TestClock.fixedAt(TestClock.EPOCH);
+    private final InMemoryOperationRepository repository = new InMemoryOperationRepository(clock);
     private final RecordingTransactionManager transactionManager = new RecordingTransactionManager();
     private final RecordingStateChannel channel = new RecordingStateChannel(() -> transactionManager.commits);
     private final RecordingEventListener eventListener = new RecordingEventListener();
     private final FingerprintPolicy fingerprintPolicy = new RawHashingFingerprintPolicy(new ThrowingEmptyBodyFallback());
 
-    private TestClock clock;
     private IdempotentProcessor processor;
 
     @BeforeEach
     void setUp() {
-        clock = TestClock.fixedAt(TestClock.EPOCH);
         PassThroughResultSerializer resultSerializer = new PassThroughResultSerializer();
         PassThroughResponseSerializer responseSerializer = new PassThroughResponseSerializer();
         BlockingOperationManager operationManager = new DefaultBlockingOperationManager(
-                new DefaultOperationCreator(),
                 repository,
                 new DefaultFingerprintMatcher(IdempotencyEventListener.NOOP),
                 new DefaultOperationSerializer(resultSerializer, responseSerializer),
                 new DefaultOperationDeserializer(resultSerializer, responseSerializer),
-                resultSerializer,
-                clock
+                resultSerializer
         );
         processor = new DelegatingIdempotentProcessor(List.of(new BlockingIdempotentProcessor(
                 new TransactionTemplate(transactionManager),
@@ -69,7 +66,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the key is seen for the first time should run the operation and store its result")
-    void request_whenKeyIsSeenForFirstTime_shouldRunOperationAndStoreItsResult() {
+    void request_whenKeyIsSeenForFirstTime_shouldRunOperationAndStoreItsResult() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
 
@@ -79,7 +76,7 @@ class IdempifyCoreComponentTest {
         // then
         assertThat(result).isEqualTo("charged");
         assertThat(operation.calls).isEqualTo(1);
-        assertThat(repository.findByIdempotencyKey(KEY)).hasValueSatisfying(stored -> {
+        assertThat(repository.find(KEY)).hasValueSatisfying(stored -> {
             assertThat(stored.status()).isEqualTo(OperationStatus.PROCESSED);
             assertThat(stored.result()).isEqualTo("charged");
         });
@@ -87,7 +84,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the same key comes back should be answered from the store without running the operation again")
-    void request_whenSameKeyComesBack_shouldBeAnsweredFromStoreWithoutRunningOperationAgain() {
+    void request_whenSameKeyComesBack_shouldBeAnsweredFromStoreWithoutRunningOperationAgain() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(false), operation);
@@ -102,7 +99,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the same key comes back should be counted as a duplicate and not as a second success")
-    void request_whenSameKeyComesBack_shouldBeCountedAsDuplicateAndNotAsSecondSuccess() {
+    void request_whenSameKeyComesBack_shouldBeCountedAsDuplicateAndNotAsSecondSuccess() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(false), operation);
@@ -117,7 +114,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when different keys arrive should run the operation for each of them")
-    void request_whenDifferentKeysArrive_shouldRunOperationForEachOfThem() {
+    void request_whenDifferentKeysArrive_shouldRunOperationForEachOfThem() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
 
@@ -131,7 +128,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the same key comes back with the same request should be answered from the store")
-    void request_whenSameKeyComesBackWithSameRequest_shouldBeAnsweredFromStore() {
+    void request_whenSameKeyComesBackWithSameRequest_shouldBeAnsweredFromStore() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(true), operation);
@@ -146,7 +143,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the same key comes back with a different request should be rejected as a fingerprint mismatch")
-    void request_whenSameKeyComesBackWithDifferentRequest_shouldBeRejectedAsFingerprintMismatch() {
+    void request_whenSameKeyComesBackWithDifferentRequest_shouldBeRejectedAsFingerprintMismatch() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(true), operation);
@@ -160,7 +157,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when fingerprinting is on but the caller sends none should be rejected as an invalid fingerprint")
-    void request_whenFingerprintingIsOnButCallerSendsNone_shouldBeRejectedAsInvalidFingerprint() {
+    void request_whenFingerprintingIsOnButCallerSendsNone_shouldBeRejectedAsInvalidFingerprint() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(true), operation);
@@ -174,7 +171,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when fingerprinting is off should answer a changed request from the store all the same")
-    void request_whenFingerprintingIsOff_shouldAnswerChangedRequestFromStoreAllTheSame() {
+    void request_whenFingerprintingIsOff_shouldAnswerChangedRequestFromStoreAllTheSame() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(false), operation);
@@ -189,7 +186,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the stored operation has outlived its ttl should run the operation again")
-    void request_whenStoredOperationHasOutlivedItsTtl_shouldRunOperationAgain() {
+    void request_whenStoredOperationHasOutlivedItsTtl_shouldRunOperationAgain() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(false), operation);
@@ -205,7 +202,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the operation ran longer than its own ttl should still be replayable afterwards")
-    void request_whenOperationRanLongerThanItsOwnTtl_shouldStillBeReplayableAfterwards() {
+    void request_whenOperationRanLongerThanItsOwnTtl_shouldStillBeReplayableAfterwards() throws Throwable {
         // given
         Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
         SlowOperation slow = new SlowOperation("charged", clock, ttl.plus(Duration.ofHours(1)));
@@ -221,27 +218,25 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the operation ran longer than its own ttl should date the expiry from the result")
-    void request_whenOperationRanLongerThanItsOwnTtl_shouldDateExpiryFromResult() {
+    void request_whenOperationRanLongerThanItsOwnTtl_shouldDateExpiryFromResult() throws Throwable {
         // given
         Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
-        Duration ranFor = ttl.plus(Duration.ofHours(1));
-        SlowOperation slow = new SlowOperation("charged", clock, ranFor);
+        SlowOperation slow = new SlowOperation("charged", clock, ttl.plus(Duration.ofHours(1)));
 
         // when
         call(KEY, request("body"), metadata(false), slow);
 
         // then
-        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt())
-                .isEqualTo(TestClock.EPOCH.plus(ranFor).plus(ttl));
+        assertThat(repository.find(KEY).orElseThrow().remainingMillis()).isEqualTo(ttl.toMillis());
     }
 
     @Test
     @DisplayName("CT request while the operation is still running should hold a row that carries no expiry")
-    void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() {
+    void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() throws Throwable {
         // given
         List<RawOperation> seenMidFlight = new ArrayList<>();
         ExternalOperationCallback peeking = () -> {
-            seenMidFlight.add(repository.findByIdempotencyKey(KEY).orElseThrow());
+            seenMidFlight.add(repository.find(KEY).orElseThrow());
             return "charged";
         };
 
@@ -251,14 +246,14 @@ class IdempifyCoreComponentTest {
         // then
         assertThat(seenMidFlight).singleElement().satisfies(midFlight -> {
             assertThat(midFlight.status()).isEqualTo(OperationStatus.IN_PROCESS);
-            assertThat(midFlight.expiresAt()).isNull();
+            assertThat(midFlight.remainingMillis()).isNull();
         });
-        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt()).isNotNull();
+        assertThat(repository.find(KEY).orElseThrow().remainingMillis()).isNotNull();
     }
 
     @Test
-    @DisplayName("CT request when the operation is replayed should tell the transport it was replayed")
-    void request_whenOperationIsReplayed_shouldTellTransportItWasReplayed() {
+    @DisplayName("CT request when the operation is replayed should tell the transport there is nothing new to record")
+    void request_whenOperationIsReplayed_shouldTellTransportThereIsNothingNewToRecord() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
 
@@ -269,10 +264,10 @@ class IdempifyCoreComponentTest {
         OperationState replay = channel.consume();
 
         // then
-        assertThat(firstRun.replayed()).isFalse();
-        assertThat(replay.replayed()).isTrue();
-        assertThat(repository.findByIdempotencyKey(KEY).orElseThrow().expiresAt())
-                .isEqualTo(TestClock.EPOCH.plus(Duration.parse(IdempifyDefaults.TTL_VALUE)));
+        assertThat(firstRun.shouldRecordResponse()).isTrue();
+        assertThat(replay.shouldRecordResponse()).isFalse();
+        assertThat(repository.find(KEY).orElseThrow().remainingMillis())
+                .isEqualTo(Duration.parse(IdempifyDefaults.TTL_VALUE).toMillis());
     }
 
     @Test
@@ -286,7 +281,7 @@ class IdempifyCoreComponentTest {
                 .isSameAs(thrown);
 
         assertThat(transactionManager.rollbacks).isEqualTo(1);
-        assertThat(repository.findByIdempotencyKey(KEY))
+        assertThat(repository.find(KEY))
                 .hasValueSatisfying(stored -> assertThat(stored.status()).isEqualTo(OperationStatus.IN_PROCESS));
     }
 
@@ -307,7 +302,7 @@ class IdempifyCoreComponentTest {
 
     @Test
     @DisplayName("CT request when the operation completes should tell the transport only after the transaction committed")
-    void request_whenOperationCompletes_shouldTellTransportOnlyAfterTransactionCommitted() {
+    void request_whenOperationCompletes_shouldTellTransportOnlyAfterTransactionCommitted() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
 
@@ -334,7 +329,7 @@ class IdempifyCoreComponentTest {
                 .hasMessageContaining("no processor found");
 
         assertThat(operation.calls).isZero();
-        assertThat(repository.findByIdempotencyKey(KEY)).isEmpty();
+        assertThat(repository.find(KEY)).isEmpty();
     }
 
     @Test
@@ -350,7 +345,7 @@ class IdempifyCoreComponentTest {
                 .hasMessageContaining("must own its transaction");
 
         assertThat(operation.calls).isZero();
-        assertThat(repository.findByIdempotencyKey(KEY)).isEmpty();
+        assertThat(repository.find(KEY)).isEmpty();
         assertThat(channel.consume()).isNull();
         assertThat(eventListener.successes).isZero();
     }
@@ -362,7 +357,7 @@ class IdempifyCoreComponentTest {
     private Object call(UUID idempotencyKey,
                         RequestContext request,
                         OperationMetadata metadata,
-                        ExternalOperationCallback operation) {
+                        ExternalOperationCallback operation) throws Throwable {
         String fingerprint = request == null ? null : fingerprintPolicy.generate(request);
         return processor.process(
                 new DefaultOperationContext(ResultType.ofClass(String.class), operation, idempotencyKey, fingerprint),
@@ -382,19 +377,25 @@ class IdempifyCoreComponentTest {
 
     /**
      * Stands in for idempify-postgresql, holding to the same contract: {@code saveIfAbsent} is first-writer-wins,
-     * the two updates are compare-and-swap on the current status.
+     * the two updates are compare-and-swap on the current status, and the expiry is the store's own - counted
+     * from its clock when the result is saved and read back as the time a row has left.
      */
-    private static final class InMemoryOperationRepository
-            implements BlockingOperationRepository, OperationRepository {
+    private static final class InMemoryOperationRepository implements BlockingOperationRepository {
 
+        private final TestClock clock;
         private final Map<UUID, RawOperation> rows = new HashMap<>();
+        private final Map<UUID, Instant> expiries = new HashMap<>();
+
+        private InMemoryOperationRepository(TestClock clock) {
+            this.clock = clock;
+        }
 
         @Override
         public RawOperation saveIfAbsent(RawOperation operation) {
             RawOperation stored = rows.get(operation.idempotencyKey());
             if (stored == null) {
                 rows.put(operation.idempotencyKey(), operation);
-                return operation;
+                return read(operation);
             }
 
             RawOperation repeated = new RawOperation(
@@ -404,11 +405,11 @@ class IdempifyCoreComponentTest {
                     stored.result(),
                     stored.response(),
                     stored.fingerprint(),
-                    stored.expiresAt(),
+                    null,
                     stored.createdAt()
             );
             rows.put(repeated.idempotencyKey(), repeated);
-            return repeated;
+            return read(repeated);
         }
 
         @Override
@@ -418,14 +419,15 @@ class IdempifyCoreComponentTest {
                 throw new OperationStatusMismatchException(operation.idempotencyKey(), onStatus);
             }
             rows.put(operation.idempotencyKey(), operation);
-            return operation;
+            expiries.remove(operation.idempotencyKey());
+            return read(operation);
         }
 
         @Override
         public void saveResultAndUpdateStatus(UUID idempotencyKey,
                                               String result,
                                               OperationStatus status,
-                                              Instant expiresAt,
+                                              long ttlMillis,
                                               OperationStatus onStatus) {
             RawOperation stored = rows.get(idempotencyKey);
             if (stored == null || stored.status() != onStatus) {
@@ -439,15 +441,29 @@ class IdempifyCoreComponentTest {
                     result,
                     stored.response(),
                     stored.fingerprint(),
-                    expiresAt,
+                    null,
                     stored.createdAt()
             );
             rows.put(idempotencyKey, completed);
+            expiries.put(idempotencyKey, clock.instant().plusMillis(ttlMillis));
         }
 
-        @Override
-        public Optional<RawOperation> findByIdempotencyKey(UUID idempotencyKey) {
-            return Optional.ofNullable(rows.get(idempotencyKey));
+        private Optional<RawOperation> find(UUID idempotencyKey) {
+            return Optional.ofNullable(rows.get(idempotencyKey)).map(this::read);
+        }
+
+        private RawOperation read(RawOperation row) {
+            Instant expiresAt = expiries.get(row.idempotencyKey());
+            return new RawOperation(
+                    row.idempotencyKey(),
+                    row.status(),
+                    row.isFirstAttempt(),
+                    row.result(),
+                    row.response(),
+                    row.fingerprint(),
+                    expiresAt == null ? null : expiresAt.toEpochMilli() - clock.instant().toEpochMilli(),
+                    row.createdAt()
+            );
         }
     }
 
@@ -556,6 +572,9 @@ class IdempifyCoreComponentTest {
         public void onSuccess() {
             successes++;
         }
+
+        @Override
+        public void onExceptionallySuccess() {}
     }
 
     private static final class RecordingOperation implements ExternalOperationCallback {

@@ -21,6 +21,8 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.annotation.ImportCandidates;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -80,9 +82,6 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(FingerprintMatcher.class);
             assertThat(context).hasSingleBean(DefaultFingerprintMatcher.class);
 
-            assertThat(context).hasSingleBean(OperationCreator.class);
-            assertThat(context).hasSingleBean(DefaultOperationCreator.class);
-
             assertThat(context).hasSingleBean(OperationMetadataCache.class);
             assertThat(context).hasSingleBean(DefaultOperationMetadataCache.class);
 
@@ -98,8 +97,20 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(BlockingOperationManager.class);
             assertThat(context).hasSingleBean(DefaultBlockingOperationManager.class);
 
-            assertThat(context).hasSingleBean(TypeAwareIdempotentProcessor.class);
+            assertThat(context).hasSingleBean(DefaultOperationSerializer.class);
+            assertThat(context).hasSingleBean(DefaultOperationDeserializer.class);
+            assertThat(context).hasSingleBean(NonBlockingOperationSerializer.class);
+            assertThat(context).hasSingleBean(NonBlockingOperationDeserializer.class);
+
+            assertThat(context).hasSingleBean(LockTokenGenerator.class);
+            assertThat(context).hasSingleBean(DefaultLockTokenGenerator.class);
+
+            assertThat(context).hasSingleBean(NonBlockingOperationManager.class);
+            assertThat(context).hasSingleBean(DefaultNonBlockingOperationManager.class);
+
+            assertThat(context.getBeansOfType(TypeAwareIdempotentProcessor.class)).hasSize(2);
             assertThat(context).hasSingleBean(BlockingIdempotentProcessor.class);
+            assertThat(context).hasSingleBean(NonBlockingIdempotentProcessor.class);
 
             assertThat(context).hasSingleBean(DelegatingKeyExtractor.class);
             assertThat(context).hasSingleBean(DelegatingIdempotentProcessor.class);
@@ -301,17 +312,6 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when existing OperationCreator bean should not register the default one")
-    void context_whenExistingOperationCreatorBean_shouldNotRegisterDefaultOne() {
-        contextRunner
-                .withBean(OperationCreator.class, () -> mock(OperationCreator.class))
-                .run(context -> {
-                    assertThat(context).hasSingleBean(OperationCreator.class);
-                    assertThat(context).doesNotHaveBean(DefaultOperationCreator.class);
-                });
-    }
-
-    @Test
     @DisplayName("IT context when existing OperationMetadataCache bean should not register the default one")
     void context_whenExistingOperationMetadataCacheBean_shouldNotRegisterDefaultOne() {
         contextRunner
@@ -367,13 +367,47 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when the application serves a processor type itself should not register the blocking one")
-    void context_whenApplicationServesProcessorTypeItself_shouldNotRegisterBlockingOne() {
+    @DisplayName("IT context when existing LockTokenGenerator bean should not register the default one")
+    void context_whenExistingLockTokenGeneratorBean_shouldNotRegisterDefaultOne() {
         contextRunner
-                .withBean(TypeAwareIdempotentProcessor.class, NonBlockingTestProcessor::new)
+                .withBean(LockTokenGenerator.class, () -> mock(LockTokenGenerator.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(TypeAwareIdempotentProcessor.class);
-                    assertThat(context).doesNotHaveBean(BlockingIdempotentProcessor.class);
+                    assertThat(context).hasSingleBean(LockTokenGenerator.class);
+                    assertThat(context).doesNotHaveBean(DefaultLockTokenGenerator.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when existing NonBlockingOperationManager bean should not register the default one")
+    void context_whenExistingNonBlockingOperationManagerBean_shouldNotRegisterDefaultOne() {
+        contextRunner
+                .withBean(NonBlockingOperationManager.class, () -> mock(NonBlockingOperationManager.class))
+                .run(context -> {
+                    assertThat(context).hasSingleBean(NonBlockingOperationManager.class);
+                    assertThat(context).doesNotHaveBean(DefaultNonBlockingOperationManager.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when the application serves a processor type itself should not register the built-in one of that type")
+    void context_whenApplicationServesProcessorTypeItself_shouldNotRegisterBuiltInOneOfThatType() {
+        contextRunner
+                .withBean(NonBlockingTestProcessor.class, NonBlockingTestProcessor::new)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(NonBlockingTestProcessor.class);
+                    assertThat(context).doesNotHaveBean(NonBlockingIdempotentProcessor.class);
+                    assertThat(context).hasSingleBean(BlockingIdempotentProcessor.class);
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when the application declares its processor on a @Bean method should read the type off that method")
+    void context_whenApplicationDeclaresProcessorOnBeanMethod_shouldReadTypeOffThatMethod() {
+        contextRunner
+                .withUserConfiguration(ApplicationProcessorConfiguration.class)
+                .run(context -> {
+                    assertThat(context).doesNotHaveBean(NonBlockingIdempotentProcessor.class);
+                    assertThat(context).hasSingleBean(BlockingIdempotentProcessor.class);
                 });
     }
 
@@ -409,7 +443,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     @DisplayName("IT context when the application serves a processor type itself should route that type to it")
     void context_whenApplicationServesProcessorTypeItself_shouldRouteThatTypeToIt() {
         contextRunner
-                .withBean(TypeAwareIdempotentProcessor.class, NonBlockingTestProcessor::new)
+                .withBean(NonBlockingTestProcessor.class, NonBlockingTestProcessor::new)
                 .run(context -> {
                     IdempotentProcessor processor = context.getBean(IdempotentProcessor.class);
 
@@ -434,6 +468,9 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
                     assertThat(wrapper.wrap(mock(ResponseRepository.class)))
                             .isInstanceOf(InMemoryCacheResponseRepositoryDecorator.class);
+                    assertThat(wrapper.getPriority())
+                     .describedAs("the cache is what a lookup enters first")
+                     .isEqualTo(Integer.MIN_VALUE);
                 });
     }
 
@@ -661,6 +698,9 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
 
         @Override
         public void onSuccess() { }
+
+        @Override
+        public void onExceptionallySuccess() { }
     }
 
     /**
@@ -685,7 +725,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
             return new DefaultRawResponseContainer(
                     "raw-response",
                     "fingerprint",
-                    TestClock.EPOCH.plus(Duration.ofHours(1))
+                    Duration.ofHours(1).toMillis()
             );
         }
     }
@@ -701,7 +741,8 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
                 IdempifyCoreAutoConfigurationIntegrationTest::globalConfig)),
         OPERATION_REPOSITORY(runner -> runner.withBean(
                 BlockingOperationRepository.class, () -> mock(BlockingOperationRepository.class))),
-        READ_REPOSITORY(runner -> runner.withBean(OperationRepository.class, () -> mock(OperationRepository.class))),
+        NON_BLOCKING_REPOSITORY(runner -> runner.withBean(
+                NonBlockingOperationRepository.class, () -> mock(NonBlockingOperationRepository.class))),
         RESPONSE_REPOSITORY(runner -> runner.withBean(ResponseRepository.class, () -> mock(ResponseRepository.class))),
         RESULT_SERIALIZER(runner -> runner.withBean(ResultSerializer.class, () -> mock(ResultSerializer.class))),
         RESULT_DESERIALIZER(runner -> runner.withBean(ResultDeserializer.class, () -> mock(ResultDeserializer.class))),
@@ -737,6 +778,7 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         return IdempotencyConfig.builder()
                 .headerName(IdempifyDefaults.HEADER_NAME)
                 .ttl(Duration.parse(IdempifyDefaults.TTL_VALUE))
+                .lockTtl(Duration.parse(IdempifyDefaults.LOCK_TTL_VALUE))
                 .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
@@ -807,6 +849,17 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
         }
     }
 
+    @Configuration(proxyBeanMethods = false)
+    static class ApplicationProcessorConfiguration {
+
+        @Bean
+        @ProvidesProcessorType(type = ProcessorType.NON_BLOCKING)
+        TypeAwareIdempotentProcessor applicationProcessor() {
+            return new NonBlockingTestProcessor();
+        }
+    }
+
+    @ProvidesProcessorType(type = ProcessorType.NON_BLOCKING)
     private static final class NonBlockingTestProcessor implements TypeAwareIdempotentProcessor {
 
         @Override
