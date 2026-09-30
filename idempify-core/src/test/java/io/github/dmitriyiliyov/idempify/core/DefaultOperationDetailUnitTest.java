@@ -20,7 +20,7 @@ class DefaultOperationDetailUnitTest {
     @DisplayName("UT constructor() when idempotencyKey is null should throw NullPointerException")
     void constructor_whenIdempotencyKeyIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultOperationDetail(null, OperationStatus.PROCESSED, true, "result"))
+        assertThatThrownBy(() -> new DefaultOperationDetail(null, OperationStatus.PROCESSED, "result", true))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("idempotencyKey cannot be null");
     }
@@ -29,7 +29,7 @@ class DefaultOperationDetailUnitTest {
     @DisplayName("UT constructor() when status is null should throw NullPointerException")
     void constructor_whenStatusIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new DefaultOperationDetail(KEY, null, true, "result"))
+        assertThatThrownBy(() -> new DefaultOperationDetail(KEY, null, "result", true))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("status cannot be null");
     }
@@ -38,7 +38,7 @@ class DefaultOperationDetailUnitTest {
     @DisplayName("UT constructor() when result is null should keep it, because null is a legal result")
     void constructor_whenResultIsNull_shouldKeepItBecauseNullIsLegalResult() {
         // when
-        DefaultOperationDetail tested = new DefaultOperationDetail(KEY, OperationStatus.PROCESSED, true, null);
+        DefaultOperationDetail tested = new DefaultOperationDetail(KEY, OperationStatus.PROCESSED, null, true);
 
         // then
         assertThat(tested.getResult()).isNull();
@@ -49,12 +49,12 @@ class DefaultOperationDetailUnitTest {
     @DisplayName("UT getters() should return what the detail was built from")
     void getters_shouldReturnWhatDetailWasBuiltFrom() {
         // when
-        DefaultOperationDetail tested = new DefaultOperationDetail(KEY, OperationStatus.IN_PROCESS, false, "result");
+        DefaultOperationDetail tested = new DefaultOperationDetail(KEY, OperationStatus.IN_PROCESS, "result", false);
 
         // then
         assertThat(tested.getIdempotencyKey()).isEqualTo(KEY);
         assertThat(tested.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-        assertThat(tested.replayed()).isFalse();
+        assertThat(tested.shouldRecordResponse()).isFalse();
         assertThat(tested.getResult()).isEqualTo("result");
     }
 
@@ -62,11 +62,11 @@ class DefaultOperationDetailUnitTest {
     @DisplayName("UT toString() should name every field")
     void toString_shouldNameEveryField() {
         // when
-        String printed = new DefaultOperationDetail(KEY, OperationStatus.PROCESSED, true, "result").toString();
+        String printed = new DefaultOperationDetail(KEY, OperationStatus.PROCESSED, "result", true).toString();
 
         // then
         assertThat(printed).isEqualTo(
-                "DefaultOperationDetail{idempotencyKey=%s, status=PROCESSED, replayed=true, result=result}"
+                "DefaultOperationDetail{idempotencyKey=%s, status=PROCESSED, shouldRecordResponse=true, result=result}"
                         .formatted(KEY));
     }
 }

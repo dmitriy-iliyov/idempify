@@ -8,8 +8,12 @@ import java.util.UUID;
  * reduced to text, and nothing that needs one still an object.
  * <p>
  * Which components may be {@code null} is not this type's decision but the row's: {@code result},
- * {@code response} and {@code expiresAt} are all empty on a claim and stay empty until the operation
+ * {@code response} and {@code remainingMillis} are all empty on a claim and stay empty until the operation
  * completes.
+ * <p>
+ * {@code remainingMillis} is not a column but the store's answer at the moment of reading - how long the row
+ * has left by the store's own clock, so that no caller compares it against a clock of its own. A write ignores
+ * it.
  * <p>
  * The declared type of the result is not among the components: it travels on {@link Operation} and comes from
  * the call site on every read.
@@ -21,6 +25,6 @@ public record RawOperation(
         String result,
         String response,
         String fingerprint,
-        Instant expiresAt,
+        Long remainingMillis,
         Instant createdAt
 ) {}

@@ -30,7 +30,7 @@ class DefaultOperationSerializerUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
-    private static final Instant EXPIRES_AT = Instant.parse("2026-08-10T12:00:00Z");
+    private static final long REMAINING_MILLIS = 86_400_000L;
 
     @Mock
     private ResultSerializer resultSerializer;
@@ -74,7 +74,7 @@ class DefaultOperationSerializerUnitTest {
         assertThat(result.result()).isEqualTo("raw-result");
         assertThat(result.response()).isEqualTo("raw-response");
         assertThat(result.fingerprint()).isEqualTo("fingerprint");
-        assertThat(result.expiresAt()).isEqualTo(EXPIRES_AT);
+        assertThat(result.remainingMillis()).isEqualTo(REMAINING_MILLIS);
         assertThat(result.createdAt()).isEqualTo(NOW);
     }
 
@@ -114,7 +114,7 @@ class DefaultOperationSerializerUnitTest {
                 ResultType.ofClass(String.class),
                 response,
                 "fingerprint",
-                EXPIRES_AT,
+                REMAINING_MILLIS,
                 NOW
         );
     }

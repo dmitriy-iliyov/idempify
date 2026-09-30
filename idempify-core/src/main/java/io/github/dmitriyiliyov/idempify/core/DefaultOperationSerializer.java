@@ -5,7 +5,7 @@ import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 
 import java.util.Objects;
 
-public class DefaultOperationSerializer implements OperationSerializer {
+public class DefaultOperationSerializer implements OperationSerializer<Operation, RawOperation> {
 
     private final ResultSerializer resultSerializer;
     private final ResponseSerializer responseSerializer;
@@ -28,7 +28,7 @@ public class DefaultOperationSerializer implements OperationSerializer {
                 operation.getResult() == null ? null : resultSerializer.serialize(operation.getResult()),
                 operation.getResponse() == null ? null : responseSerializer.serialize(operation.getResponse()),
                 operation.getFingerprint(),
-                operation.getExpiresAt(),
+                operation.getRemainingMillis(),
                 operation.getCreatedAt()
         );
     }

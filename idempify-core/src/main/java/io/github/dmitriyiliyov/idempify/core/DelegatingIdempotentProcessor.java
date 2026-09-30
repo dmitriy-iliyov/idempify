@@ -21,20 +21,23 @@ public class DelegatingIdempotentProcessor implements IdempotentProcessor {
         for (TypeAwareIdempotentProcessor processor : processors) {
             TypeAwareIdempotentProcessor registered = this.processors.putIfAbsent(processor.getType(), processor);
             if (registered != null) {
-                throw new IllegalStateException(
-                        "Exactly one TypeAwareIdempotentProcessor must be registered for type %s, but both %s and %s are"
-                                .formatted(processor.getType(), registered.getClass().getName(), processor.getClass().getName())
+                throw new IllegalStateException("""
+                        Exactly one TypeAwareIdempotentProcessor must be registered for type %s, but both %s and %s \
+                        are. A processor of the application's own displaces the built-in one of that type only when \
+                        its bean declares @ProvidesProcessorType"""
+                        .formatted(processor.getType(), registered.getClass().getName(), processor.getClass().getName())
                 );
             }
         }
     }
 
     @Override
-    public Object process(OperationContext context, OperationMetadata metadata) {
+    public Object process(OperationContext context, OperationMetadata metadata) throws Throwable {
         IdempotentProcessor processor = processors.get(metadata.getProcessorType());
         if (processor == null) {
             throw new IllegalStateException(
-                    "no processor found for operation (idempotencyKey=%s)".formatted(context.getIdempotencyKey())
+                    "no processor found for operation (idempotencyKey=%s) with '%s' processorType"
+                            .formatted(context.getIdempotencyKey(), metadata.getProcessorType())
             );
         }
         return processor.process(context, metadata);

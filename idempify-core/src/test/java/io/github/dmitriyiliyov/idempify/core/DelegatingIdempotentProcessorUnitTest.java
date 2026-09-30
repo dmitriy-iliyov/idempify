@@ -47,7 +47,7 @@ class DelegatingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() should route the call to the processor the metadata names")
-    void process_shouldRouteCallToProcessorMetadataNames() {
+    void process_shouldRouteCallToProcessorMetadataNames() throws Throwable {
         // given
         RecordingProcessor blocking = new RecordingProcessor(ProcessorType.BLOCKING, "from-blocking");
         RecordingProcessor nonBlocking = new RecordingProcessor(ProcessorType.NON_BLOCKING, "from-non-blocking");

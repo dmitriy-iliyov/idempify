@@ -17,113 +17,92 @@ class OperationUnitTest {
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant NOW = TestClock.EPOCH;
     private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
-    private static final ResultType OTHER_RESULT_TYPE = ResultType.ofClass(Integer.class);
     private static final Response RESPONSE = new DefaultResponse(201, new byte [0], "application/json", Map.of());
 
     @Test
-    @DisplayName("UT hasConflict() when the operation is running and this is not the first attempt should report a conflict")
-    void hasConflict_whenOperationIsRunningAndThisIsNotFirstAttempt_shouldReportConflict() {
-        assertThat(operation(OperationStatus.IN_PROCESS, false, NOW).hasConflict()).isTrue();
+    @DisplayName("UT ofContext() should start the operation in process on its first attempt with no result yet")
+    void ofContext_shouldStartOperationInProcessOnFirstAttemptWithNoResultYet() {
+        // when
+        Operation result = Operation.ofContext(context("fingerprint"));
+
+        // then
+        assertThat(result.getIdempotencyKey()).isEqualTo(KEY);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(result.isFirstAttempt()).isTrue();
+        assertThat(result.getResult()).isNull();
+        assertThat(result.getResultType()).isEqualTo(RESULT_TYPE);
+        assertThat(result.getFingerprint()).isEqualTo("fingerprint");
     }
 
     @Test
-    @DisplayName("UT hasConflict() when the operation is running on its first attempt should report no conflict")
-    void hasConflict_whenOperationIsRunningOnFirstAttempt_shouldReportNoConflict() {
-        assertThat(operation(OperationStatus.IN_PROCESS, true, NOW).hasConflict()).isFalse();
+    @DisplayName("UT ofContext() should leave creation time, expiry and response unset for the store and the completion to fill")
+    void ofContext_shouldLeaveCreationTimeExpiryAndResponseUnsetForStoreAndCompletionToFill() {
+        // when
+        Operation result = Operation.ofContext(context("fingerprint"));
+
+        // then
+        assertThat(result.getCreatedAt()).isNull();
+        assertThat(result.getRemainingMillis()).isNull();
+        assertThat(result.getResponse()).isNull();
     }
 
     @Test
-    @DisplayName("UT hasConflict() when the operation is already processed should report no conflict")
-    void hasConflict_whenOperationIsAlreadyProcessed_shouldReportNoConflict() {
-        assertThat(operation(OperationStatus.PROCESSED, false, NOW).hasConflict()).isFalse();
+    @DisplayName("UT ofContext() when there is no fingerprint should leave it unset")
+    void ofContext_whenThereIsNoFingerprint_shouldLeaveItUnset() {
+        // when
+        Operation result = Operation.ofContext(context(null));
+
+        // then
+        assertThat(result.getFingerprint()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT isExpired() when a processed operation has time left should not report it as expired")
+    void isExpired_whenProcessedOperationHasTimeLeft_shouldNotReportItAsExpired() {
+        assertThat(operation(OperationStatus.PROCESSED, 1L).isExpired()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT isExpired() when a processed operation has exactly no time left should report it as expired")
+    void isExpired_whenProcessedOperationHasExactlyNoTimeLeft_shouldReportItAsExpired() {
+        assertThat(operation(OperationStatus.PROCESSED, 0L).isExpired()).isTrue();
     }
 
     @Test
     @DisplayName("UT isExpired() when a processed operation is past its expiry should report it as expired")
     void isExpired_whenProcessedOperationIsPastItsExpiry_shouldReportItAsExpired() {
-        assertThat(operation(OperationStatus.PROCESSED, true, NOW).isExpired(NOW.plusSeconds(1))).isTrue();
-    }
-
-    @Test
-    @DisplayName("UT isExpired() when a processed operation reaches its expiry exactly should not report it as expired")
-    void isExpired_whenProcessedOperationReachesItsExpiryExactly_shouldNotReportItAsExpired() {
-        assertThat(operation(OperationStatus.PROCESSED, true, NOW).isExpired(NOW)).isFalse();
-    }
-
-    @Test
-    @DisplayName("UT isExpired() when a processed operation is still within its expiry should not report it as expired")
-    void isExpired_whenProcessedOperationIsStillWithinItsExpiry_shouldNotReportItAsExpired() {
-        assertThat(operation(OperationStatus.PROCESSED, true, NOW).isExpired(NOW.minusSeconds(1))).isFalse();
-    }
-
-    @Test
-    @DisplayName("UT isExpired() when the operation is still running should not report it as expired")
-    void isExpired_whenOperationIsStillRunning_shouldNotReportItAsExpired() {
-        assertThat(operation(OperationStatus.IN_PROCESS, true, NOW).isExpired(NOW.plusSeconds(1))).isFalse();
+        assertThat(operation(OperationStatus.PROCESSED, -1L).isExpired()).isTrue();
     }
 
     @Test
     @DisplayName("UT isExpired() when a running operation carries no expiry at all should not report it as expired")
     void isExpired_whenRunningOperationCarriesNoExpiryAtAll_shouldNotReportItAsExpired() {
-        assertThat(operation(OperationStatus.IN_PROCESS, true, null).isExpired(NOW.plusSeconds(1))).isFalse();
+        assertThat(operation(OperationStatus.IN_PROCESS, null).isExpired()).isFalse();
     }
 
     @Test
-    @DisplayName("UT hasConflict() when a processed operation carries no response should still report no conflict")
-    void hasConflict_whenProcessedOperationCarriesNoResponse_shouldStillReportNoConflict() {
-        assertThat(operation(OperationStatus.PROCESSED, false, NOW).hasConflict()).isFalse();
+    @DisplayName("UT isExpired() when a running operation carries a spent expiry should still not report it as expired")
+    void isExpired_whenRunningOperationCarriesSpentExpiry_shouldStillNotReportItAsExpired() {
+        assertThat(operation(OperationStatus.IN_PROCESS, -1L).isExpired()).isFalse();
     }
 
     @Test
     @DisplayName("UT isExpired() when a processed operation carries no response should still answer by its expiry")
     void isExpired_whenProcessedOperationCarriesNoResponse_shouldStillAnswerByItsExpiry() {
         // given
-        Operation withoutResponse = operation(OperationStatus.PROCESSED, true, NOW);
-        Operation withResponse = operation(OperationStatus.PROCESSED, true, NOW, RESPONSE);
+        Operation withoutResponse = operation(OperationStatus.PROCESSED, -1L, null);
+        Operation withResponse = operation(OperationStatus.PROCESSED, -1L, RESPONSE);
 
         // when / then
         assertThat(withoutResponse.getResponse()).isNull();
-        assertThat(withoutResponse.isExpired(NOW.plusSeconds(1)))
-                .isEqualTo(withResponse.isExpired(NOW.plusSeconds(1)));
-        assertThat(withoutResponse.isExpired(NOW.minusSeconds(1)))
-                .isEqualTo(withResponse.isExpired(NOW.minusSeconds(1)));
-    }
-
-    @Test
-    @DisplayName("UT setters should hand back everything they were given")
-    void setters_shouldHandBackEverythingTheyWereGiven() {
-        // given
-        Operation tested = operation(OperationStatus.IN_PROCESS, true, NOW);
-        UUID otherKey = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-
-        // when
-        tested.setIdempotencyKey(otherKey);
-        tested.setStatus(OperationStatus.PROCESSED);
-        tested.setFirstAttempt(false);
-        tested.setResult("raw");
-        tested.setResultType(OTHER_RESULT_TYPE);
-        tested.setResponse(RESPONSE);
-        tested.setFingerprint("other-fingerprint");
-        tested.setExpiresAt(NOW.plusSeconds(60));
-        tested.setCreatedAt(NOW.minusSeconds(60));
-
-        // then
-        assertThat(tested.getIdempotencyKey()).isEqualTo(otherKey);
-        assertThat(tested.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(tested.isFirstAttempt()).isFalse();
-        assertThat(tested.getResult()).isEqualTo("raw");
-        assertThat(tested.getResultType()).isEqualTo(OTHER_RESULT_TYPE);
-        assertThat(tested.getResponse()).isEqualTo(RESPONSE);
-        assertThat(tested.getFingerprint()).isEqualTo("other-fingerprint");
-        assertThat(tested.getExpiresAt()).isEqualTo(NOW.plusSeconds(60));
-        assertThat(tested.getCreatedAt()).isEqualTo(NOW.minusSeconds(60));
+        assertThat(withoutResponse.isExpired()).isEqualTo(withResponse.isExpired());
     }
 
     @Test
     @DisplayName("UT toString() should name the row without printing what it carries")
     void toString_shouldNameRowWithoutPrintingWhatItCarries() {
         // when
-        String result = operation(OperationStatus.PROCESSED, true, NOW).toString();
+        String result = operation(OperationStatus.PROCESSED, 60_000L).toString();
 
         // then
         assertThat(result).contains(
@@ -132,16 +111,35 @@ class OperationUnitTest {
                 "isFirstAttempt=true",
                 "hasResult=true",
                 "hasResponse=false",
-                "fingerprint='fingerprint'"
+                "fingerprint='fingerprint'",
+                "remainingMillis=60000"
         );
         assertThat(result).doesNotContain("raw");
     }
 
-    private Operation operation(OperationStatus status, boolean firstAttempt, Instant expiresAt) {
-        return operation(status, firstAttempt, expiresAt, null);
+    @Test
+    @DisplayName("UT toString() when the row carries a response but no result should say so")
+    void toString_whenRowCarriesResponseButNoResult_shouldSaySo() {
+        // given
+        Operation tested = new Operation(
+                KEY, OperationStatus.PROCESSED, true, null, RESULT_TYPE, RESPONSE, "fingerprint", 60_000L, NOW);
+
+        // when
+        String result = tested.toString();
+
+        // then
+        assertThat(result).contains("hasResult=false", "hasResponse=true");
     }
 
-    private Operation operation(OperationStatus status, boolean firstAttempt, Instant expiresAt, Response response) {
-        return new Operation(KEY, status, firstAttempt, "raw", RESULT_TYPE, response, "fingerprint", expiresAt, NOW);
+    private Operation operation(OperationStatus status, Long remainingMillis) {
+        return operation(status, remainingMillis, null);
+    }
+
+    private Operation operation(OperationStatus status, Long remainingMillis, Response response) {
+        return new Operation(KEY, status, true, "raw", RESULT_TYPE, response, "fingerprint", remainingMillis, NOW);
+    }
+
+    private OperationContext context(String fingerprint) {
+        return new DefaultOperationContext(RESULT_TYPE, () -> null, KEY, fingerprint);
     }
 }

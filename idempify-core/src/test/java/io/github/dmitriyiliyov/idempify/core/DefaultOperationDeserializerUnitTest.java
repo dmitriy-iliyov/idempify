@@ -30,7 +30,7 @@ class DefaultOperationDeserializerUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
-    private static final Instant EXPIRES_AT = Instant.parse("2026-08-10T12:00:00Z");
+    private static final long REMAINING_MILLIS = 86_400_000L;
     private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
 
     @Mock
@@ -75,7 +75,7 @@ class DefaultOperationDeserializerUnitTest {
         assertThat(result.getResultType()).isEqualTo(RESULT_TYPE);
         assertThat(result.getResponse()).isSameAs(response);
         assertThat(result.getFingerprint()).isEqualTo("fingerprint");
-        assertThat(result.getExpiresAt()).isEqualTo(EXPIRES_AT);
+        assertThat(result.getRemainingMillis()).isEqualTo(REMAINING_MILLIS);
         assertThat(result.getCreatedAt()).isEqualTo(NOW);
     }
 
@@ -141,7 +141,7 @@ class DefaultOperationDeserializerUnitTest {
                 result,
                 response,
                 "fingerprint",
-                EXPIRES_AT,
+                REMAINING_MILLIS,
                 NOW
         );
     }

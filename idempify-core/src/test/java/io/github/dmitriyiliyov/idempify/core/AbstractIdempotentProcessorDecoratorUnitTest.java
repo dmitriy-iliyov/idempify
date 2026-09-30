@@ -31,7 +31,7 @@ class AbstractIdempotentProcessorDecoratorUnitTest {
 
     @Test
     @DisplayName("UT process() should pass the call straight through to the delegate")
-    void process_shouldPassCallStraightThroughToDelegate() {
+    void process_shouldPassCallStraightThroughToDelegate() throws Throwable {
         // given
         PassThroughDecorator tested = new PassThroughDecorator(delegate);
         OperationContext context = new DefaultOperationContext(ResultType.ofClass(String.class), () -> "fresh", KEY, null);

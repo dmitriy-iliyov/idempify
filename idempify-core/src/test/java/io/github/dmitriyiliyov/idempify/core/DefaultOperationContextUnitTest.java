@@ -140,4 +140,34 @@ class DefaultOperationContextUnitTest {
 
         assertThat(one).isNotEqualTo(other);
     }
+
+    @Test
+    @DisplayName("UT equals() when compared with null should not be equal")
+    void equals_whenComparedWithNull_shouldNotBeEqual() {
+        assertThat(new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fingerprint")
+                .equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT equals() when the result types differ should tell the contexts apart")
+    void equals_whenResultTypesDiffer_shouldTellContextsApart() {
+        // given
+        DefaultOperationContext one = new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fp");
+        DefaultOperationContext other = new DefaultOperationContext(ResultType.ofClass(Integer.class), callback, KEY, "fp");
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
+    @DisplayName("UT equals() when the callbacks differ should tell the contexts apart")
+    void equals_whenCallbacksDiffer_shouldTellContextsApart() {
+        // given
+        ExternalOperationCallback otherCallback = () -> "other";
+        DefaultOperationContext one = new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fp");
+        DefaultOperationContext other = new DefaultOperationContext(ResultType.ofClass(String.class), otherCallback, KEY, "fp");
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
 }

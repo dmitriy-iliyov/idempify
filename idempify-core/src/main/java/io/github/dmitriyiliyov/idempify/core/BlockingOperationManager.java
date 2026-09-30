@@ -38,7 +38,8 @@ public interface BlockingOperationManager {
      *
      * @param idempotencyKey the key of the operation to complete.
      * @param result         the result to store.
-     * @param ttl            how long the stored result stays replayable, counted from now.
+     * @param ttl            how long the stored result stays replayable, counted by the store from the moment
+     *                       it writes the result.
      * @return the completed operation, never {@code null}: the result is the very object passed in, not a
      *         copy of it read back through the serializer, and the status is the one the store now holds it
      *         in. The expiry stays on the record and is read from there.

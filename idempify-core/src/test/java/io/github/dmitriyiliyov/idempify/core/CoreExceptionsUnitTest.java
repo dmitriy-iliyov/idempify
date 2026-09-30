@@ -161,4 +161,36 @@ class CoreExceptionsUnitTest {
         // then
         assertThat(tested.getCause()).isSameAs(cause);
     }
+
+    @Test
+    @DisplayName("UT SerializationException should be constructible from a message alone")
+    void serializationException_shouldBeConstructibleFromMessageAlone() {
+        // when
+        SerializationException tested = new SerializationException("Error when serializing");
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Error when serializing");
+        assertThat(tested.getCause()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT DeserializationException should be constructible from a message alone")
+    void deserializationException_shouldBeConstructibleFromMessageAlone() {
+        // when
+        DeserializationException tested = new DeserializationException("Error when deserializing");
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Error when deserializing");
+        assertThat(tested.getCause()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT OperationStatusMismatchException should carry the message it was given")
+    void operationStatusMismatchException_shouldCarryMessageItWasGiven() {
+        // when
+        OperationStatusMismatchException tested = new OperationStatusMismatchException("Row is gone");
+
+        // then
+        assertThat(tested.getMessage()).isEqualTo("Row is gone");
+    }
 }

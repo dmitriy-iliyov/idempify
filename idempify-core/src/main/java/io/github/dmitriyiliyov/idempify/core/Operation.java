@@ -10,23 +10,24 @@ import java.util.UUID;
  * One operation as the domain sees it - the stored row decoded, with the result and the response back as
  * objects.
  * <p>
- * Two of its states read like defects and are not. An expiry exists exactly on a
- * {@link OperationStatus#PROCESSED} operation: a claim is written without one, and a row still running is
- * never overwritten however long it has been there. And a {@code PROCESSED} operation may carry no response
- * at all - that means writing the response failed, not that the operation is unfinished, and a repeat is
- * answered from the result instead.
+ * Two of its states read like defects and are not. An expiry exists only on a finished operation -
+ * {@link OperationStatus#PROCESSED}, and in the non-blocking branch
+ * {@link OperationStatus#EXCEPTIONALLY_PROCESSED} as well: a claim is written without one, and a row still
+ * running is never given one however long it has been there. And a {@code PROCESSED} operation may carry no
+ * response at all - that means writing the response failed, not that the operation is unfinished, and a repeat
+ * is answered from the result instead.
  */
 public class Operation {
 
-    private UUID idempotencyKey;
-    private OperationStatus status;
-    private Boolean isFirstAttempt;
-    private Object result;
-    private ResultType resultType;
-    private Response response;
-    private String fingerprint;
-    private Instant expiresAt;
-    private Instant createdAt;
+    protected UUID idempotencyKey;
+    protected OperationStatus status;
+    protected boolean isFirstAttempt;
+    protected Object result;
+    protected ResultType resultType;
+    protected Response response;
+    protected String fingerprint;
+    protected Long remainingMillis;
+    protected Instant createdAt;
 
     public Operation(UUID idempotencyKey,
                      OperationStatus status,
@@ -35,7 +36,7 @@ public class Operation {
                      ResultType resultType,
                      Response response,
                      String fingerprint,
-                     Instant expiresAt,
+                     Long remainingMillis,
                      Instant createdAt) {
         this.idempotencyKey = idempotencyKey;
         this.status = status;
@@ -44,16 +45,22 @@ public class Operation {
         this.resultType = resultType;
         this.response = response;
         this.fingerprint = fingerprint;
-        this.expiresAt = expiresAt;
+        this.remainingMillis = remainingMillis;
         this.createdAt = createdAt;
     }
 
-    /**
-     * Whether an earlier request claimed this key and is still running it: the operation has not finished,
-     * and the write that produced this row was not the one that created it.
-     */
-    public boolean hasConflict() {
-        return OperationStatus.IN_PROCESS.equals(status) && !isFirstAttempt;
+    public static Operation ofContext(OperationContext context) {
+        return new Operation(
+                context.getIdempotencyKey(),
+                OperationStatus.IN_PROCESS,
+                true,
+                null,
+                context.getResultType(),
+                null,
+                context.getFingerprint().orElse(null),
+                null,
+                null
+        );
     }
 
     /**
@@ -61,16 +68,14 @@ public class Operation {
      * <p>
      * Only a {@link OperationStatus#PROCESSED} operation can expire. One still
      * {@link OperationStatus#IN_PROCESS} is never overwritten however long it has been running, which also
-     * makes this mutually exclusive with {@link #hasConflict()}.
+     * makes this mutually exclusive with {@link NonBlockingOperation#hasConflict()}.
      * <p>
-     * The status test is also what keeps the expiry dereference safe: an expiry is written only when an
-     * operation completes, so a row that has one is {@code PROCESSED} by construction and a row without one
-     * never reaches the comparison.
-     *
-     * @param now the current instant, taken from the caller's clock.
+     * The status test is also what keeps the unboxing safe: an expiry is written only when an operation
+     * completes, so a row that has one is {@code PROCESSED} by construction and a row without one never
+     * reaches the comparison.
      */
-    public boolean isExpired(Instant now) {
-        return OperationStatus.PROCESSED.equals(status) && expiresAt.isBefore(now);
+    public boolean isExpired() {
+        return OperationStatus.PROCESSED.equals(status) && remainingMillis <= 0;
     }
 
     public UUID getIdempotencyKey() {
@@ -133,12 +138,17 @@ public class Operation {
         this.fingerprint = fingerprint;
     }
 
-    public Instant getExpiresAt() {
-        return expiresAt;
+    /**
+     * Returns how long the operation stays replayable, measured by the store's clock when the row was read:
+     * zero or negative once it has expired, {@code null} while it is still running. Only a read fills it - a
+     * write ignores it, since the store counts the expiry from the TTL itself.
+     */
+    public Long getRemainingMillis() {
+        return remainingMillis;
     }
 
-    public void setExpiresAt(Instant expiresAt) {
-        this.expiresAt = expiresAt;
+    public void setRemainingMillis(Long remainingMillis) {
+        this.remainingMillis = remainingMillis;
     }
 
     public Instant getCreatedAt() {
@@ -159,7 +169,7 @@ public class Operation {
                 ", resultType=" + resultType +
                 ", hasResponse=" + (response != null) +
                 ", fingerprint='" + fingerprint + '\'' +
-                ", expiresAt=" + expiresAt +
+                ", remainingMillis=" + remainingMillis +
                 ", createdAt=" + createdAt +
                 '}';
     }

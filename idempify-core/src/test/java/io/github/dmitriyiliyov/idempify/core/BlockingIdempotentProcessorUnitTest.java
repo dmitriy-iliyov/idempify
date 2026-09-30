@@ -62,11 +62,11 @@ class BlockingIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor when channel is null should throw NullPointerException")
-    void constructor_whenChannelIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor when stateChannel is null should throw NullPointerException")
+    void constructor_whenStateChannelIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("channel cannot be null");
+                .hasMessageContaining("stateChannel cannot be null");
     }
 
     @Test
@@ -85,7 +85,7 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation is already processed should return the stored result without running the operation")
-    void process_whenOperationIsAlreadyProcessed_shouldReturnStoredResultWithoutRunningOperation() {
+    void process_whenOperationIsAlreadyProcessed_shouldReturnStoredResultWithoutRunningOperation() throws Throwable {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext context = context(callback);
@@ -93,7 +93,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.PROCESSED, true, "replayed"));
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "replayed"));
 
         // when
         Object result = tested.process(context, metadata);
@@ -106,7 +106,7 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation was only claimed should run it and complete it")
-    void process_whenOperationWasOnlyClaimed_shouldRunItAndCompleteIt() {
+    void process_whenOperationWasOnlyClaimed_shouldRunItAndCompleteIt() throws Throwable {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext context = context(callback);
@@ -114,9 +114,9 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
         when(operationManager.complete(KEY, "fresh", TTL))
-                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "fresh"));
 
         // when
         Object result = tested.process(context, metadata);
@@ -129,16 +129,16 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation ran should count a success and not a duplicate")
-    void process_whenOperationRan_shouldCountSuccessAndNotDuplicate() {
+    void process_whenOperationRan_shouldCountSuccessAndNotDuplicate() throws Throwable {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
         when(operationManager.complete(KEY, "fresh", TTL))
-                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "fresh"));
 
         // when
         tested.process(context, metadata);
@@ -150,14 +150,14 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation is replayed should count a duplicate and not a success")
-    void process_whenOperationIsReplayed_shouldCountDuplicateAndNotSuccess() {
+    void process_whenOperationIsReplayed_shouldCountDuplicateAndNotSuccess() throws Throwable {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.PROCESSED, true, "replayed"));
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "replayed"));
 
         // when
         tested.process(context, metadata);
@@ -169,7 +169,7 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation returned null should replay that null without running it again")
-    void process_whenOperationReturnedNull_shouldReplayThatNullWithoutRunningItAgain() {
+    void process_whenOperationReturnedNull_shouldReplayThatNullWithoutRunningItAgain() throws Throwable {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext context = context(callback);
@@ -177,7 +177,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.PROCESSED, true, null));
+                .thenReturn(detail(OperationStatus.PROCESSED, false, null));
 
         // when
         Object result = tested.process(context, metadata);
@@ -189,15 +189,15 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the transaction is through should publish what it recorded about the operation")
-    void process_whenTransactionIsThrough_shouldPublishWhatItRecordedAboutOperation() {
+    void process_whenTransactionIsThrough_shouldPublishWhatItRecordedAboutOperation() throws Throwable {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
-        OperationDetail completed = detail(OperationStatus.PROCESSED, false, "fresh");
+        OperationDetail completed = detail(OperationStatus.PROCESSED, true, "fresh");
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
         when(operationManager.complete(KEY, "fresh", TTL)).thenReturn(completed);
 
         // when
@@ -209,11 +209,11 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() when the operation is replayed should publish the replayed state too")
-    void process_whenOperationIsReplayed_shouldPublishReplayedStateToo() {
+    void process_whenOperationIsReplayed_shouldPublishReplayedStateToo() throws Throwable {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
-        OperationDetail replayed = detail(OperationStatus.PROCESSED, true, "replayed");
+        OperationDetail replayed = detail(OperationStatus.PROCESSED, false, "replayed");
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata)).thenReturn(replayed);
@@ -235,7 +235,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
 
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
@@ -245,8 +245,8 @@ class BlockingIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT process() when the operation throws a checked exception should wrap it in IdempotentProcessingException")
-    void process_whenOperationThrowsCheckedException_shouldWrapItInIdempotentProcessingException() {
+    @DisplayName("UT process() when the operation throws a checked exception should let it out unchanged")
+    void process_whenOperationThrowsCheckedException_shouldLetItOutUnchanged() {
         // given
         Exception thrown = new Exception("checked blew up");
         OperationContext context = context(new ThrowingCallback(thrown));
@@ -254,13 +254,10 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
 
         // when / then
-        assertThatThrownBy(() -> tested.process(context, metadata))
-                .isInstanceOf(IdempotentProcessingException.class)
-                .hasMessage("Surrounded method throws")
-                .hasCause(thrown);
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
 
         verify(operationManager, never()).complete(any(), any(), any());
         verify(eventListener, never()).onSuccess();
@@ -297,7 +294,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
 
         // when
         assertThatThrownBy(() -> tested.process(context, metadata))
@@ -334,7 +331,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
 
         // when
         assertThatThrownBy(() -> tested.process(context, metadata))
@@ -368,17 +365,33 @@ class BlockingIdempotentProcessorUnitTest {
     }
 
     @Test
+    @DisplayName("UT process() when the operation manager throws an error should let it out unchanged")
+    void process_whenOperationManagerThrowsError_shouldLetItOutUnchanged() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        AssertionError error = new AssertionError("broken store");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata)).thenThrow(error);
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(error);
+        verify(eventListener, times(1)).onException();
+    }
+
+    @Test
     @DisplayName("UT process() when the operation is completed should report no failure")
-    void process_whenOperationIsCompleted_shouldReportNoFailure() {
+    void process_whenOperationIsCompleted_shouldReportNoFailure() throws Throwable {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
         when(operationManager.complete(KEY, "fresh", TTL))
-                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "fresh"));
 
         // when
         tested.process(context, metadata);
@@ -389,7 +402,7 @@ class BlockingIdempotentProcessorUnitTest {
 
     @Test
     @DisplayName("UT process() should complete the operation under the call site's own ttl")
-    void process_shouldCompleteOperationUnderCallSitesOwnTtl() {
+    void process_shouldCompleteOperationUnderCallSitesOwnTtl() throws Throwable {
         // given
         Duration callSiteTtl = Duration.ofMinutes(30);
         OperationContext context = context(new RecordingCallback("fresh"));
@@ -397,9 +410,9 @@ class BlockingIdempotentProcessorUnitTest {
 
         runCallbackInTransaction();
         when(operationManager.startOrReply(context, metadata))
-                .thenReturn(detail(OperationStatus.IN_PROCESS, false, null));
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
         when(operationManager.complete(KEY, "fresh", callSiteTtl))
-                .thenReturn(detail(OperationStatus.PROCESSED, false, "fresh"));
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "fresh"));
 
         // when
         Object result = tested.process(context, metadata);
@@ -467,8 +480,8 @@ class BlockingIdempotentProcessorUnitTest {
         return new DefaultOperationContext(RESULT_TYPE, callback, KEY, "fingerprint");
     }
 
-    private OperationDetail detail(OperationStatus status, boolean replayed, String result) {
-        return new DefaultOperationDetail(KEY, status, replayed, result);
+    private OperationDetail detail(OperationStatus status, boolean shouldRecordResponse, String result) {
+        return new DefaultOperationDetail(KEY, status, result, shouldRecordResponse);
     }
 
     private static final class RecordingCallback implements ExternalOperationCallback {

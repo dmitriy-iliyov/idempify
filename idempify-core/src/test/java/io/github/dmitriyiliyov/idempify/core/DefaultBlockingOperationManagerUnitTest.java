@@ -13,7 +13,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -21,7 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 /**
@@ -37,36 +36,22 @@ class DefaultBlockingOperationManagerUnitTest {
     private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
     private static final Instant NOW = TestClock.EPOCH;
     private static final Duration TTL = Duration.ofHours(24);
-    private static final Instant EXPIRES_AT = NOW.plus(TTL);
 
-    @Mock
-    private OperationCreator creator;
     @Mock
     private BlockingOperationRepository repository;
     @Mock
     private FingerprintMatcher fingerprintMatcher;
 
-    private final OperationSerializer serializer = new RowSerializer();
-    private final OperationDeserializer deserializer = new RowDeserializer();
+    private final OperationSerializer<Operation, RawOperation> serializer = new RowSerializer();
+    private final OperationDeserializer<RawOperation, Operation> deserializer = new RowDeserializer();
     private final ResultSerializer resultSerializer = new TextResultSerializer();
 
-    private TestClock clock;
     private DefaultBlockingOperationManager tested;
 
     @BeforeEach
     void setUp() {
-        clock = TestClock.fixedAt(NOW);
-        tested = manager(clock);
-    }
-
-    @Test
-    @DisplayName("UT constructor() when creator is null should throw NullPointerException")
-    void constructor_whenCreatorIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                null, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, clock))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("creator cannot be null");
+        tested = new DefaultBlockingOperationManager(
+                repository, fingerprintMatcher, serializer, deserializer, resultSerializer);
     }
 
     @Test
@@ -74,7 +59,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, null, fingerprintMatcher, serializer, deserializer, resultSerializer, clock))
+                null, fingerprintMatcher, serializer, deserializer, resultSerializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("repository cannot be null");
     }
@@ -84,7 +69,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void constructor_whenFingerprintMatcherIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, repository, null, serializer, deserializer, resultSerializer, clock))
+                repository, null, serializer, deserializer, resultSerializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("fingerprintMatcher cannot be null");
     }
@@ -94,7 +79,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void constructor_whenSerializerIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, repository, fingerprintMatcher, null, deserializer, resultSerializer, clock))
+                repository, fingerprintMatcher, null, deserializer, resultSerializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("serializer cannot be null");
     }
@@ -104,7 +89,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void constructor_whenDeserializerIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, repository, fingerprintMatcher, serializer, null, resultSerializer, clock))
+                repository, fingerprintMatcher, serializer, null, resultSerializer))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("deserializer cannot be null");
     }
@@ -114,26 +99,17 @@ class DefaultBlockingOperationManagerUnitTest {
     void constructor_whenResultSerializerIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, repository, fingerprintMatcher, serializer, deserializer, null, clock))
+                repository, fingerprintMatcher, serializer, deserializer, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("resultSerializer cannot be null");
     }
 
-    @Test
-    @DisplayName("UT constructor() when clock is null should throw NullPointerException")
-    void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new DefaultBlockingOperationManager(
-                creator, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("clock cannot be null");
-    }
 
     @Test
     @DisplayName("UT startOrReply() when the key is seen for the first time should hand back an operation nobody has completed")
     void startOrReply_whenKeyIsSeenForFirstTime_shouldHandBackOperationNobodyHasCompleted() {
         // given
-        givenClaimed(claim());
+        givenClaimAnsweredWith(claim());
 
         // when
         OperationDetail detail = tested.startOrReply(context("fingerprint"), metadata(false));
@@ -142,28 +118,14 @@ class DefaultBlockingOperationManagerUnitTest {
         assertThat(detail.getIdempotencyKey()).isEqualTo(KEY);
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
         assertThat(detail.getResult()).isNull();
-        assertThat(detail.replayed()).isFalse();
+        assertThat(detail.shouldRecordResponse()).isTrue();
     }
 
     @Test
-    @DisplayName("UT startOrReply() should build the claim from the clock's own instant")
-    void startOrReply_shouldBuildClaimFromClocksOwnInstant() {
+    @DisplayName("UT startOrReply() should claim the key with a first-attempt row leaving creation time and expiry to the store")
+    void startOrReply_shouldClaimKeyWithFirstAttemptRowLeavingCreationTimeAndExpiryToStore() {
         // given
-        OperationContext context = context("fingerprint");
-        givenClaimed(claim());
-
-        // when
-        tested.startOrReply(context, metadata(false));
-
-        // then
-        verify(creator).create(context, NOW);
-    }
-
-    @Test
-    @DisplayName("UT startOrReply() should claim the key with a row that carries no expiry")
-    void startOrReply_shouldClaimKeyWithRowThatCarriesNoExpiry() {
-        // given
-        givenClaimed(claim());
+        givenClaimAnsweredWith(claim());
 
         // when
         tested.startOrReply(context("fingerprint"), metadata(false));
@@ -171,8 +133,13 @@ class DefaultBlockingOperationManagerUnitTest {
         // then
         ArgumentCaptor<RawOperation> claimed = ArgumentCaptor.forClass(RawOperation.class);
         verify(repository).saveIfAbsent(claimed.capture());
-        assertThat(claimed.getValue().expiresAt()).isNull();
+        assertThat(claimed.getValue().idempotencyKey()).isEqualTo(KEY);
         assertThat(claimed.getValue().status()).isEqualTo(OperationStatus.IN_PROCESS);
+        assertThat(claimed.getValue().isFirstAttempt()).isTrue();
+        assertThat(claimed.getValue().fingerprint()).isEqualTo("fingerprint");
+        assertThat(claimed.getValue().createdAt()).isNull();
+        assertThat(claimed.getValue().remainingMillis()).isNull();
+        assertThat(claimed.getValue().result()).isNull();
     }
 
     @Test
@@ -187,7 +154,7 @@ class DefaultBlockingOperationManagerUnitTest {
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
         assertThat(detail.getResult()).isEqualTo("result");
-        assertThat(detail.replayed()).isTrue();
+        assertThat(detail.shouldRecordResponse()).isFalse();
     }
 
     @Test
@@ -201,16 +168,15 @@ class DefaultBlockingOperationManagerUnitTest {
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(detail.replayed()).isTrue();
+        assertThat(detail.shouldRecordResponse()).isFalse();
         assertThat(detail.getResult()).isNull();
     }
 
     @Test
-    @DisplayName("UT startOrReply() when the stored row has expired should rewrite it and start over")
-    void startOrReply_whenStoredRowHasExpired_shouldRewriteItAndStartOver() {
+    @DisplayName("UT startOrReply() when the stored row has expired should rewrite it with the fresh claim and start over")
+    void startOrReply_whenStoredRowHasExpired_shouldRewriteItWithFreshClaimAndStartOver() {
         // given
-        RawOperation claim = row(claim());
-        when(creator.create(any(), eq(NOW))).thenReturn(claim());
+        RawOperation claim = row(Operation.ofContext(context("fingerprint")));
         when(repository.saveIfAbsent(claim)).thenReturn(row(expired()));
         when(repository.update(claim, OperationStatus.PROCESSED)).thenReturn(claim);
 
@@ -219,7 +185,8 @@ class DefaultBlockingOperationManagerUnitTest {
 
         // then
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
-        assertThat(detail.replayed()).isFalse();
+        assertThat(detail.shouldRecordResponse()).isTrue();
+        assertThat(detail.getResult()).isNull();
         verify(repository, times(1)).update(claim, OperationStatus.PROCESSED);
     }
 
@@ -237,11 +204,11 @@ class DefaultBlockingOperationManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT startOrReply() when the stored row is in process past its expiry should leave it alone")
-    void startOrReply_whenStoredRowIsInProcessPastItsExpiry_shouldLeaveItAlone() {
+    @DisplayName("UT startOrReply() when the stored row is in process with its time spent should leave it alone")
+    void startOrReply_whenStoredRowIsInProcessWithItsTimeSpent_shouldLeaveItAlone() {
         // given
         Operation stale = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, RESULT_TYPE, null,
-                "fingerprint", NOW.minusSeconds(1), NOW.minusSeconds(10));
+                "fingerprint", -1L, NOW.minusSeconds(10));
         givenClaimAnsweredWith(stale);
 
         // when
@@ -257,9 +224,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void startOrReply_whenFingerprintingIsOnAndKeyRepeats_shouldCompareStoredFingerprintAgainstCurrentOne() {
         // given
         FingerprintPolicy policy = mock(FingerprintPolicy.class);
-        Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, RESULT_TYPE, null,
-                "stored", null, NOW);
-        givenClaimAnsweredWith(stored);
+        givenClaimAnsweredWith(repeated("stored"), context("current"));
 
         // when
         tested.startOrReply(context("current"), metadata(policy));
@@ -269,12 +234,25 @@ class DefaultBlockingOperationManagerUnitTest {
     }
 
     @Test
+    @DisplayName("UT startOrReply() when the fingerprints do not match should let the mismatch out")
+    void startOrReply_whenFingerprintsDoNotMatch_shouldLetMismatchOut() {
+        // given
+        FingerprintPolicy policy = mock(FingerprintPolicy.class);
+        givenClaimAnsweredWith(repeated("stored"), context("current"));
+        IllegalStateException mismatch = new IllegalStateException("fingerprint mismatch");
+        doThrow(mismatch).when(fingerprintMatcher).match("current", "stored", policy, KEY);
+        OperationContext context = context("current");
+        OperationMetadata metadata = metadata(policy);
+
+        // when / then
+        assertThatThrownBy(() -> tested.startOrReply(context, metadata)).isSameAs(mismatch);
+    }
+
+    @Test
     @DisplayName("UT startOrReply() when fingerprinting is on and the key repeats without a fingerprint should throw InvalidFingerprintException")
     void startOrReply_whenFingerprintingIsOnAndKeyRepeatsWithoutFingerprint_shouldThrowInvalidFingerprintException() {
         // given
-        Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, RESULT_TYPE, null,
-                "stored", null, NOW);
-        givenClaimAnsweredWith(stored);
+        givenClaimAnsweredWith(repeated("stored"), context(null));
         OperationContext context = context(null);
         OperationMetadata metadata = metadata(true);
 
@@ -289,7 +267,7 @@ class DefaultBlockingOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when fingerprinting is on and the key is new should not compare anything")
     void startOrReply_whenFingerprintingIsOnAndKeyIsNew_shouldNotCompareAnything() {
         // given
-        givenClaimed(claim());
+        givenClaimAnsweredWith(claim(), context("current"));
 
         // when
         tested.startOrReply(context("current"), metadata(true));
@@ -302,9 +280,7 @@ class DefaultBlockingOperationManagerUnitTest {
     @DisplayName("UT startOrReply() when fingerprinting is off should not compare anything")
     void startOrReply_whenFingerprintingIsOff_shouldNotCompareAnything() {
         // given
-        Operation stored = new Operation(KEY, OperationStatus.IN_PROCESS, false, null, RESULT_TYPE, null,
-                "stored", null, NOW);
-        givenClaimAnsweredWith(stored);
+        givenClaimAnsweredWith(repeated("stored"), context("current"));
 
         // when
         tested.startOrReply(context("current"), metadata(false));
@@ -322,43 +298,18 @@ class DefaultBlockingOperationManagerUnitTest {
         // then
         assertThat(detail.getResult()).isEqualTo("result");
         verify(repository, times(1)).saveResultAndUpdateStatus(
-                KEY, "raw-result", OperationStatus.PROCESSED, EXPIRES_AT, OperationStatus.IN_PROCESS);
+                KEY, "raw-result", OperationStatus.PROCESSED, TTL.toMillis(), OperationStatus.IN_PROCESS);
     }
 
-    @Test
-    @DisplayName("UT complete() should count the expiry from the moment the result exists, not from the claim")
-    void complete_shouldCountExpiryFromMomentResultExistsNotFromClaim() {
-        // given
-        clock.advance(Duration.ofHours(2));
-
-        // when
-        tested.complete(KEY, "result", TTL);
-
-        // then
-        assertThat(capturedExpiry()).isEqualTo(NOW.plus(Duration.ofHours(2)).plus(TTL));
-    }
 
     @Test
-    @DisplayName("UT complete() when the operation outran its own ttl should still store an expiry in the future")
-    void complete_whenOperationOutranItsOwnTtl_shouldStillStoreExpiryInTheFuture() {
-        // given
-        clock.advance(TTL.plus(Duration.ofMinutes(1)));
-
-        // when
-        tested.complete(KEY, "result", TTL);
-
-        // then
-        assertThat(capturedExpiry()).isAfter(clock.instant());
-    }
-
-    @Test
-    @DisplayName("UT complete() should hand back a detail that is not a replay")
-    void complete_shouldHandBackDetailThatIsNotReplay() {
+    @DisplayName("UT complete() should hand back a detail whose response is still to be recorded")
+    void complete_shouldHandBackDetailWhoseResponseIsStillToBeRecorded() {
         // when
         OperationDetail detail = tested.complete(KEY, "result", TTL);
 
         // then
-        assertThat(detail.replayed()).isFalse();
+        assertThat(detail.shouldRecordResponse()).isTrue();
         assertThat(detail.getIdempotencyKey()).isEqualTo(KEY);
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
     }
@@ -379,7 +330,6 @@ class DefaultBlockingOperationManagerUnitTest {
     @Test
     @DisplayName("UT complete() when the operation returned null should store and hand back that null")
     void complete_whenOperationReturnedNull_shouldStoreAndHandBackThatNull() {
-        // given
         // when
         OperationDetail detail = tested.complete(KEY, null, TTL);
 
@@ -387,7 +337,7 @@ class DefaultBlockingOperationManagerUnitTest {
         assertThat(detail.getResult()).isNull();
         assertThat(detail.getStatus()).isEqualTo(OperationStatus.PROCESSED);
         verify(repository).saveResultAndUpdateStatus(
-                KEY, null, OperationStatus.PROCESSED, EXPIRES_AT, OperationStatus.IN_PROCESS);
+                KEY, null, OperationStatus.PROCESSED, TTL.toMillis(), OperationStatus.IN_PROCESS);
     }
 
     @Test
@@ -395,7 +345,7 @@ class DefaultBlockingOperationManagerUnitTest {
     void complete_whenRowIsNoLongerInProcess_shouldLetMismatchOut() {
         // given
         doThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS))
-                .when(repository).saveResultAndUpdateStatus(any(), any(), any(), any(), any());
+                .when(repository).saveResultAndUpdateStatus(any(), any(), any(), anyLong(), any());
 
         // when / then
         assertThatThrownBy(() -> tested.complete(KEY, "result", TTL))
@@ -403,25 +353,16 @@ class DefaultBlockingOperationManagerUnitTest {
                 .hasMessageContaining(KEY.toString());
     }
 
-    private void givenClaimed(Operation claim) {
-        when(creator.create(any(), eq(NOW))).thenReturn(claim);
-        when(repository.saveIfAbsent(row(claim))).thenReturn(row(claim));
-    }
-
     private void givenClaimAnsweredWith(Operation stored) {
-        when(creator.create(any(), eq(NOW))).thenReturn(claim());
-        when(repository.saveIfAbsent(row(claim()))).thenReturn(row(stored));
+        givenClaimAnsweredWith(stored, context("fingerprint"));
     }
 
-    private Instant capturedExpiry() {
-        ArgumentCaptor<Instant> expiresAt = ArgumentCaptor.forClass(Instant.class);
-        verify(repository).saveResultAndUpdateStatus(any(), any(), any(), expiresAt.capture(), any());
-        return expiresAt.getValue();
-    }
-
-    private DefaultBlockingOperationManager manager(Clock clock) {
-        return new DefaultBlockingOperationManager(
-                creator, repository, fingerprintMatcher, serializer, deserializer, resultSerializer, clock);
+    /**
+     * The claim is the row the manager builds from the context itself, so the stub has to be keyed by the
+     * same context the case runs with.
+     */
+    private void givenClaimAnsweredWith(Operation stored, OperationContext context) {
+        when(repository.saveIfAbsent(row(Operation.ofContext(context)))).thenReturn(row(stored));
     }
 
     private static OperationContext context(String fingerprint) {
@@ -443,21 +384,26 @@ class DefaultBlockingOperationManagerUnitTest {
                 null, NOW);
     }
 
+    private static Operation repeated(String fingerprint) {
+        return new Operation(KEY, OperationStatus.IN_PROCESS, false, null, RESULT_TYPE, null, fingerprint,
+                null, NOW);
+    }
+
     private static Operation processed(String result) {
         return new Operation(KEY, OperationStatus.PROCESSED, false, result, RESULT_TYPE, null, "fingerprint",
-                EXPIRES_AT, NOW);
+                TTL.toMillis(), NOW);
     }
 
     private static Operation expired() {
         return new Operation(KEY, OperationStatus.PROCESSED, false, "stale", RESULT_TYPE, null, "old",
-                NOW.minusSeconds(1), NOW.minusSeconds(10));
+                -1L, NOW.minusSeconds(10));
     }
 
     private static RawOperation row(Operation operation) {
         return new RowSerializer().serialize(operation);
     }
 
-    private static final class RowSerializer implements OperationSerializer {
+    private static final class RowSerializer implements OperationSerializer<Operation, RawOperation> {
 
         @Override
         public RawOperation serialize(Operation operation) {
@@ -468,13 +414,13 @@ class DefaultBlockingOperationManagerUnitTest {
                     (String) operation.getResult(),
                     null,
                     operation.getFingerprint(),
-                    operation.getExpiresAt(),
+                    operation.getRemainingMillis(),
                     operation.getCreatedAt()
             );
         }
     }
 
-    private static final class RowDeserializer implements OperationDeserializer {
+    private static final class RowDeserializer implements OperationDeserializer<RawOperation, Operation> {
 
         @Override
         public Operation deserialize(RawOperation operation, ResultType resultType) {
@@ -486,7 +432,7 @@ class DefaultBlockingOperationManagerUnitTest {
                     resultType,
                     null,
                     operation.fingerprint(),
-                    operation.expiresAt(),
+                    operation.remainingMillis(),
                     operation.createdAt()
             );
         }

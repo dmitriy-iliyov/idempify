@@ -35,6 +35,12 @@ public interface IdempotencyEventListener {
     void onSuccess();
 
     /**
+     * The business operation threw and its failure was kept on the record, so repeats of the key are answered
+     * with it - a first attempt, not a replay.
+     */
+    void onExceptionallySuccess();
+
+    /**
      * The listener installed when the application declares none, so that the processors can call the hook
      * unconditionally.
      */
@@ -54,5 +60,8 @@ public interface IdempotencyEventListener {
 
         @Override
         public void onSuccess() {}
+
+        @Override
+        public void onExceptionallySuccess() {}
     };
 }

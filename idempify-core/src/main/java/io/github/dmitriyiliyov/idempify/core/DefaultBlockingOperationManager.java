@@ -6,7 +6,6 @@ import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
@@ -14,33 +13,27 @@ import java.util.UUID;
 /**
  * Owns the conversion between the domain and the store: the repository below deals in rows, and this is the
  * one place that knows what those rows decode into. The declared type of a result comes from the call site
- * rather than the row, so a caller without one - the response path - never has to invent it.
+ * rather than the row.
  */
 public class DefaultBlockingOperationManager implements BlockingOperationManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultBlockingOperationManager.class);
-    private final OperationCreator creator;
     private final BlockingOperationRepository repository;
     private final FingerprintMatcher fingerprintMatcher;
-    private final OperationSerializer serializer;
-    private final OperationDeserializer deserializer;
+    private final OperationSerializer<Operation, RawOperation> serializer;
+    private final OperationDeserializer<RawOperation, Operation> deserializer;
     private final ResultSerializer resultSerializer;
-    private final Clock clock;
 
-    public DefaultBlockingOperationManager(OperationCreator creator,
-                                           BlockingOperationRepository repository,
+    public DefaultBlockingOperationManager(BlockingOperationRepository repository,
                                            FingerprintMatcher fingerprintMatcher,
-                                           OperationSerializer serializer,
-                                           OperationDeserializer deserializer,
-                                           ResultSerializer resultSerializer,
-                                           Clock clock) {
-        this.creator = Objects.requireNonNull(creator, "creator cannot be null");
+                                           OperationSerializer<Operation, RawOperation> serializer,
+                                           OperationDeserializer<RawOperation, Operation> deserializer,
+                                           ResultSerializer resultSerializer) {
         this.repository = Objects.requireNonNull(repository, "repository cannot be null");
         this.fingerprintMatcher = Objects.requireNonNull(fingerprintMatcher, "fingerprintMatcher cannot be null");
         this.serializer = Objects.requireNonNull(serializer, "serializer cannot be null");
         this.deserializer = Objects.requireNonNull(deserializer, "deserializer cannot be null");
         this.resultSerializer = Objects.requireNonNull(resultSerializer, "resultSerializer cannot be null");
-        this.clock = Objects.requireNonNull(clock, "clock cannot be null");
     }
 
     @Override
@@ -61,35 +54,27 @@ public class DefaultBlockingOperationManager implements BlockingOperationManager
             }
         }
 
-        boolean replayed = false;
-        Object result = null;
-
-        if (OperationStatus.PROCESSED.equals(operation.getStatus())) {
-            replayed = true;
-            result = operation.getResult();
-        }
-
         return new DefaultOperationDetail(
                 operation.getIdempotencyKey(),
                 operation.getStatus(),
-                replayed,
-                result
+                operation.getResult(),
+                !OperationStatus.PROCESSED.equals(operation.getStatus())
         );
     }
 
     protected Operation saveOrFetch(OperationContext context) {
-        RawOperation rawToSave = serializer.serialize(
-                creator.create(context, clock.instant())
+        RawOperation serialized = serializer.serialize(
+                Operation.ofContext(context)
         );
 
         Operation exists = deserializer.deserialize(
-                repository.saveIfAbsent(rawToSave),
+                repository.saveIfAbsent(serialized),
                 context.getResultType()
         );
 
-        if (exists.isExpired(clock.instant())) {
+        if (exists.isExpired()) {
             exists = deserializer.deserialize(
-                    repository.update(rawToSave, OperationStatus.PROCESSED),
+                    repository.update(serialized, OperationStatus.PROCESSED),
                     context.getResultType()
             );
         }
@@ -104,14 +89,14 @@ public class DefaultBlockingOperationManager implements BlockingOperationManager
                 idempotencyKey,
                 result == null ? null : resultSerializer.serialize(result),
                 newStatus,
-                clock.instant().plus(ttl),
+                ttl.toMillis(),
                 OperationStatus.IN_PROCESS
         );
         return new DefaultOperationDetail(
                 idempotencyKey,
                 newStatus,
-                false,
-                result
+                result,
+                true
         );
     }
 }

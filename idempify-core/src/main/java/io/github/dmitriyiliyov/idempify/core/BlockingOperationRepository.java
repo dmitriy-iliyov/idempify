@@ -1,18 +1,18 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Write side of a store whose own atomicity decides the races, which is what a transactional processor
- * relies on instead of taking a lock.
+ * Write side of a store whose own atomicity decides the races, which is what the blocking processor relies
+ * on: the claim is scoped to the caller's transaction, so a duplicate waits on it rather than meeting it.
  * <p>
  * Both guarantees are load-bearing rather than stylistic: {@link #saveIfAbsent} must let exactly one
  * concurrent request claim a key, and both updates must be conditional on the row's current status, because
  * requests for the same key run through them at the same time.
  * <p>
- * Like the read side, this interface deals in {@link RawOperation} only - an implementation stores the
- * components it is given and returns the components it holds, and never learns what they decode into.
+ * This interface deals in {@link RawOperation} only, and never learns what its components decode into. Time is the store's own: it sets the creation time itself, counts an expiry from the TTL it is
+ * handed, and answers every read with the time the row has left by its own clock - so no two callers ever
+ * compare a stored moment against clocks of their own.
  */
 public interface BlockingOperationRepository {
 
@@ -36,8 +36,8 @@ public interface BlockingOperationRepository {
      * Updates an existing row, transitioning it to a new status. The update is performed conditionally
      * based on the row's current status.
      * <p>
-     * This method takes no claim of its own - the caller is required to hold the row already, in the
-     * transactional path through the {@link #saveIfAbsent} that preceded it. Called without that, the
+     * This method takes no claim of its own - the caller is required to hold the row already, claimed by
+     * the {@link #saveIfAbsent} that preceded it in the same transaction. Called without that, the
      * condition below turns into a race the caller cannot see.
      * <p>
      * A missed condition is therefore a failure rather than an outcome to inspect - the row is expected to
@@ -45,8 +45,9 @@ public interface BlockingOperationRepository {
      * found - a row written by somebody else is indistinguishable from the caller's own once returned, and
      * everything downstream reads it as the caller's.
      * <p>
-     * Every column is written from {@code operation}, {@code expires_at} included - an implementation that
-     * leaves one behind would let a row reclaimed after expiry keep the expiry of the operation it replaced.
+     * The columns the row carries are written from {@code operation}, and the expiry is cleared - an
+     * implementation that leaves it behind would let a row reclaimed after expiry keep the expiry of the
+     * operation it replaced.
      *
      * @param operation the row to update.
      * @param onStatus  the expected current status of the row for the update to proceed.
@@ -71,13 +72,14 @@ public interface BlockingOperationRepository {
      * @param idempotencyKey the idempotency key of the row to update.
      * @param result         the already serialized result to save.
      * @param status         the new status of the operation.
-     * @param expiresAt      when the stored result stops being replayable.
+     * @param ttlMillis      how long the stored result stays replayable, counted by the store from the moment
+     *                       of this write.
      * @param onStatus       the expected current status of the row for the update to proceed.
      * @throws OperationStatusMismatchException if no row with this key is in {@code onStatus}.
      */
     void saveResultAndUpdateStatus(UUID idempotencyKey,
                                    String result,
                                    OperationStatus status,
-                                   Instant expiresAt,
+                                   long ttlMillis,
                                    OperationStatus onStatus);
 }

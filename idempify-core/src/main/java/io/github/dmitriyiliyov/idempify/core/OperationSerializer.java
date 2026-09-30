@@ -7,6 +7,6 @@ package io.github.dmitriyiliyov.idempify.core;
  * Must round-trip with the {@link OperationDeserializer} configured beside it - what one writes, the other
  * reads back.
  */
-public interface OperationSerializer {
-    RawOperation serialize(Operation operation);
+public interface OperationSerializer<T, K> {
+    K serialize(T operation);
 }

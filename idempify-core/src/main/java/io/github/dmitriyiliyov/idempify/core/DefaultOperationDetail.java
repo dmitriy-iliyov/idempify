@@ -3,21 +3,21 @@ package io.github.dmitriyiliyov.idempify.core;
 import java.util.Objects;
 import java.util.UUID;
 
-public final class DefaultOperationDetail implements OperationDetail {
+public class DefaultOperationDetail implements OperationDetail {
 
     private final UUID idempotencyKey;
     private final OperationStatus status;
-    private final boolean replayed;
+    private final boolean shouldRecordResponse;
     private final Object result;
 
     public DefaultOperationDetail(UUID idempotencyKey,
                                   OperationStatus status,
-                                  boolean replayed,
-                                  Object result) {
+                                  Object result,
+                                  boolean shouldRecordResponse) {
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey cannot be null");
         this.status = Objects.requireNonNull(status, "status cannot be null");
-        this.replayed = replayed;
         this.result = result;
+        this.shouldRecordResponse = shouldRecordResponse;
     }
 
     @Override
@@ -31,8 +31,8 @@ public final class DefaultOperationDetail implements OperationDetail {
     }
 
     @Override
-    public boolean replayed() {
-        return replayed;
+    public boolean shouldRecordResponse() {
+        return shouldRecordResponse;
     }
 
     @Override
@@ -45,7 +45,7 @@ public final class DefaultOperationDetail implements OperationDetail {
         return "DefaultOperationDetail{" +
                 "idempotencyKey=" + idempotencyKey +
                 ", status=" + status +
-                ", replayed=" + replayed +
+                ", shouldRecordResponse=" + shouldRecordResponse +
                 ", result=" + result +
                 '}';
     }

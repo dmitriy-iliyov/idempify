@@ -6,7 +6,7 @@ import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 
 import java.util.Objects;
 
-public class DefaultOperationDeserializer implements OperationDeserializer {
+public class DefaultOperationDeserializer implements OperationDeserializer<RawOperation, Operation> {
 
     private final ResultDeserializer resultDeserializer;
     private final ResponseDeserializer responseDeserializer;
@@ -18,23 +18,23 @@ public class DefaultOperationDeserializer implements OperationDeserializer {
     }
 
     @Override
-    public Operation deserialize(RawOperation operation, ResultType resultType) {
-        if (operation == null) {
+    public Operation deserialize(RawOperation rawOperation, ResultType resultType) {
+        if (rawOperation == null) {
             return null;
         }
 
         return new Operation(
-                operation.idempotencyKey(),
-                operation.status(),
-                operation.isFirstAttempt(),
-                operation.result() == null || resultType == null
+                rawOperation.idempotencyKey(),
+                rawOperation.status(),
+                rawOperation.isFirstAttempt(),
+                rawOperation.result() == null || resultType == null
                         ? null
-                        : resultDeserializer.deserialize(operation.result(), resultType),
+                        : resultDeserializer.deserialize(rawOperation.result(), resultType),
                 resultType,
-                operation.response() == null ? null : responseDeserializer.deserialize(operation.response()),
-                operation.fingerprint(),
-                operation.expiresAt(),
-                operation.createdAt()
+                rawOperation.response() == null ? null : responseDeserializer.deserialize(rawOperation.response()),
+                rawOperation.fingerprint(),
+                rawOperation.remainingMillis(),
+                rawOperation.createdAt()
         );
     }
 }
