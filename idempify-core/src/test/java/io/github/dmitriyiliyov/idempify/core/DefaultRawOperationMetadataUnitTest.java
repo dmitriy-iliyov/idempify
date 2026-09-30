@@ -5,6 +5,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,10 +23,11 @@ class DefaultRawOperationMetadataUnitTest {
         // then
         assertThat(result.getHeaderName()).isNull();
         assertThat(result.getTtl()).isNull();
+        assertThat(result.getLockTtl()).isNull();
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(result.getCache5xxToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(result.getReleaseFor()).isNull();
     }
 
     @Test
@@ -34,22 +37,24 @@ class DefaultRawOperationMetadataUnitTest {
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
                 .headerName("X-Payment-Key")
                 .ttl(30)
+                .lockTtl(2)
                 .timeUnit(TimeUnit.MINUTES)
                 .processorType(ProcessorTypeToggle.BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cache4xxToggle(Toggle.DISABLE)
-                .cache5xxToggle(Toggle.DISABLE)
+                .releaseForToggle(Toggle.ENABLE)
+                .releaseFor(List.of(IllegalStateException.class))
                 .build();
 
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Payment-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(30));
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(2));
         assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.BLOCKING);
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
-        assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
-        assertThat(result.getCache5xxToggle()).isEqualTo(Toggle.DISABLE);
+        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.ENABLE);
+        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -134,6 +139,58 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
+    @DisplayName("UT build() when the named exceptions keep a failure on the record should switch releasing on by itself")
+    void build_whenNamedExceptionsKeepFailureOnRecord_shouldSwitchReleasingOnByItself() {
+        // when
+        RawOperationMetadata result = DefaultRawOperationMetadata.builder()
+                .releaseFor(List.of(IllegalStateException.class))
+                .build();
+
+        // then
+        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.ENABLE);
+    }
+
+    @Test
+    @DisplayName("UT build() when releasing is switched off while exceptions are named should refuse the pair")
+    void build_whenReleasingIsSwitchedOffWhileExceptionsAreNamed_shouldRefusePair() {
+        // given
+        DefaultRawOperationMetadata.Builder tested = DefaultRawOperationMetadata.builder()
+                .releaseForToggle(Toggle.DISABLE)
+                .releaseFor(List.of(IllegalStateException.class));
+
+        // when / then
+        assertThatThrownBy(tested::build)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("releaseForToggle cannot be DISABLE");
+    }
+
+    @Test
+    @DisplayName("UT build() when releasing is switched off while every failure is named should refuse that pair too")
+    void build_whenReleasingIsSwitchedOffWhileEveryFailureIsNamed_shouldRefusePairToo() {
+        // given
+        DefaultRawOperationMetadata.Builder tested = DefaultRawOperationMetadata.builder()
+                .releaseForToggle(Toggle.DISABLE)
+                .releaseFor(List.of(Throwable.class));
+
+        // when / then
+        assertThatThrownBy(tested::build)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("releaseForToggle cannot be DISABLE");
+    }
+
+    @Test
+    @DisplayName("UT lockTtl() when the amount is negative should leave the lock ttl unspecified")
+    void lockTtl_whenAmountIsNegative_shouldLeaveLockTtlUnspecified() {
+        // when
+        RawOperationMetadata result = DefaultRawOperationMetadata.builder()
+                .lockTtl(-5)
+                .build();
+
+        // then
+        assertThat(result.getLockTtl()).isNull();
+    }
+
+    @Test
     @DisplayName("UT ttl() when the amount is zero should give a zero duration")
     void ttl_whenAmountIsZero_shouldGiveZeroDuration() {
         // when
@@ -211,37 +268,41 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT cacheToggle() when the toggle is null should fall back to UNSELECTED")
-    void cacheToggle_whenToggleIsNull_shouldFallBackToUnselected() {
+    @DisplayName("UT releaseFor() when the list is null should leave it unspecified")
+    void releaseFor_whenListIsNull_shouldLeaveItUnspecified() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
+                .releaseFor(null)
                 .build();
 
         // then
+        assertThat(result.getReleaseFor()).isNull();
     }
 
     @Test
-    @DisplayName("UT cache4xxToggle() when the toggle is null should fall back to UNSELECTED")
-    void cache4xxToggle_whenToggleIsNull_shouldFallBackToUnselected() {
+    @DisplayName("UT releaseFor() when the list is empty should leave it unspecified, as an annotation default does")
+    void releaseFor_whenListIsEmpty_shouldLeaveItUnspecified() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .cache4xxToggle(null)
+                .releaseFor(List.of())
                 .build();
 
         // then
-        assertThat(result.getCache4xxToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(result.getReleaseFor()).isNull();
     }
 
     @Test
-    @DisplayName("UT cache5xxToggle() when the toggle is null should fall back to UNSELECTED")
-    void cache5xxToggle_whenToggleIsNull_shouldFallBackToUnselected() {
+    @DisplayName("UT releaseFor() when the caller changes its list afterwards should keep what it was given")
+    void releaseFor_whenCallerChangesItsListAfterwards_shouldKeepWhatItWasGiven() {
+        // given
+        List<Class<? extends Throwable>> releaseFor = new ArrayList<>(List.of(IllegalStateException.class));
+        DefaultRawOperationMetadata.Builder builder = DefaultRawOperationMetadata.builder().releaseFor(releaseFor);
+
         // when
-        RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .cache5xxToggle(null)
-                .build();
+        releaseFor.add(IllegalArgumentException.class);
 
         // then
-        assertThat(result.getCache5xxToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(builder.build().getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -254,6 +315,17 @@ class DefaultRawOperationMetadataUnitTest {
         // then
         assertThat(one).isEqualTo(other);
         assertThat(one).hasSameHashCodeAs(other);
+    }
+
+    @Test
+    @DisplayName("UT equals() when the lock ttl differs should treat the metadata as different")
+    void equals_whenLockTtlDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().lockTtl(2).build();
+        RawOperationMetadata other = fullyConfigured().lockTtl(5).build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
     }
 
     @Test
@@ -280,6 +352,17 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
+    @DisplayName("UT equals() when releaseFor differs should treat the metadata as different")
+    void equals_whenReleaseForDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().releaseFor(List.of(IllegalStateException.class)).build();
+        RawOperationMetadata other = fullyConfigured().releaseFor(List.of(IllegalArgumentException.class)).build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
     @DisplayName("UT equals() when compared to another type should not be equal")
     void equals_whenComparedToAnotherType_shouldNotBeEqual() {
         assertThat(DefaultRawOperationMetadata.builder().build()).isNotEqualTo("not a metadata");
@@ -298,8 +381,7 @@ class DefaultRawOperationMetadataUnitTest {
                 "processorType=BLOCKING",
                 "conflictHandleStrategy=WAIT",
                 "fingerprintToggle=ENABLE",
-                "cache4xxToggle=DISABLE",
-                "cache5xxToggle=DISABLE"
+                "releaseFor=[class java.lang.IllegalStateException]"
         );
     }
 
@@ -311,8 +393,7 @@ class DefaultRawOperationMetadataUnitTest {
                 .processorType(ProcessorTypeToggle.BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cache4xxToggle(Toggle.DISABLE)
-                .cache5xxToggle(Toggle.DISABLE);
+                .releaseFor(List.of(IllegalStateException.class));
     }
 
     @Test
@@ -345,5 +426,44 @@ class DefaultRawOperationMetadataUnitTest {
     void equals_whenTtlsDiffer_shouldTellMetadataApart() {
         assertThat(DefaultRawOperationMetadata.builder().ttl(1).build())
                 .isNotEqualTo(DefaultRawOperationMetadata.builder().ttl(2).build());
+    }
+
+    @Test
+    @DisplayName("UT equals() when compared with null directly should not be equal")
+    void equals_whenComparedWithNullDirectly_shouldNotBeEqual() {
+        assertThat(fullyConfigured().build().equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the header name differs should treat the metadata as different")
+    void equals_whenOnlyHeaderNameDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().headerName("X-One").build();
+        RawOperationMetadata other = fullyConfigured().headerName("X-Other").build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the conflict strategy differs should treat the metadata as different")
+    void equals_whenOnlyConflictStrategyDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT).build();
+        RawOperationMetadata other = fullyConfigured().conflictHandleStrategy(ConflictHandleStrategyToggle.REJECT).build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
+    @DisplayName("UT equals() when only the fingerprint toggle differs should treat the metadata as different")
+    void equals_whenOnlyFingerprintToggleDiffers_shouldTreatMetadataAsDifferent() {
+        // given
+        RawOperationMetadata one = fullyConfigured().fingerprintToggle(Toggle.ENABLE).build();
+        RawOperationMetadata other = fullyConfigured().fingerprintToggle(Toggle.DISABLE).build();
+
+        // then
+        assertThat(one).isNotEqualTo(other);
     }
 }

@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategyToggle;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * What one call site asked for, exactly as its {@link Idempotent} spelled it - the most specific of the
@@ -22,13 +23,15 @@ public interface RawOperationMetadata {
 
     Duration getTtl();
 
+    Duration getLockTtl();
+
     ProcessorTypeToggle getProcessorType();
 
     ConflictHandleStrategyToggle getConflictHandleStrategy();
 
     Toggle getFingerprintToggle();
 
-    Toggle getCache4xxToggle();
+    Toggle getReleaseForToggle();
 
-    Toggle getCache5xxToggle();
+    List<Class<? extends Throwable>> getReleaseFor();
 }

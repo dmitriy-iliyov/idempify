@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -162,8 +163,7 @@ class DefaultOperationMetadataResolverUnitTest {
                 .timeUnit(TimeUnit.HOURS)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .cache4xxToggle(Toggle.DISABLE)
-                .cache5xxToggle(Toggle.DISABLE)
+                .releaseFor(List.of(IllegalStateException.class, IllegalArgumentException.class))
                 .build();
         ArgumentCaptor<RawOperationMetadata> captor = ArgumentCaptor.forClass(RawOperationMetadata.class);
 
@@ -259,8 +259,7 @@ class DefaultOperationMetadataResolverUnitTest {
         assertThat(raw.getTtl()).isNull();
         assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(raw.getCache4xxToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(raw.getCache5xxToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(raw.getReleaseFor()).isNull();
     }
 
     @Test
@@ -372,8 +371,7 @@ class DefaultOperationMetadataResolverUnitTest {
                 timeUnit = TimeUnit.HOURS,
                 onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                cache4xx = Toggle.DISABLE,
-                cache5xx = Toggle.DISABLE
+                releaseFor = {IllegalStateException.class, IllegalArgumentException.class}
         )
         public String fullyConfiguredAction() {
             return "fullyConfiguredAction";

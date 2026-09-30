@@ -7,6 +7,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -171,6 +174,122 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
+    @DisplayName("UT merge() when the call site takes its key from an expression yet names a header should read no header")
+    void merge_whenCallSiteTakesKeyFromExpressionYetNamesHeader_shouldReadNoHeader() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when
+        OperationMetadata result = tested.merge(raw().headerName("X-Payment-Key").useHeaderName(false).build());
+
+        // then
+        assertThat(result.getHeaderName()).isNull();
+        assertThat(result.useHeaderName()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site names its own lock ttl should take it")
+    void merge_whenCallSiteNamesItsOwnLockTtl_shouldTakeIt() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .lockTtl(Duration.ofMinutes(5))
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().lockTtl(30).timeUnit(TimeUnit.SECONDS).build());
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site says nothing about the lock ttl should keep the global one")
+    void merge_whenCallSiteSaysNothingAboutLockTtl_shouldKeepGlobalOne() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .lockTtl(Duration.ofMinutes(5))
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().build());
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site asks for a negative lock ttl should keep the global one")
+    void merge_whenCallSiteAsksForNegativeLockTtl_shouldKeepGlobalOne() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .lockTtl(Duration.ofMinutes(5))
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().lockTtl(-30).build());
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes blocking over a global lock ttl should drop it, the annotation having no words to")
+    void merge_whenCallSiteGoesBlockingOverGlobalLockTtl_shouldDropIt() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .conflict(ConflictConfig.disabled())
+                .lockTtl(Duration.ofMinutes(5))
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getLockTtl()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes blocking and names a lock ttl itself should refuse the pair")
+    void merge_whenCallSiteGoesBlockingAndNamesLockTtlItself_shouldRefusePair() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .conflict(ConflictConfig.disabled())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.BLOCKING)
+                .lockTtl(30)
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("lockTtl cannot be passed");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes blocking over a global with conflicts already off should resolve")
+    void merge_whenCallSiteGoesBlockingOverGlobalWithConflictsAlreadyOff_shouldResolve() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .conflict(ConflictConfig.disabled())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getConflictHandler()).isNull();
+    }
+
+    @Test
     @DisplayName("UT merge() when the call site leaves the processor unselected should keep the global choice")
     void merge_whenCallSiteLeavesProcessorUnselected_shouldKeepGlobalChoice() {
         // given
@@ -248,20 +367,23 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site tunes only 4xx caching should keep the global answer for 5xx")
-    void merge_whenCallSiteTunesOnly4xxCaching_shouldKeepGlobalAnswerFor5xx() {
+    @DisplayName("UT merge() when the call site names releaseFor should let it win over the global one")
+    void merge_whenCallSiteNamesReleaseFor_shouldLetItWinOverGlobalOne() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(true).build())
+                .response(ResponseConfig.builder()
+                        .releaseFor(List.of(IllegalArgumentException.class))
+                        .includedHeaders(Set.of("Location"))
+                        .build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().cache4xxToggle(Toggle.DISABLE).build());
+        OperationMetadata result = tested.merge(raw().releaseFor(List.of(IllegalStateException.class)).build());
 
         // then
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getResponseConfig().getIncludedHeaders()).containsExactly("location");
     }
 
     @Test
@@ -361,20 +483,19 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site tunes only 5xx caching should keep the global answer for 4xx")
-    void merge_whenCallSiteTunesOnly5xxCaching_shouldKeepGlobalAnswerFor4xx() {
+    @DisplayName("UT merge() when the call site leaves releaseFor undecided should keep the global answer")
+    void merge_whenCallSiteLeavesReleaseForUndecided_shouldKeepGlobalAnswer() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .response(ResponseConfig.builder().shouldCache4xx(true).shouldCache5xx(false).build())
+                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().cache5xxToggle(Toggle.ENABLE).build());
+        OperationMetadata result = tested.merge(raw().build());
 
         // then
-        assertThat(result.getResponseConfig().shouldCache5xx()).isTrue();
-        assertThat(result.getResponseConfig().shouldCache4xx()).isTrue();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalArgumentException.class);
     }
 
     @Test
@@ -399,34 +520,144 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes blocking over a global that keeps failures should refuse to resolve")
-    void merge_whenCallSiteGoesBlockingOverGlobalThatKeepsFailures_shouldRefuseToResolve() {
-        // given
-        DefaultOperationMetadataManager tested = manager(global());
-
-        // when / then
-        assertThatThrownBy(() -> tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be cached if processorType is BLOCKING");
-    }
-
-    @Test
-    @DisplayName("UT merge() when the call site goes blocking and drops the failures itself should resolve")
-    void merge_whenCallSiteGoesBlockingAndDropsFailuresItself_shouldResolve() {
+    @DisplayName("UT merge() when the call site goes blocking over a global that keeps failures should release the key on any failure")
+    void merge_whenCallSiteGoesBlockingOverGlobalThatKeepsFailures_shouldReleaseKeyOnAnyFailure() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
 
         // when
-        OperationMetadata result = tested.merge(raw()
-                .processorType(ProcessorTypeToggle.BLOCKING)
-                .cache4xxToggle(Toggle.DISABLE)
-                .cache5xxToggle(Toggle.DISABLE)
-                .build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
 
         // then
         assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
-        assertThat(result.getConflictHandler()).isNull();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+    }
+
+    @Test
+    @DisplayName("UT merge() when a blocking call site says nothing about releasing should still take over the inherited list")
+    void merge_whenBlockingCallSiteSaysNothingAboutReleasing_shouldStillTakeOverInheritedList() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+
+        // then
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+    }
+
+    @Test
+    @DisplayName("UT merge() when the blocking layer under the call site keeps failures should refuse to resolve")
+    void merge_whenBlockingLayerUnderCallSiteKeepsFailures_shouldRefuseToResolve() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .lockTtl(null)
+                .processorType(ProcessorType.BLOCKING)
+                .conflict(ConflictConfig.disabled())
+                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+        RawOperationMetadata rawMetadata = raw().build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("releaseFor cannot keep a failed operation on the record");
+    }
+
+    @Test
+    @DisplayName("UT merge() when a blocking call site switches releasing on should refuse the pair")
+    void merge_whenBlockingCallSiteSwitchesReleasingOn_shouldRefusePair() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.BLOCKING)
+                .releaseForToggle(Toggle.ENABLE)
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("useReleaseFor cannot be set")
+                .hasMessageContaining("BLOCKING");
+    }
+
+    @Test
+    @DisplayName("UT merge() when a blocking call site switches releasing off should refuse that too")
+    void merge_whenBlockingCallSiteSwitchesReleasingOff_shouldRefuseThatToo() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.BLOCKING)
+                .releaseForToggle(Toggle.DISABLE)
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("useReleaseFor cannot be set");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site switches releasing off should release the key for nothing")
+    void merge_whenCallSiteSwitchesReleasingOff_shouldReleaseKeyForNothing() {
+        // given
+        DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
+
+        // when
+        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.DISABLE).build());
+
+        // then
+        assertThat(result.getResponseConfig().getReleaseFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site switches releasing on over a layer that releases for nothing should take the built-in list")
+    void merge_whenCallSiteSwitchesReleasingOnOverLayerThatReleasesForNothing_shouldTakeBuiltInList() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+
+        // when
+        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.ENABLE).build());
+
+        // then
+        assertThat(result.getResponseConfig().getReleaseFor())
+                .containsExactlyElementsOf(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site switches releasing on over a layer that names exceptions should keep that list")
+    void merge_whenCallSiteSwitchesReleasingOnOverLayerThatNamesExceptions_shouldKeepThatList() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+
+        // when
+        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.ENABLE).build());
+
+        // then
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes blocking and names its own releaseFor should refuse the pair")
+    void merge_whenCallSiteGoesBlockingAndNamesItsOwnReleaseFor_shouldRefusePair() {
+        // given
+        DefaultOperationMetadataManager tested = manager(global());
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.BLOCKING)
+                .releaseFor(List.of(IllegalStateException.class))
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("useReleaseFor cannot be set");
     }
 
     @Test
@@ -664,6 +895,7 @@ class DefaultOperationMetadataManagerUnitTest {
         return IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
+                .lockTtl(Duration.ofMinutes(5))
                 .processorType(ProcessorType.NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.defaults()))
                 .fingerprint(FingerprintConfig.builder()
@@ -728,6 +960,11 @@ class DefaultOperationMetadataManagerUnitTest {
         }
 
         @Override
+        public Duration getLockTtl() {
+            return null;
+        }
+
+        @Override
         public ProcessorTypeToggle getProcessorType() {
             return ProcessorTypeToggle.UNSELECTED;
         }
@@ -742,15 +979,14 @@ class DefaultOperationMetadataManagerUnitTest {
             return Toggle.UNSELECTED;
         }
 
-
         @Override
-        public Toggle getCache4xxToggle() {
+        public Toggle getReleaseForToggle() {
             return Toggle.UNSELECTED;
         }
 
         @Override
-        public Toggle getCache5xxToggle() {
-            return Toggle.UNSELECTED;
+        public List<Class<? extends Throwable>> getReleaseFor() {
+            return null;
         }
     }
 

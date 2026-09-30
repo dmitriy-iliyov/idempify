@@ -15,6 +15,7 @@ public final class TestOperationMetadata implements OperationMetadata {
 
     private final String headerName;
     private final Duration ttl;
+    private final Duration lockTtl;
     private final ConflictHandler conflictHandler;
     private final FingerprintPolicy fingerprintPolicy;
     private final ResponseConfig responseConfig;
@@ -23,6 +24,7 @@ public final class TestOperationMetadata implements OperationMetadata {
     private TestOperationMetadata(Builder builder) {
         this.headerName = builder.headerName;
         this.ttl = builder.ttl;
+        this.lockTtl = builder.lockTtl;
         this.conflictHandler = builder.conflictHandler;
         this.fingerprintPolicy = builder.fingerprintPolicy;
         this.responseConfig = builder.responseConfig;
@@ -37,6 +39,11 @@ public final class TestOperationMetadata implements OperationMetadata {
     @Override
     public Duration getTtl() {
         return ttl;
+    }
+
+    @Override
+    public Duration getLockTtl() {
+        return lockTtl;
     }
 
     @Override
@@ -67,6 +74,7 @@ public final class TestOperationMetadata implements OperationMetadata {
 
         private String headerName = IdempifyDefaults.HEADER_NAME;
         private Duration ttl = Duration.parse(IdempifyDefaults.TTL_VALUE);
+        private Duration lockTtl;
         private ConflictHandler conflictHandler;
         private FingerprintPolicy fingerprintPolicy;
         private ResponseConfig responseConfig = ResponseConfig.defaults();
@@ -76,6 +84,11 @@ public final class TestOperationMetadata implements OperationMetadata {
 
         public Builder headerName(String headerName) {
             this.headerName = headerName;
+            return this;
+        }
+
+        public Builder lockTtl(Duration lockTtl) {
+            this.lockTtl = lockTtl;
             return this;
         }
 

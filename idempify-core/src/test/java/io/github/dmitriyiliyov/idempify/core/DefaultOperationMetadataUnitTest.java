@@ -126,6 +126,45 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
+    @DisplayName("UT lockTtl() when the lock ttl is negative should refuse it")
+    void lockTtl_whenLockTtlIsNegative_shouldRefuseIt() {
+        assertThatThrownBy(() -> DefaultOperationMetadata.builder().lockTtl(Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lockTtl cannot be negative");
+    }
+
+    @Test
+    @DisplayName("UT build() when the lock ttl was never decided should build all the same, the claim having no lifetime of its own")
+    void build_whenLockTtlWasNeverDecided_shouldBuildAllTheSame() {
+        // when
+        OperationMetadata result = DefaultOperationMetadata.builder()
+                .headerName("Idempotency-Key")
+                .ttl(Duration.ofHours(1))
+                .processorType(ProcessorType.BLOCKING)
+                .responseConfig(ResponseConfig.disabled())
+                .build();
+
+        // then
+        assertThat(result.getLockTtl()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT build() when the lock ttl was decided should carry it")
+    void build_whenLockTtlWasDecided_shouldCarryIt() {
+        // when
+        OperationMetadata result = DefaultOperationMetadata.builder()
+                .headerName("Idempotency-Key")
+                .ttl(Duration.ofHours(1))
+                .lockTtl(Duration.ofMinutes(5))
+                .processorType(ProcessorType.NON_BLOCKING)
+                .responseConfig(ResponseConfig.disabled())
+                .build();
+
+        // then
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
     @DisplayName("UT useFingerprint() when a policy was resolved should say the call site fingerprints")
     void useFingerprint_whenPolicyWasResolved_shouldSayCallSiteFingerprints() {
         // when
@@ -157,55 +196,24 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT useConflictHandler() when a handler was resolved should say the call site hands conflicts over")
-    void useConflictHandler_whenHandlerWasResolved_shouldSayCallSiteHandsConflictsOver() {
+    @DisplayName("UT build() when the processor is BLOCKING and the key is released for nothing should accept the pair")
+    void build_whenProcessorIsBlockingAndKeyIsReleasedForNothing_shouldAcceptPair() {
         // when
-        OperationMetadata result = full().conflictHandler(new RejectConflictHandler()).build();
-
-        // then
-        assertThat(result.useConflictHandler()).isTrue();
-    }
-
-    @Test
-    @DisplayName("UT useConflictHandler() when no handler was resolved should say the call site handles them itself")
-    void useConflictHandler_whenNoHandlerWasResolved_shouldSayCallSiteHandlesThemItself() {
-        // when
-        OperationMetadata result = full().build();
-
-        // then
-        assertThat(result.useConflictHandler()).isFalse();
-        assertThat(result.getConflictHandler()).isNull();
-    }
-
-    @Test
-    @DisplayName("UT build() when the processor is BLOCKING and caching is on should refuse the pair")
-    void build_whenProcessorIsBlockingAndCachingIsOn_shouldRefusePair() {
-        assertThatThrownBy(() -> DefaultOperationMetadata.builder()
+        OperationMetadata result = DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
                 .processorType(ProcessorType.BLOCKING)
                 .responseConfig(ResponseConfig.all())
-                .build())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("responses with 4xx or 5xx cannot be cached");
+                .build();
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getResponseConfig().getReleaseFor()).isEmpty();
     }
 
     @Test
-    @DisplayName("UT build() when the processor is BLOCKING and only 5xx is kept should refuse the pair")
-    void build_whenProcessorIsBlockingAndOnly5xxIsKept_shouldRefusePair() {
-        assertThatThrownBy(() -> DefaultOperationMetadata.builder()
-                .headerName("Idempotency-Key")
-                .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.BLOCKING)
-                .responseConfig(ResponseConfig.builder().shouldCache4xx(false).shouldCache5xx(true).build())
-                .build())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("responses with 4xx or 5xx cannot be cached");
-    }
-
-    @Test
-    @DisplayName("UT build() when the processor is BLOCKING and caching is off should accept the pair")
-    void build_whenProcessorIsBlockingAndCachingIsOff_shouldAcceptPair() {
+    @DisplayName("UT build() when the processor is BLOCKING and the key is released for any exception should accept the pair")
+    void build_whenProcessorIsBlockingAndKeyIsReleasedForAnyException_shouldAcceptPair() {
         // when
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
@@ -216,7 +224,7 @@ class DefaultOperationMetadataUnitTest {
 
         // then
         assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
-        assertThat(result.getResponseConfig().shouldCache4xx()).isFalse();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
     }
 
     private static DefaultOperationMetadata.Builder full() {

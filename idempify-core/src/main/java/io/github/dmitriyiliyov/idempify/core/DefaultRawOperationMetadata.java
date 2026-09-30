@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategyToggle;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -11,21 +12,38 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     private final boolean useHeaderName;
     private final String headerName;
     private final Duration ttl;
+    private final Duration lockTtl;
     private final ProcessorTypeToggle processorType;
     private final ConflictHandleStrategyToggle conflictHandleStrategy;
     private final Toggle fingerprintToggle;
-    private final Toggle cache4xxToggle;
-    private final Toggle cache5xxToggle;
+    private final Toggle releaseForToggle;
+    private final List<Class<? extends Throwable>> releaseFor;
 
     private DefaultRawOperationMetadata(Builder builder) {
         this.useHeaderName = builder.useHeaderName;
         this.headerName = builder.headerName;
         this.ttl = builder.ttl < 0 ? null : Duration.of(builder.ttl, builder.timeUnit.toChronoUnit());
+        this.lockTtl = builder.lockTtl < 0 ? null : Duration.of(builder.lockTtl, builder.timeUnit.toChronoUnit());
         this.processorType = builder.processorType;
         this.conflictHandleStrategy = builder.conflictHandleStrategy;
         this.fingerprintToggle = builder.fingerprintToggle;
-        this.cache4xxToggle = builder.cache4xxToggle;
-        this.cache5xxToggle = builder.cache5xxToggle;
+        this.releaseForToggle = resolveReleaseForToggle(builder);
+        this.releaseFor = builder.releaseFor;
+    }
+
+    private static Toggle resolveReleaseForToggle(Builder builder) {
+        if (builder.releaseFor == null) {
+            return builder.releaseForToggle;
+        }
+
+        if (Toggle.DISABLE.equals(builder.releaseForToggle)) {
+            throw new IllegalStateException(
+                    "releaseFor (%s) names the exceptions to release the key for, so releaseForToggle cannot be %s"
+                            .formatted(builder.releaseFor, builder.releaseForToggle)
+            );
+        }
+
+        return Toggle.ENABLE;
     }
 
     @Override
@@ -44,6 +62,11 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     }
 
     @Override
+    public Duration getLockTtl() {
+        return lockTtl;
+    }
+
+    @Override
     public ProcessorTypeToggle getProcessorType() {
         return processorType;
     }
@@ -59,13 +82,13 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     }
 
     @Override
-    public Toggle getCache4xxToggle() {
-        return cache4xxToggle;
+    public Toggle getReleaseForToggle() {
+        return releaseForToggle;
     }
 
     @Override
-    public Toggle getCache5xxToggle() {
-        return cache5xxToggle;
+    public List<Class<? extends Throwable>> getReleaseFor() {
+        return releaseFor;
     }
 
     @Override
@@ -75,17 +98,18 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         return useHeaderName == that.useHeaderName
                 && Objects.equals(headerName, that.headerName)
                 && Objects.equals(ttl, that.ttl)
+                && Objects.equals(lockTtl, that.lockTtl)
                 && processorType == that.processorType
                 && conflictHandleStrategy == that.conflictHandleStrategy
                 && fingerprintToggle == that.fingerprintToggle
-                && cache4xxToggle == that.cache4xxToggle
-                && cache5xxToggle == that.cache5xxToggle;
+                && releaseForToggle == that.releaseForToggle
+                && Objects.equals(releaseFor, that.releaseFor);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(useHeaderName, headerName, ttl, processorType, conflictHandleStrategy, fingerprintToggle,
-                cache4xxToggle, cache5xxToggle);
+        return Objects.hash(useHeaderName, headerName, ttl, lockTtl, processorType, conflictHandleStrategy,
+                fingerprintToggle, releaseFor, releaseForToggle);
     }
 
     @Override
@@ -94,11 +118,12 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
                 "useHeaderName=" + useHeaderName +
                 ", headerName='" + headerName + '\'' +
                 ", ttl=" + ttl +
+                ", lockTtl=" + lockTtl +
                 ", processorType=" + processorType +
                 ", conflictHandleStrategy=" + conflictHandleStrategy +
                 ", fingerprintToggle=" + fingerprintToggle +
-                ", cache4xxToggle=" + cache4xxToggle +
-                ", cache5xxToggle=" + cache5xxToggle +
+                ", releaseFor=" + releaseFor +
+                ", releaseForToggle=" + releaseForToggle +
                 '}';
     }
 
@@ -111,12 +136,13 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         private Boolean useHeaderName = true;
         private String headerName;
         private long ttl = -1;
+        private long lockTtl = -1;
         private ProcessorTypeToggle processorType = ProcessorTypeToggle.UNSELECTED;
         private TimeUnit timeUnit = TimeUnit.HOURS;
         private ConflictHandleStrategyToggle conflictHandleStrategy = ConflictHandleStrategyToggle.UNSELECTED;
         private Toggle fingerprintToggle = Toggle.UNSELECTED;
-        private Toggle cache4xxToggle = Toggle.UNSELECTED;
-        private Toggle cache5xxToggle = Toggle.UNSELECTED;
+        private Toggle releaseForToggle = Toggle.UNSELECTED;
+        private List<Class<? extends Throwable>> releaseFor;
 
         private Builder() {}
 
@@ -132,6 +158,11 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
 
         public Builder ttl(long ttl) {
             this.ttl = ttl < 0 ? -1 : ttl;
+            return this;
+        }
+
+        public Builder lockTtl(long lockTtl) {
+            this.lockTtl = lockTtl < 0 ? -1 : lockTtl;
             return this;
         }
 
@@ -157,13 +188,13 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
             return this;
         }
 
-        public Builder cache4xxToggle(Toggle cache4xxToggle) {
-            this.cache4xxToggle = toggleOrDefault(cache4xxToggle);
+        public Builder releaseForToggle(Toggle releaseForToggle) {
+            this.releaseForToggle = toggleOrDefault(releaseForToggle);
             return this;
         }
 
-        public Builder cache5xxToggle(Toggle cache5xxToggle) {
-            this.cache5xxToggle = toggleOrDefault(cache5xxToggle);
+        public Builder releaseFor(List<Class<? extends Throwable>> releaseFor) {
+            this.releaseFor = releaseFor == null || releaseFor.isEmpty() ? null : List.copyOf(releaseFor);
             return this;
         }
 

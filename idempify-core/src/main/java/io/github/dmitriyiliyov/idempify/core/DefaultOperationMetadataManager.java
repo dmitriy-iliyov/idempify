@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 
 public class DefaultOperationMetadataManager implements OperationMetadataManager {
@@ -77,23 +78,27 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
     private IdempotencyConfig merge(IdempotencyConfig config, RawOperationMetadata rawMetadata) {
         IdempotencyConfig.Builder configBuilder = IdempotencyConfig.builder(config);
 
-        mergeHeaderName(configBuilder, rawMetadata);
-        mergeTtl(configBuilder, rawMetadata);
-
         ProcessorType processorType = ProcessorTypeToggle.toProcessorType(rawMetadata.getProcessorType());
         if (processorType != null) {
             configBuilder.processorType(processorType);
         }
 
+        mergeHeaderName(configBuilder, rawMetadata);
+        mergeTtl(configBuilder, rawMetadata);
+        mergeLockTtl(configBuilder, rawMetadata);
+        mergeConflict(config, configBuilder, rawMetadata);
+        mergeResponse(config, configBuilder, rawMetadata, processorType);
+        mergeFingerprint(config, configBuilder, rawMetadata);
+
         if (ProcessorType.BLOCKING.equals(processorType)) {
+            // only an inherited lock ttl is dropped: one this call site named itself is left for validate() to refuse
+            if (rawMetadata.getLockTtl() == null) {
+                configBuilder.lockTtl(null);
+            }
+
             configBuilder.conflict(ConflictConfig.disabled());
             logDroppedConflictHandling(config.getConflictConfig());
-        } else {
-            mergeConflict(config, configBuilder, rawMetadata);
         }
-
-        mergeResponse(config, configBuilder, rawMetadata);
-        mergeFingerprint(config, configBuilder, rawMetadata);
 
         IdempotencyConfig mergedConfig = configBuilder.build();
         mergedConfig.validate();
@@ -119,10 +124,10 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         }
     }
 
-    private void logDroppedConflictHandling(ConflictConfig conflictConfig) {
-        if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
-            log.info("Conflict handling (strategy={}) is dropped: {} leaves a duplicate no conflict to arrive at",
-                     conflictConfig.getStrategy(), ProcessorType.BLOCKING);
+    private void mergeLockTtl(IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
+        Duration lockTtl = rawMetadata.getLockTtl();
+        if (lockTtl != null && !lockTtl.isNegative()) {
+            builder.lockTtl(lockTtl);
         }
     }
 
@@ -147,6 +152,13 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         }
     }
 
+    private void logDroppedConflictHandling(ConflictConfig conflictConfig) {
+        if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
+            log.info("Conflict handling (strategy={}) is dropped: {} leaves a duplicate no conflict to arrive at",
+                    conflictConfig.getStrategy(), ProcessorType.BLOCKING);
+        }
+    }
+
     private void mergeFingerprint(IdempotencyConfig config, IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
         Boolean useFingerprint = Toggle.toBoolean(rawMetadata.getFingerprintToggle());
         FingerprintConfig fingerprintConfig = config.getFingerprintConfig();
@@ -164,27 +176,59 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         }
     }
 
-    private void mergeResponse(IdempotencyConfig config, IdempotencyConfig.Builder builder, RawOperationMetadata rawMetadata) {
+    private void mergeResponse(IdempotencyConfig config, IdempotencyConfig.Builder builder,
+                               RawOperationMetadata rawMetadata, ProcessorType processorType) {
 
         ResponseConfig.Builder responseConfigBuilder = ResponseConfig.builder(config.getResponseConfig());
 
-        Boolean cache4xx = Toggle.toBoolean(rawMetadata.getCache4xxToggle());
-        if (cache4xx != null) {
-            responseConfigBuilder.shouldCache4xx(cache4xx);
+        if (ProcessorType.BLOCKING.equals(processorType)) {
+            rejectReleasingChosenByCallSite(rawMetadata);
+            logDroppedReleaseFor(config.getResponseConfig());
+            builder.response(responseConfigBuilder.releaseFor(List.of(Throwable.class)).build());
+            return;
         }
 
-        Boolean cache5xx = Toggle.toBoolean(rawMetadata.getCache5xxToggle());
-        if (cache5xx != null) {
-            responseConfigBuilder.shouldCache5xx(cache5xx);
+        Boolean useReleaseFor = Toggle.toBoolean(rawMetadata.getReleaseForToggle());
+        List<Class<? extends Throwable>> releaseFor = rawMetadata.getReleaseFor();
+
+        if (Boolean.FALSE.equals(useReleaseFor)) {
+            responseConfigBuilder.releaseFor(List.of());
+        } else if (releaseFor != null) {
+            responseConfigBuilder.releaseFor(releaseFor);
+        } else if (Boolean.TRUE.equals(useReleaseFor) && ResponseConfig.releasesForNothing(config.getResponseConfig())) {
+            responseConfigBuilder.releaseFor(
+                    ResponseConfig.defaultReleaseFor(defaultConfig.getResponseConfig())
+            );
         }
 
         builder.response(responseConfigBuilder.build());
+    }
+
+    private void rejectReleasingChosenByCallSite(RawOperationMetadata rawMetadata) {
+        if (!Toggle.UNSELECTED.equals(rawMetadata.getReleaseForToggle())) {
+            throw new IllegalStateException(
+                    "useReleaseFor cannot be set when processorType is %s: a rollback frees the key on any failure"
+                            .formatted(ProcessorType.BLOCKING)
+            );
+        }
+    }
+
+    private void logDroppedReleaseFor(ResponseConfig responseConfig) {
+        if (responseConfig == null || responseConfig.getReleaseFor() == null) {
+            return;
+        }
+
+        if (!responseConfig.getReleaseFor().contains(Throwable.class)) {
+            log.info("Release-for list ({}) is dropped: {} frees the key on any failure",
+                    responseConfig.getReleaseFor(), ProcessorType.BLOCKING);
+        }
     }
 
     private OperationMetadata buildMetadata(IdempotencyConfig config) {
         return DefaultOperationMetadata.builder()
                 .headerName(config.getHeaderName())
                 .ttl(config.getTtl())
+                .lockTtl(config.getLockTtl())
                 .processorType(config.getProcessorType())
                 .conflictHandler(conflictHandlerProvider.provide(config.getConflictConfig()))
                 .fingerprintPolicy(fingerprintPolicyProvider.provide(config.getFingerprintConfig()))

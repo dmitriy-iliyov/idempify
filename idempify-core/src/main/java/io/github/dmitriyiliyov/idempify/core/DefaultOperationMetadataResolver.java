@@ -5,6 +5,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.ClassUtils;
 
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Objects;
 
 public class DefaultOperationMetadataResolver implements OperationMetadataResolver {
@@ -62,12 +63,10 @@ public class DefaultOperationMetadataResolver implements OperationMetadataResolv
 
     private void validateParams(Idempotent annotation) {
         if (!StringUtils.isBlank(annotation.idempotencyKey()) && !StringUtils.isBlank(annotation.headerName())) {
-            throw new IllegalStateException(
-                    """
-                        idempotencyKey and headerName name two different sources of the key and cannot be combined,
-                        but idempotencyKey=%s and headerName=%s were both given
-                    """.formatted(annotation.idempotencyKey(), annotation.headerName())
-            );
+            throw new IllegalStateException("""
+                    idempotencyKey and headerName name two different sources of the key and cannot be combined, \
+                    but idempotencyKey=%s and headerName=%s were both given\
+                    """.formatted(annotation.idempotencyKey(), annotation.headerName()));
         }
     }
 
@@ -82,12 +81,13 @@ public class DefaultOperationMetadataResolver implements OperationMetadataResolv
         }
 
         return builder.ttl(annotation.ttl())
+                .lockTtl(annotation.lockTtl())
                 .timeUnit(annotation.timeUnit())
                 .processorType(annotation.processorType())
                 .conflictHandleStrategy(annotation.onConflict())
                 .fingerprintToggle(annotation.useFingerprint())
-                .cache4xxToggle(annotation.cache4xx())
-                .cache5xxToggle(annotation.cache5xx())
+                .releaseForToggle(annotation.useReleaseFor())
+                .releaseFor(List.of(annotation.releaseFor()))
                 .build();
     }
 

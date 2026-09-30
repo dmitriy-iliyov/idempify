@@ -33,22 +33,17 @@ public interface OperationMetadata {
     Duration getTtl();
 
     /**
-     * Returns which {@code IdempotentProcessor} runs this operation - {@code BLOCKING} keeps the
-     * operation record in the business transaction, {@code NON_BLOCKING} keeps it outside so a failed result
-     * survives the rollback. {@code DelegatingIdempotentProcessor} dispatches on this value and fails when no
-     * processor serves it.
+     * Returns how long a claim on the key stays held, or {@code null} when the claim has no lifetime of
+     * its own: under {@code BLOCKING} it lives and dies with the business transaction.
      */
-    ProcessorType getProcessorType();
+    Duration getLockTtl();
 
     /**
-     * Returns whether a concurrent duplicate of this call site is handled by a handler rather than left to the
-     * processor - which is to say whether a handler was resolved at all. Always {@code false} under
-     * {@code BLOCKING}: there the insert lock already settles the race, and a conflict config is
-     * rejected outright.
+     * Returns which {@code IdempotentProcessor} runs this operation - under {@code BLOCKING} a duplicate waits
+     * on the first call's claim, under {@code NON_BLOCKING} it meets the unfinished operation instead.
+     * {@code DelegatingIdempotentProcessor} dispatches on this value and fails when no processor serves it.
      */
-    default boolean useConflictHandler() {
-        return getConflictHandler() != null;
-    }
+    ProcessorType getProcessorType();
 
     ConflictHandler getConflictHandler();
 

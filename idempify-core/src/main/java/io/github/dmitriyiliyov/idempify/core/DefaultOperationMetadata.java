@@ -21,14 +21,14 @@ import java.util.Objects;
  * ({@link #useFingerprint()}, and the state of the operation for the handler), so a stand-in would only ever
  * run where the guard was forgotten, and there it would hide the mistake instead of surfacing it.
  * <p>
- * The response cache config is not one of the two, even though it can also say "no": it says it as
- * {@link ResponseConfig#disabled()}, a value of its own, so a {@code null} there is a decision nobody
- * made rather than a decision to cache nothing - and callers read it without a guard.
+ * The response config is not one of the two: whatever it decides, it decides as a value of its own, so a
+ * {@code null} there is a decision nobody made - and callers read it without a guard.
  */
 public final class DefaultOperationMetadata implements OperationMetadata {
 
     private final String headerName;
     private final Duration ttl;
+    private final Duration lockTtl;
     private final ProcessorType processorType;
     private final ConflictHandler conflictHandler;
     private final FingerprintPolicy fingerprintPolicy;
@@ -37,6 +37,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
     private DefaultOperationMetadata(Builder builder) {
         this.headerName = builder.headerName;
         this.ttl = builder.ttl;
+        this.lockTtl = builder.lockTtl;
         this.processorType = builder.processorType;
         this.conflictHandler = builder.conflictHandler;
         this.fingerprintPolicy = builder.fingerprintPolicy;
@@ -51,6 +52,11 @@ public final class DefaultOperationMetadata implements OperationMetadata {
     @Override
     public Duration getTtl() {
         return ttl;
+    }
+
+    @Override
+    public Duration getLockTtl() {
+        return lockTtl;
     }
 
     @Override
@@ -78,6 +84,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
         return "DefaultOperationMetadata{" +
                 "headerName='" + headerName + '\'' +
                 ", ttl=" + ttl +
+                ", lockTtl=" + lockTtl +
                 ", processorType=" + processorType +
                 ", conflictHandler=" + conflictHandler +
                 ", fingerprintPolicy=" + fingerprintPolicy +
@@ -93,6 +100,7 @@ public final class DefaultOperationMetadata implements OperationMetadata {
 
         private String headerName;
         private Duration ttl;
+        private Duration lockTtl;
         private ProcessorType processorType;
         private ConflictHandler conflictHandler;
         private FingerprintPolicy fingerprintPolicy;
@@ -126,6 +134,14 @@ public final class DefaultOperationMetadata implements OperationMetadata {
             return this;
         }
 
+        public Builder lockTtl(Duration lockTtl) {
+            if (lockTtl != null && lockTtl.isNegative()) {
+                throw new IllegalArgumentException("lockTtl cannot be negative");
+            }
+            this.lockTtl = lockTtl;
+            return this;
+        }
+
         public Builder processorType(ProcessorType processorType) {
             this.processorType = Objects.requireNonNull(processorType, "processorType cannot be null");
             return this;
@@ -150,14 +166,6 @@ public final class DefaultOperationMetadata implements OperationMetadata {
             Objects.requireNonNull(ttl, "ttl cannot be null");
             Objects.requireNonNull(processorType, "processorType cannot be null");
             Objects.requireNonNull(responseConfig, "responseConfig cannot be null");
-
-            if (ProcessorType.BLOCKING.equals(processorType) &&
-                    (responseConfig.shouldCache4xx() || responseConfig.shouldCache5xx())) {
-                throw new IllegalStateException("""
-                        if processorType is %s responses with 4xx or 5xx cannot be cached: the operation record 
-                        is rolled back together with the business logic, so a cached result would outlive it
-                """.formatted(processorType));
-            }
 
             return new DefaultOperationMetadata(this);
         }
