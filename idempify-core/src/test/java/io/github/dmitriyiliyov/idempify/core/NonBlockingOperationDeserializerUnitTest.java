@@ -1,0 +1,139 @@
+package io.github.dmitriyiliyov.idempify.core;
+
+import io.github.dmitriyiliyov.idempify.core.response.DefaultResponse;
+import io.github.dmitriyiliyov.idempify.core.response.Response;
+import io.github.dmitriyiliyov.idempify.core.response.ResponseDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
+import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * The row comes back as strings, and the type to read the result into comes from the caller rather than from
+ * the row. A column left {@code NULL} must not reach a deserializer at all, and neither must a result whose
+ * type the caller did not ask for; the claim comes back as the store holds it.
+ */
+@ExtendWith(MockitoExtension.class)
+class NonBlockingOperationDeserializerUnitTest {
+
+    private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final UUID LOCK_TOKEN = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
+    private static final Long REMAINING_LOCK_MILLIS = 300_000L;
+    private static final long REMAINING_MILLIS = 86_400_000L;
+    private static final ResultType RESULT_TYPE = ResultType.ofClass(String.class);
+
+    @Mock
+    private ResultDeserializer resultDeserializer;
+    @Mock
+    private ResponseDeserializer responseDeserializer;
+
+    @Test
+    @DisplayName("UT constructor() when resultDeserializer is null should throw NullPointerException")
+    void constructor_whenResultDeserializerIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> new NonBlockingOperationDeserializer(null, responseDeserializer))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("resultDeserializer cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor() when responseDeserializer is null should throw NullPointerException")
+    void constructor_whenResponseDeserializerIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> new NonBlockingOperationDeserializer(resultDeserializer, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("responseDeserializer cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT deserialize() should rebuild every column of the operation and its claim from the row")
+    void deserialize_shouldRebuildEveryColumnOfOperationAndItsClaimFromRow() {
+        // given
+        Response response = new DefaultResponse(201, new byte [] {1}, "application/json", Map.of());
+        when(resultDeserializer.deserialize("raw-result", RESULT_TYPE)).thenReturn("result");
+        when(responseDeserializer.deserialize("raw-response")).thenReturn(response);
+
+        // when
+        NonBlockingOperation result = tested().deserialize(row("raw-result", "raw-response"), RESULT_TYPE);
+
+        // then
+        assertThat(result.getIdempotencyKey()).isEqualTo(KEY);
+        assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
+        assertThat(result.isFirstAttempt()).isFalse();
+        assertThat(result.getResult()).isEqualTo("result");
+        assertThat(result.getResultType()).isEqualTo(RESULT_TYPE);
+        assertThat(result.getResponse()).isSameAs(response);
+        assertThat(result.getFingerprint()).isEqualTo("fingerprint");
+        assertThat(result.getRemainingMillis()).isEqualTo(REMAINING_MILLIS);
+        assertThat(result.getCreatedAt()).isEqualTo(NOW);
+        assertThat(result.getLockToken()).isEqualTo(LOCK_TOKEN);
+        assertThat(result.getRemainingLockMillis()).isEqualTo(REMAINING_LOCK_MILLIS);
+    }
+
+    @Test
+    @DisplayName("UT deserialize() when the row is null should hand back null")
+    void deserialize_whenRowIsNull_shouldHandBackNull() {
+        // when
+        NonBlockingOperation result = tested().deserialize(null, RESULT_TYPE);
+
+        // then
+        assertThat(result).isNull();
+        verifyNoInteractions(resultDeserializer, responseDeserializer);
+    }
+
+    @Test
+    @DisplayName("UT deserialize() when result and response columns are null should not ask either deserializer")
+    void deserialize_whenResultAndResponseColumnsAreNull_shouldNotAskEitherDeserializer() {
+        // when
+        NonBlockingOperation result = tested().deserialize(row(null, null), RESULT_TYPE);
+
+        // then
+        assertThat(result.getResult()).isNull();
+        assertThat(result.getResponse()).isNull();
+        verifyNoInteractions(resultDeserializer, responseDeserializer);
+    }
+
+    @Test
+    @DisplayName("UT deserialize() when the caller wants no resultType should leave the result unread")
+    void deserialize_whenCallerWantsNoResultType_shouldLeaveResultUnread() {
+        // when
+        NonBlockingOperation result = tested().deserialize(row("raw-result", null), null);
+
+        // then
+        assertThat(result.getResult()).isNull();
+        assertThat(result.getResultType()).isNull();
+        verifyNoInteractions(resultDeserializer);
+    }
+
+    private NonBlockingOperationDeserializer tested() {
+        return new NonBlockingOperationDeserializer(resultDeserializer, responseDeserializer);
+    }
+
+    private static RawNonBlockingOperation row(String result, String response) {
+        return new RawNonBlockingOperation(
+                KEY,
+                OperationStatus.PROCESSED,
+                false,
+                result,
+                response,
+                "fingerprint",
+                REMAINING_MILLIS,
+                NOW,
+                LOCK_TOKEN,
+                REMAINING_LOCK_MILLIS
+        );
+    }
+}

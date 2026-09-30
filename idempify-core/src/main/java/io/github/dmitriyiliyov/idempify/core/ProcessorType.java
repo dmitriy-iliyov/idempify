@@ -1,23 +1,26 @@
 package io.github.dmitriyiliyov.idempify.core;
 
 /**
- * Which processor runs an operation, and with it where the operation's record lives relative to the business
- * transaction.
+ * Which processor runs an operation, and with it the one question the two branches answer differently: can a
+ * duplicate that arrives while the first call is still running wait for it?
  *
  * @see TypeAwareIdempotentProcessor
  */
 public enum ProcessorType {
 
     /**
-     * Record and business effect share one transaction and so commit or roll back together. A failed
-     * operation leaves nothing behind, which also means its failure cannot be replayed.
+     * The claim on a key is the business transaction's own, so a duplicate blocks on it until the first call
+     * commits and is then answered with its result - it never reaches a conflict handler. Record and
+     * business effect commit or roll back together, which is also why a failed operation leaves nothing
+     * behind to replay.
      */
     BLOCKING,
 
     /**
-     * Record is written outside the business transaction and guarded by an external lock, so it survives a
-     * rollback. That is what makes a failed result replayable and a store without transactional
-     * compare-and-swap usable.
+     * The claim is a record of its own, taken and released apart from the business transaction, so a
+     * duplicate cannot wait on it: meeting an unfinished operation becomes an outcome, and a
+     * {@code ConflictHandler} decides what the duplicate gets. That is what lets a store with no
+     * transaction-scoped lock back the library, and what lets the record outlive a rollback.
      */
     NON_BLOCKING
 }
