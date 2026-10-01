@@ -6,10 +6,7 @@ import ch.qos.logback.core.AppenderBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.OperationState;
-import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
@@ -487,7 +484,7 @@ class OperationResponseFilterUnitTest {
         // then
         assertThat(chain.calls).isZero();
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
 
         JsonNode problem = problem();
         assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
@@ -615,13 +612,40 @@ class OperationResponseFilterUnitTest {
         // then
         assertThat(chain.calls).isZero();
         assertThat(response.getStatus()).isEqualTo(422);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
         assertThat(response.getContentAsByteArray()).isNotEqualTo(body);
 
         JsonNode problem = problem();
         assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.IDEMPOTENCY_KEY_REUSE.toString());
         assertThat(problem.get("status").asInt()).isEqualTo(422);
         assertThat(problem.get("instance").asText()).isEqualTo(URI);
+        assertThat(problem.get("idempotencyKey").asText()).isEqualTo(KEY.toString());
+        verify(responseManager, never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when the fingerprint policy throws while matching should answer 500 with the broken policy type")
+    void doFilter_whenPolicyThrowsWhileMatching_shouldAnswer500WithBrokenPolicyType() throws Exception {
+        // given
+        byte [] body = "{\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().useFingerprint(true).fingerprintPolicy(fingerprintPolicy).build());
+        givenExtractedKey();
+        givenGeneratedFingerprint(FINGERPRINT);
+        givenRecordedResponse(new DefaultResponse(201, body, "application/json", null), PREVIOUS_FINGERPRINT);
+        doThrow(new IllegalStateException("policy is broken"))
+                .when(fingerprintMatcher).match(any(), any(), any(), any());
+        RecordingFilterChain chain = new RecordingFilterChain();
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(chain.calls).isZero();
+        assertThat(response.getStatus()).isEqualTo(500);
+        assertThat(response.getContentAsByteArray()).isNotEqualTo(body);
+
+        JsonNode problem = problem();
+        assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
         assertThat(problem.get("idempotencyKey").asText()).isEqualTo(KEY.toString());
         verify(responseManager, never()).save(any(), any());
     }
@@ -665,7 +689,7 @@ class OperationResponseFilterUnitTest {
         // then
         assertThat(chain.calls).isZero();
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
         assertThat(problem().get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
         assertThat(problem().get("idempotencyKey").asText()).isEqualTo(KEY.toString());
         verifyNoInteractions(responseManager);
@@ -762,8 +786,8 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 4xx should store it whatever the keep flags say")
-    void doFilter_whenResponseIs4xx_shouldStoreItWhateverKeepFlagsSay() throws Exception {
+    @DisplayName("UT doFilter() when the response is 4xx should store it whatever releaseFor says")
+    void doFilter_whenResponseIs4xx_shouldStoreItWhateverReleaseForSays() throws Exception {
         // given
         byte [] body = "{\"error\":\"bad request\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
@@ -781,8 +805,8 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 5xx should store it whatever the keep flags say")
-    void doFilter_whenResponseIs5xx_shouldStoreItWhateverKeepFlagsSay() throws Exception {
+    @DisplayName("UT doFilter() when the response is 5xx should store it whatever releaseFor says")
+    void doFilter_whenResponseIs5xx_shouldStoreItWhateverReleaseForSays() throws Exception {
         // given
         byte [] body = "{\"error\":\"boom\"}".getBytes(StandardCharsets.UTF_8);
         givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
@@ -832,6 +856,24 @@ class OperationResponseFilterUnitTest {
         // then
         assertThat(response.getStatus()).isEqualTo(503);
         assertThat(response.getContentAsByteArray()).isEqualTo(body);
+        verify(responseManager, never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("UT doFilter() when a non-blocking operation succeeded and the failure came after it should store nothing")
+    void doFilter_whenNonBlockingOperationSucceededAndFailureCameAfterIt_shouldStoreNothing() throws Exception {
+        // given
+        byte [] body = "{\"error\":\"rendering failed\"}".getBytes(StandardCharsets.UTF_8);
+        givenIdempotentUri(metadata().processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING).build());
+        givenExtractedKey();
+        givenRecordedOperation();
+        RecordingFilterChain chain = resolvedFailureChain(500, body);
+
+        // when
+        tested.doFilter(request, response, chain);
+
+        // then
+        assertThat(response.getStatus()).isEqualTo(500);
         verify(responseManager, never()).save(any(), any());
     }
 
@@ -921,7 +963,7 @@ class OperationResponseFilterUnitTest {
     }
 
     private void givenRecordedOperation() {
-        channel.publish(TestOperationState.of(false));
+        channel.publish(TestOperationState.of(true));
     }
 
     private void recordFilterLog() {
@@ -937,7 +979,7 @@ class OperationResponseFilterUnitTest {
     }
 
     private void givenReplayedOperation() {
-        channel.publish(TestOperationState.of(true));
+        channel.publish(TestOperationState.of(false));
     }
 
     private void givenGeneratedFingerprint(String fingerprint) {

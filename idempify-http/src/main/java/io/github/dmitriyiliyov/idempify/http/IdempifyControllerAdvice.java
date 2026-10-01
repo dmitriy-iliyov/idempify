@@ -1,11 +1,8 @@
 package io.github.dmitriyiliyov.idempify.http;
 
-import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessingException;
-import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
-import io.github.dmitriyiliyov.idempify.core.SerializationProcessingException;
+import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerResultException;
 import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
-import io.github.dmitriyiliyov.idempify.core.conflict.OperationDisappearedException;
 import io.github.dmitriyiliyov.idempify.core.conflict.WaitAbortedException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
@@ -82,6 +79,13 @@ public class IdempifyControllerAdvice {
                                                              HttpServletRequest request) {
         log.error("Waited for an operation that disappeared from the storage", e);
         return ProblemDetailFactory.idempotentProcessingFailed(FAILED_DETAIL, request.getRequestURI(), clock.instant());
+    }
+
+    @ExceptionHandler(ConflictHandlerResultException.class)
+    public ProblemDetail handleConflictHandlerResultException(ConflictHandlerResultException e,
+                                                             HttpServletRequest request) {
+        log.error("ConflictHandler returned invalid operation", e);
+        return ProblemDetailFactory.conflictHandlerBroken(FAILED_DETAIL, request.getRequestURI(), clock.instant());
     }
 
     @ExceptionHandler(OperationStatusMismatchException.class)

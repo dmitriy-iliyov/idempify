@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
@@ -33,7 +32,6 @@ class FingerprintExceptionFilterUtilsUnitTest {
     private final MockHttpServletResponse response = new MockHttpServletResponse();
 
     // the response declares no charset, so the container writes the document as ISO-8859-1
-    @Disabled("problem responses are written without a charset")
     @Test
     @DisplayName("UT ofInvalid() should write the problem as UTF-8")
     void ofInvalid_shouldWriteProblemAsUtf8() {
@@ -53,7 +51,7 @@ class FingerprintExceptionFilterUtilsUnitTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
 
         JsonNode problem = problem();
         assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());
@@ -73,7 +71,7 @@ class FingerprintExceptionFilterUtilsUnitTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(422);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
 
         JsonNode problem = problem();
         assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.IDEMPOTENCY_KEY_REUSE.toString());
@@ -91,7 +89,7 @@ class FingerprintExceptionFilterUtilsUnitTest {
 
         // then
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(response.getContentType()).startsWith("application/problem+json");
 
         JsonNode problem = problem();
         assertThat(problem.get("type").asText()).isEqualTo(ProblemTypes.FINGERPRINT_POLICY_BROKEN.toString());

@@ -6,6 +6,7 @@ import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.OperationState;
 import io.github.dmitriyiliyov.idempify.core.OperationStateChannel;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.response.Response;
@@ -186,9 +187,19 @@ public class OperationResponseFilter extends OncePerRequestFilter {
                         metadata.getFingerprintPolicy(),
                         idempotencyKey
                 );
-            } catch (Exception e) {
-                log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking the recorded response", idempotencyKey);
+            } catch (FingerprintMismatchException fme) {
+                log.warn("Operation (idempotencyKey={}) fingerprint does not match the recorded response", idempotencyKey);
                 FingerprintExceptionFilterUtils.ofMismatch(
+                        request,
+                        response,
+                        idempotencyKey,
+                        problemDetailMapper,
+                        clock.instant()
+                );
+                return true;
+            } catch (Exception e) {
+                log.error("Operation (idempotencyKey={}) fingerprint matching failed when checking the recorded response", idempotencyKey, e);
+                FingerprintExceptionFilterUtils.ofExceptionallyMatch(
                         request,
                         response,
                         idempotencyKey,
@@ -226,7 +237,7 @@ public class OperationResponseFilter extends OncePerRequestFilter {
 
             try {
                 OperationState operationState = channel.consume();
-                if (operationState == null || operationState.replayed()) {
+                if (operationState == null || !operationState.shouldRecordResponse()) {
                     log.debug(
                             "Operation (idempotencyKey={}) response is not recorded: its state is {}",
                             idempotencyKey,

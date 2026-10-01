@@ -260,15 +260,15 @@ class IdempifyHttpReplayComponentTest {
         }
 
         @Override
-        public Object process(OperationContext context, OperationMetadata metadata) {
+        public Object process(OperationContext context, OperationMetadata metadata) throws Throwable {
             processCalls++;
             if (storedResult != null) {
-                channel.getObject().publish(TestOperationState.of(true));
+                channel.getObject().publish(TestOperationState.of(false));
                 return storedResult;
             }
 
-            storedResult = (String) IdempotentProcessorUtils.getResult(context.getCallback());
-            channel.getObject().publish(TestOperationState.of(false));
+            storedResult = (String) context.getCallback().call();
+            channel.getObject().publish(TestOperationState.of(true));
             return storedResult;
         }
     }

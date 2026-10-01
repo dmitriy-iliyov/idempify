@@ -270,7 +270,7 @@ class IdempifyHttpComponentTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(OTHER_BODY))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(content().contentType("application/problem+json"))
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
                 .andExpect(jsonPath("$.type").value(ProblemTypes.IDEMPOTENCY_KEY_REUSE.toString()))
                 .andExpect(jsonPath("$.instance").value("/payments"))
                 .andExpect(jsonPath("$.idempotencyKey").value(KEY.toString()));
@@ -598,7 +598,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/failing-after-commit")
         public String failingAfterCommit() {
-            channel.getObject().publish(TestOperationState.of(false));
+            channel.getObject().publish(TestOperationState.of(true));
             throw new IllegalStateException("failure after the operation was recorded");
         }
 
@@ -609,7 +609,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/conflicting-after-commit")
         public String conflictingAfterCommit() {
-            channel.getObject().publish(TestOperationState.of(false));
+            channel.getObject().publish(TestOperationState.of(true));
             throw new IdempotencyConflictException("another request is already processing this key");
         }
 
@@ -621,7 +621,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping(SWALLOWED_AFTER_COMMIT_PATH)
         public ModelAndView swallowedAfterCommit() {
-            channel.getObject().publish(TestOperationState.of(false));
+            channel.getObject().publish(TestOperationState.of(true));
             return new ModelAndView(new UnrenderableView());
         }
 
@@ -632,7 +632,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/failing-into-view")
         public String failingIntoView() {
-            channel.getObject().publish(TestOperationState.of(false));
+            channel.getObject().publish(TestOperationState.of(true));
             throw new ViewAnsweredFailure();
         }
 
@@ -643,7 +643,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/unrenderable")
         public UnrenderableReceipt unrenderable() {
-            channel.getObject().publish(TestOperationState.of(false));
+            channel.getObject().publish(TestOperationState.of(true));
             return new UnrenderableReceipt();
         }
 
@@ -654,7 +654,7 @@ class IdempifyHttpComponentTest {
         @Idempotent(headerName = HEADER_NAME)
         @PostMapping("/payments/replayed")
         public String replayed() {
-            channel.getObject().publish(TestOperationState.of(true));
+            channel.getObject().publish(TestOperationState.of(false));
             return "replayed";
         }
 
@@ -803,7 +803,7 @@ class IdempifyHttpComponentTest {
             OperationState alreadyPublished = operationStateChannel.consume();
             operationStateChannel.publish(alreadyPublished != null
                     ? alreadyPublished
-                    : TestOperationState.of(false));
+                    : TestOperationState.of(true));
         }
 
         private void claimWithFingerprint(HttpServletRequest request, HandlerMethod handlerMethod) {

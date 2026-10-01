@@ -49,6 +49,20 @@ public final class FingerprintExceptionFilterUtils {
         write(response, detail, problemDetailMapper, "a fingerprint mismatch", idempotencyKey);
     }
 
+    public static void ofExceptionallyMatch(HttpServletRequest request,
+                                            HttpServletResponse response,
+                                            UUID idempotencyKey,
+                                            ObjectMapper problemDetailMapper,
+                                            Instant timestamp) {
+        ProblemDetail detail = ProblemDetailFactory.fingerprintPolicyBroken(
+                "Fingerprint policy threw while matching fingerprints.",
+                request.getRequestURI(),
+                timestamp,
+                idempotencyKey
+        );
+        write(response, detail, problemDetailMapper, "an exceptionally matching fingerprint", idempotencyKey);
+    }
+
     public static void ofExceptionallyGenerate(HttpServletRequest request,
                                                HttpServletResponse response,
                                                UUID idempotencyKey,
@@ -70,7 +84,7 @@ public final class FingerprintExceptionFilterUtils {
                               UUID idempotencyKey) {
         try {
             response.setStatus(detail.getStatus());
-            response.setContentType("application/problem+json");
+            response.setContentType("application/problem+json;charset=UTF-8");
             response.getWriter().write(problemDetailMapper.writeValueAsString(detail));
         } catch (IOException e) {
             log.error("Error when writing response for {} (idempotencyKey={})", cause, idempotencyKey, e);

@@ -47,7 +47,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_afterPublish_shouldReturnPublishedState() {
         // given
         bindRequest();
-        OperationState published = TestOperationState.of(false);
+        OperationState published = TestOperationState.of(true);
 
         // when
         tested.publish(published);
@@ -55,7 +55,7 @@ class HttpAttributesOperationStateChannelUnitTest {
 
         // then
         assertThat(result).isSameAs(published);
-        assertThat(result.replayed()).isFalse();
+        assertThat(result.shouldRecordResponse()).isTrue();
     }
 
     @Test
@@ -63,10 +63,10 @@ class HttpAttributesOperationStateChannelUnitTest {
     void publish_whenStateWasAlreadyPublished_shouldReplaceIt() {
         // given
         bindRequest();
-        OperationState last = TestOperationState.of(true);
+        OperationState last = TestOperationState.of(false);
 
         // when
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
         tested.publish(last);
 
         // then
@@ -78,7 +78,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void publish_shouldKeepStateOnRequestItselfRatherThanOnThread() {
         // given
         MockHttpServletRequest request = bindRequest();
-        OperationState published = TestOperationState.of(false);
+        OperationState published = TestOperationState.of(true);
 
         // when
         tested.publish(published);
@@ -94,7 +94,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         MockHttpServletRequest request = bindRequest();
 
         // when
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
 
         // then
         assertThat(Collections.list(request.getAttributeNames()))
@@ -107,7 +107,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_whenCalledTwice_shouldReturnNullSecondTime() {
         // given
         bindRequest();
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
 
         // when
         OperationState first = tested.consume();
@@ -123,7 +123,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_shouldTakeStateOffRequestInsteadOfLeavingItThere() {
         // given
         MockHttpServletRequest request = bindRequest();
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
 
         // when
         tested.consume();
@@ -137,7 +137,7 @@ class HttpAttributesOperationStateChannelUnitTest {
     void consume_whenAnotherRequestIsBound_shouldNotSeeStateOfPreviousOne() {
         // given
         bindRequest();
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
 
         // when
         bindRequest();
@@ -153,7 +153,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         RequestContextHolder.resetRequestAttributes();
 
         // when / then
-        assertThatThrownBy(() -> tested.publish(TestOperationState.of(false)))
+        assertThatThrownBy(() -> tested.publish(TestOperationState.of(true)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No HTTP request is bound to the current thread");
     }
@@ -177,7 +177,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/payments");
         ServletRequestAttributes attributes = new ServletRequestAttributes(request);
         RequestContextHolder.setRequestAttributes(attributes);
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
         attributes.requestCompleted();
 
         // when / then
@@ -193,7 +193,7 @@ class HttpAttributesOperationStateChannelUnitTest {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
 
         // when
-        tested.publish(TestOperationState.of(false));
+        tested.publish(TestOperationState.of(true));
 
         // then
         assertThat(attributes.getAttribute(ATTRIBUTE_NAME, RequestAttributes.SCOPE_SESSION)).isNull();

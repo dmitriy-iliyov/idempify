@@ -4,15 +4,13 @@ import java.net.URI;
 
 /**
  * The {@code type} URIs the library puts into its problem responses.
- *
- * <p>A type identifies a kind of failure, and it is the only field of the response a client may branch on:
+ * <p>
+ * A type identifies a kind of failure, and it is the only field of the response a client may branch on:
  * {@code status} is too coarse to tell two failures apart, and {@code detail} is prose that may be reworded or
  * translated. One type always comes with the same title and the same status; only {@code detail} and the
  * properties vary per occurrence.
- *
- * <p>These are names, not addresses - nothing is fetched from them, which is why they are URNs rather than
- * URLs of a site that would have to exist. They are part of the public contract: renaming one breaks every
- * client that branches on it.
+ * <p>
+ * They are part of the public contract: renaming one breaks every client that branches on it.
  */
 public final class ProblemTypes {
 
@@ -33,6 +31,8 @@ public final class ProblemTypes {
     public static final URI IDEMPOTENT_PROCESSING_FAILED = URI.create(BASE + "idempotent-processing-failed");
 
     public static final URI SERIALIZATION_PROCESSING_FAILED = URI.create(BASE + "serialization-processing-failed");
+
+    public static final URI CONFLICT_HANDLER_BROKEN = URI.create(BASE + "conflict-handler-broken");
 
     private ProblemTypes() {}
 }

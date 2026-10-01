@@ -195,13 +195,30 @@ class IdempifyControllerAdviceUnitTest {
     @DisplayName("UT handleOperationDisappearedException() should answer 500 without exposing the internal message")
     void handleOperationDisappearedException_shouldAnswer500WithoutExposingInternalMessage() {
         // given
-        OperationDisappearedException exception = new OperationDisappearedException(KEY);
+        OperationDisappearedException exception = new OperationDisappearedException(
+                "Operation (idempotencyKey=%s) was claimed, but its record is gone".formatted(KEY)
+        );
 
         // when
         ProblemDetail detail = tested.handleOperationDisappearedException(exception, request);
 
         // then
         assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.IDEMPOTENT_PROCESSING_FAILED);
+        assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("UT handleConflictHandlerResultException() should answer 500 as a broken handler without exposing the internal message")
+    void handleConflictHandlerResultException_shouldAnswer500AsBrokenHandlerWithoutExposingInternalMessage() {
+        // given
+        ConflictHandlerResultException exception =
+                new ConflictHandlerResultException("ConflictHandler com.acme.Handler returned null");
+
+        // when
+        ProblemDetail detail = tested.handleConflictHandlerResultException(exception, request);
+
+        // then
+        assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.CONFLICT_HANDLER_BROKEN);
         assertThat(detail.getDetail()).isNotEqualTo(exception.getMessage());
     }
 

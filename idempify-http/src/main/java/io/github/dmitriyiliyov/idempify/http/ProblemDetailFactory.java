@@ -96,6 +96,17 @@ final class ProblemDetailFactory {
         );
     }
 
+    static ProblemDetail conflictHandlerBroken(String detail, String instance, Instant timestamp) {
+        return problem(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                ProblemTypes.CONFLICT_HANDLER_BROKEN,
+                "Conflict Handler broken",
+                detail,
+                instance,
+                timestamp
+        );
+    }
+
     static ProblemDetail serializationProcessingFailed(String detail, String instance, Instant timestamp) {
         return problem(
                 HttpStatus.INTERNAL_SERVER_ERROR,

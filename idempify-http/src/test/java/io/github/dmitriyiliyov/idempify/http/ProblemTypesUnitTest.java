@@ -37,6 +37,8 @@ class ProblemTypesUnitTest {
                 .isEqualTo(URI.create("https://idempify.io/errors/idempotent-processing-failed"));
         assertThat(ProblemTypes.SERIALIZATION_PROCESSING_FAILED)
                 .isEqualTo(URI.create("https://idempify.io/errors/serialization-processing-failed"));
+        assertThat(ProblemTypes.CONFLICT_HANDLER_BROKEN)
+                .isEqualTo(URI.create("https://idempify.io/errors/conflict-handler-broken"));
     }
 
     @Test
