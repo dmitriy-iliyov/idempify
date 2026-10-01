@@ -19,9 +19,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,14 +32,12 @@ import static org.mockito.Mockito.mock;
 class IdempifyRedisCacheAutoConfigurationIntegrationTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
             .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
             .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
             .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-            .withBean(Clock.class, () -> Clock.fixed(NOW, java.time.ZoneOffset.UTC))
             .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"));
 
     @Test
@@ -90,7 +86,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
             RawResponseContainer readContainer = (RawResponseContainer) read;
             assertThat(readContainer.getResponse()).isEqualTo(written.getResponse());
             assertThat(readContainer.getFingerprint()).isEqualTo(written.getFingerprint());
-            assertThat(readContainer.getExpiresAt()).isEqualTo(written.getExpiresAt());
+            assertThat(readContainer.getRemainingMillis()).isEqualTo(written.getRemainingMillis());
         });
     }
 
@@ -112,7 +108,6 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         bareRunner()
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
                 .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-                .withBean(Clock.class, () -> Clock.systemUTC())
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -123,7 +118,6 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         bareRunner()
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
                 .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-                .withBean(Clock.class, () -> Clock.systemUTC())
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -134,7 +128,6 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
         bareRunner()
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
                 .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-                .withBean(Clock.class, () -> Clock.systemUTC())
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(null))
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -147,7 +140,6 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
                 .withConfiguration(AutoConfigurations.of(IdempifyRedisCacheAutoConfiguration.class))
                 .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
                 .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-                .withBean(Clock.class, () -> Clock.systemUTC())
                 .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder("idempify"))
                 .run(context -> assertThat(context).doesNotHaveBean(ResponseRepositoryWrapper.class));
     }
@@ -213,7 +205,7 @@ class IdempifyRedisCacheAutoConfigurationIntegrationTest {
     }
 
     private static RawResponseContainer container() {
-        return new DefaultRawResponseContainer("raw-response", "fingerprint", NOW.plus(Duration.ofHours(1)));
+        return new DefaultRawResponseContainer("raw-response", "fingerprint", Duration.ofHours(1).toMillis());
     }
 
     @Configuration(proxyBeanMethods = false)

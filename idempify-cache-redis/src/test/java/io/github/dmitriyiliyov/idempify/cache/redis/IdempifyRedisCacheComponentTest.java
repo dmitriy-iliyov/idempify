@@ -18,10 +18,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +36,6 @@ class IdempifyRedisCacheComponentTest {
     private static final String CACHE_NAME = "idempify";
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID OTHER_IDEMPOTENCY_KEY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
 
     @Container
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -50,7 +46,6 @@ class IdempifyRedisCacheComponentTest {
             .withPropertyValues("idempify.cache.enabled=true", "idempify.cache.type=DISTRIBUTED")
             .withBean(RedisConnectionFactory.class, IdempifyRedisCacheComponentTest::connectionFactory)
             .withBean(CacheEventListener.class, () -> CacheEventListener.NOOP)
-            .withBean(Clock.class, () -> Clock.fixed(NOW, ZoneOffset.UTC))
             .withBean(CachePropertiesHolder.class, () -> new TestCachePropertiesHolder(CACHE_NAME));
 
     @BeforeEach
@@ -72,8 +67,42 @@ class IdempifyRedisCacheComponentTest {
             assertThat(replayed).isPresent();
             assertThat(replayed.get().getResponse()).isEqualTo("raw-response");
             assertThat(replayed.get().getFingerprint()).isEqualTo("fingerprint");
-            assertThat(replayed.get().getExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
+            assertThat(replayed.get().getRemainingMillis()).isPositive().isLessThanOrEqualTo(Duration.ofHours(1).toMillis());
             assertThat(repository.keys).containsExactly(IDEMPOTENCY_KEY);
+        });
+    }
+
+    @Test
+    @DisplayName("CT findByIdempotencyKey() when the key has less time left than it was written with should report the key's own time")
+    void findByIdempotencyKey_whenKeyHasLessTimeLeftThanItWasWrittenWith_shouldReportKeysOwnTime() {
+        // when / then
+        runner.run(context -> {
+            RecordingRepository repository = new RecordingRepository(container(IDEMPOTENCY_KEY, "raw-response"));
+            ResponseRepository tested = context.getBean(ResponseRepositoryWrapper.class).wrap(repository);
+            tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+            redis.execInContainer("redis-cli", "PEXPIRE", redisKey(IDEMPOTENCY_KEY), "5000");
+
+            Optional<RawResponseContainer> replayed = tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+
+            assertThat(replayed).isPresent();
+            assertThat(replayed.get().getRemainingMillis()).isPositive().isLessThanOrEqualTo(5_000L);
+            assertThat(repository.keys).containsExactly(IDEMPOTENCY_KEY);
+        });
+    }
+
+    @Test
+    @DisplayName("CT findByIdempotencyKey() when the key has lost its ttl should not serve it but reach the repository")
+    void findByIdempotencyKey_whenKeyHasLostItsTtl_shouldNotServeItButReachRepository() {
+        // when / then
+        runner.run(context -> {
+            RecordingRepository repository = new RecordingRepository(container(IDEMPOTENCY_KEY, "raw-response"));
+            ResponseRepository tested = context.getBean(ResponseRepositoryWrapper.class).wrap(repository);
+            tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+            redis.execInContainer("redis-cli", "PERSIST", redisKey(IDEMPOTENCY_KEY));
+
+            tested.findByIdempotencyKey(IDEMPOTENCY_KEY);
+
+            assertThat(repository.keys).containsExactly(IDEMPOTENCY_KEY, IDEMPOTENCY_KEY);
         });
     }
 
@@ -117,8 +146,12 @@ class IdempifyRedisCacheComponentTest {
         return connectionFactory;
     }
 
+    private static String redisKey(UUID idempotencyKey) {
+        return CACHE_NAME + ":" + idempotencyKey;
+    }
+
     private static RawResponseContainer container(UUID idempotencyKey, String response) {
-        return new DefaultRawResponseContainer(response, "fingerprint", NOW.plus(Duration.ofHours(1)));
+        return new DefaultRawResponseContainer(response, "fingerprint", Duration.ofHours(1).toMillis());
     }
 
     /**
@@ -142,7 +175,7 @@ class IdempifyRedisCacheComponentTest {
         @Override
         public RawResponseContainer save(UUID idempotencyKey, String response) {
             RawResponseContainer saved =
-                    new DefaultRawResponseContainer(response, "fingerprint", NOW.plus(Duration.ofHours(1)));
+                    new DefaultRawResponseContainer(response, "fingerprint", Duration.ofHours(1).toMillis());
             containers.put(idempotencyKey, saved);
             return saved;
         }

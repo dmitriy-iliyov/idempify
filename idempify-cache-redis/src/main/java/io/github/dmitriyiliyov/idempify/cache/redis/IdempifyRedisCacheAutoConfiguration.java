@@ -20,8 +20,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-import java.time.Clock;
-
 @AutoConfiguration(after = RedisAutoConfiguration.class, before = IdempifyCoreAutoConfiguration.class)
 @ConditionalOnIdempifyEnabled
 @ConditionalOnClass({RedisTemplate.class, ObjectMapper.class})
@@ -49,8 +47,7 @@ public class IdempifyRedisCacheAutoConfiguration {
     public ResponseRepositoryWrapper idempifyRedisCacheResponseRepositoryWrapper(
             RedisTemplate<String, RawResponseContainer> redisTemplate,
             CachePropertiesHolder holder,
-            CacheEventListener listener,
-            Clock clock
+            CacheEventListener listener
     ) {
         String cacheName = holder.getName();
         if (StringUtils.isBlank(cacheName)) {
@@ -63,8 +60,7 @@ public class IdempifyRedisCacheAutoConfiguration {
                         repository,
                         redisTemplate,
                         cacheName,
-                        listener,
-                        clock
+                        listener
                 );
             }
 

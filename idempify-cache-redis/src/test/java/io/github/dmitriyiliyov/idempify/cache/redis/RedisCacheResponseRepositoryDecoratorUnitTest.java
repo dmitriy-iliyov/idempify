@@ -11,12 +11,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.ValueOperations;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,8 +26,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unlike the in-memory cache, this one never judges the expiry itself - redis does, through the TTL the entry
- * is written with. So a hit here means "redis answered", and what the cases below hold down is which records
- * are worth writing at all and how long they are given.
+ * is written with, taken from the time the record has left. So a hit here means "redis answered with a key that
+ * still has time", and the time handed back is the key's own. What the cases below hold down is which records
+ * are worth writing at all, how long they are given, and what a hit reports as left of them.
  */
 @ExtendWith(MockitoExtension.class)
 class RedisCacheResponseRepositoryDecoratorUnitTest {
@@ -36,7 +36,6 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final String CACHE_NAME = "idempify";
     private static final String EXPECTED_KEY = "idempify:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-    private static final Instant NOW = Instant.parse("2026-08-09T12:00:00Z");
     private static final Duration TTL = Duration.ofMinutes(10);
 
     @Mock
@@ -44,7 +43,6 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     @Mock
     private ValueOperations<String, RawResponseContainer> valueOperations;
 
-    private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final CountingListener listener = new CountingListener();
     private ResponseRepository delegate;
     private RedisCacheResponseRepositoryDecorator tested;
@@ -53,7 +51,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         delegate = mock(ResponseRepository.class);
-        tested = new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, CACHE_NAME, listener, clock);
+        tested = new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, CACHE_NAME, listener);
     }
 
     @Test
@@ -61,7 +59,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void constructor_whenRepositoryIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() ->
-                new RedisCacheResponseRepositoryDecorator(null, redisTemplate, CACHE_NAME, listener, clock))
+                new RedisCacheResponseRepositoryDecorator(null, redisTemplate, CACHE_NAME, listener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("delegate cannot be null");
     }
@@ -71,7 +69,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void constructor_whenRedisTemplateIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() ->
-                new RedisCacheResponseRepositoryDecorator(delegate, null, CACHE_NAME, listener, clock))
+                new RedisCacheResponseRepositoryDecorator(delegate, null, CACHE_NAME, listener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("redisTemplate cannot be null");
     }
@@ -81,7 +79,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void constructor_whenCacheNameIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() ->
-                new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, null, listener, clock))
+                new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, null, listener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("cacheName cannot be null");
     }
@@ -91,19 +89,9 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void constructor_whenListenerIsNull_shouldThrowNullPointerException() {
         // when / then
         assertThatThrownBy(() ->
-                new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, CACHE_NAME, null, clock))
+                new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, CACHE_NAME, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("listener cannot be null");
-    }
-
-    @Test
-    @DisplayName("UT constructor() when clock is null should throw NullPointerException")
-    void constructor_whenClockIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() ->
-                new RedisCacheResponseRepositoryDecorator(delegate, redisTemplate, CACHE_NAME, listener, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("clock cannot be null");
     }
 
     @Test
@@ -115,23 +103,59 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
         // then
         assertThat(result).isEmpty();
         verifyNoInteractions(delegate);
-        verify(valueOperations, never()).get(EXPECTED_KEY);
+        verify(redisTemplate, never()).executePipelined(any(SessionCallback.class));
     }
 
     @Test
-    @DisplayName("UT findByIdempotencyKey() when redis answers should hand that back without asking the store")
-    void findByIdempotencyKey_whenRedisAnswers_shouldHandThatBackWithoutAskingStore() {
+    @DisplayName("UT findByIdempotencyKey() when redis answers should hand it back with the time its key has left, not the stored one")
+    void findByIdempotencyKey_whenRedisAnswers_shouldHandItBackWithTimeItsKeyHasLeftNotStoredOne() {
         // given
-        RawResponseContainer cached = answered();
-        when(valueOperations.get(EXPECTED_KEY)).thenReturn(cached);
+        givenRedisHolds(answered(), 1_000L);
 
         // when
         Optional<RawResponseContainer> result = tested.findByIdempotencyKey(KEY);
 
         // then
-        assertThat(result).containsSame(cached);
+        assertThat(result).hasValueSatisfying(container -> {
+            assertThat(container.getResponse()).isEqualTo("raw-response");
+            assertThat(container.getFingerprint()).isEqualTo("fingerprint");
+            assertThat(container.getRemainingMillis()).isEqualTo(1_000L);
+        });
         assertThat(listener.hits).isEqualTo(1);
         verifyNoInteractions(delegate);
+    }
+
+    @Test
+    @DisplayName("UT findByIdempotencyKey() when the key expired between the two reads should ask the store as on any miss")
+    void findByIdempotencyKey_whenKeyExpiredBetweenTwoReads_shouldAskStoreAsOnAnyMiss() {
+        // given
+        givenRedisHolds(answered(), -2L);
+        when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
+
+        // when
+        Optional<RawResponseContainer> result = tested.findByIdempotencyKey(KEY);
+
+        // then
+        assertThat(result).isEmpty();
+        assertThat(listener.hits).isZero();
+        assertThat(listener.misses).isEqualTo(1);
+        verify(delegate).findByIdempotencyKey(KEY);
+    }
+
+    @Test
+    @DisplayName("UT findByIdempotencyKey() when the key has no ttl should not serve it for ever but ask the store")
+    void findByIdempotencyKey_whenKeyHasNoTtl_shouldNotServeItForEverButAskStore() {
+        // given
+        givenRedisHolds(answered(), -1L);
+        when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
+
+        // when
+        Optional<RawResponseContainer> result = tested.findByIdempotencyKey(KEY);
+
+        // then
+        assertThat(result).isEmpty();
+        assertThat(listener.misses).isEqualTo(1);
+        verify(delegate).findByIdempotencyKey(KEY);
     }
 
     @Test
@@ -139,7 +163,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     void findByIdempotencyKey_whenRedisHasNothing_shouldAskStoreAndRememberWhatItAnswered() {
         // given
         RawResponseContainer stored = answered();
-        when(valueOperations.get(EXPECTED_KEY)).thenReturn(null);
+        givenRedisHolds(null, -2L);
         when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.of(stored));
 
         // when
@@ -155,7 +179,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     @DisplayName("UT findByIdempotencyKey() when the store has nothing either should remember nothing")
     void findByIdempotencyKey_whenStoreHasNothingEither_shouldRememberNothing() {
         // given
-        when(valueOperations.get(EXPECTED_KEY)).thenReturn(null);
+        givenRedisHolds(null, -2L);
         when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.empty());
 
         // when
@@ -171,7 +195,7 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     @DisplayName("UT findByIdempotencyKey() when the operation has not answered yet should remember nothing")
     void findByIdempotencyKey_whenOperationHasNotAnsweredYet_shouldRememberNothing() {
         // given
-        when(valueOperations.get(EXPECTED_KEY)).thenReturn(null);
+        givenRedisHolds(null, -2L);
         when(delegate.findByIdempotencyKey(KEY))
                 .thenReturn(Optional.of(new DefaultRawResponseContainer(null, "fingerprint", null)));
 
@@ -186,9 +210,24 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
     @DisplayName("UT findByIdempotencyKey() when the record has already expired should remember nothing")
     void findByIdempotencyKey_whenRecordHasAlreadyExpired_shouldRememberNothing() {
         // given
-        when(valueOperations.get(EXPECTED_KEY)).thenReturn(null);
+        givenRedisHolds(null, -2L);
         when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.of(
-                new DefaultRawResponseContainer("raw-response", "fingerprint", NOW.minusSeconds(1))));
+                new DefaultRawResponseContainer("raw-response", "fingerprint", -1_000L)));
+
+        // when
+        tested.findByIdempotencyKey(KEY);
+
+        // then
+        verify(valueOperations, never()).set(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("UT findByIdempotencyKey() when the record has exactly no time left should remember nothing")
+    void findByIdempotencyKey_whenRecordHasExactlyNoTimeLeft_shouldRememberNothing() {
+        // given
+        givenRedisHolds(null, -2L);
+        when(delegate.findByIdempotencyKey(KEY)).thenReturn(Optional.of(
+                new DefaultRawResponseContainer("raw-response", "fingerprint", 0L)));
 
         // when
         tested.findByIdempotencyKey(KEY);
@@ -238,8 +277,13 @@ class RedisCacheResponseRepositoryDecoratorUnitTest {
         verify(valueOperations, never()).set(any(), any(), any());
     }
 
+    private void givenRedisHolds(RawResponseContainer container, long remainingMillis) {
+        when(redisTemplate.executePipelined(any(SessionCallback.class)))
+                .thenReturn(Arrays.asList(container, remainingMillis));
+    }
+
     private static RawResponseContainer answered() {
-        return new DefaultRawResponseContainer("raw-response", "fingerprint", NOW.plus(TTL));
+        return new DefaultRawResponseContainer("raw-response", "fingerprint", TTL.toMillis());
     }
 
     private static final class CountingListener implements CacheEventListener {
