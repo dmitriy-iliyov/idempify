@@ -8,8 +8,7 @@
 > [!WARNING]
 > `idempify` is pre-release (`0.0.1-SNAPSHOT`), not yet published to Maven Central, and several
 > pieces described below are explicitly marked **Coming soon**. Treat this README as a snapshot of
-> an actively evolving library, not a finished product. Start with [Limitations](#limitations) - one of
-> the two processors is still a stub, and that decides what works today.
+> an actively evolving library, not a finished product - see [Limitations](#limitations).
 
 ## Overview
 
@@ -60,9 +59,6 @@ under the same key is rejected rather than silently answered from the store.
   returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
   the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
   Jackson cannot rebuild its status and headers - so it is not replayable either.
-- **`@Idempotent` must own its transaction.** The blocking processor refuses to run inside a transaction
-  it did not start, so the annotation goes on an entry point rather than on a method a transactional caller
-  reaches - see [Transaction Boundary](#transaction-boundary).
 - **No automatic table creation** - the DDL is applied by hand.
 
 ## Quick Start
@@ -74,8 +70,8 @@ under the same key is rejected rather than silently answered from the store.
 > `idempify.*` properties. It does **not** include serialization, a transport module, a storage backend or a
 > cache backend - you must add `idempify-jackson` (or your own `ResultSerializer`/`ResultDeserializer`),
 > `idempify-http` (or your own transport integration), `idempify-postgresql` (or your own
-> `BlockingOperationRepository`) and, if you want a distributed cache in front of the store,
-> `idempify-cache-redis` explicitly.
+> `BlockingOperationRepository` and `ResponseRepository`) and, if you want a distributed cache in front of the
+> store, `idempify-cache-redis` explicitly.
 >
 > An entry is the one part that is not optional. Something has to turn an annotated call into an
 > operation, and if no `IdempotentEntry` is registered - `idempify-aop` registers one - the application
@@ -88,16 +84,19 @@ under the same key is rejected rather than silently answered from the store.
     <artifactId>idempify-starter</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
+
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-jackson</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
+
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-http</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
+
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-postgresql</artifactId>
@@ -111,9 +110,9 @@ under the same key is rejected rather than silently answered from the store.
 psql -f idempify-postgresql/src/main/resources/idempotent_operations_table.sql "$DATABASE_URL"
 ```
 
-3. Select the processor. The global default is `NON_BLOCKING`, whose processor is still a stub, so a working
-   setup has to ask for `BLOCKING` - and that processor refuses conflict handling and the keeping of
-   error responses (see [Limitations](#limitations)):
+3. Select the processor. The global default is `NON_BLOCKING`; the setup below asks for `BLOCKING`, which
+   refuses conflict handling, a lock ttl and the keeping of failed outcomes (see
+   [Processing Branches](#processing-branches)):
 
 ```yaml
 idempify:
@@ -140,9 +139,9 @@ public class IdempotencyBeans {
 > `idempify-metrics` replaces it with the micrometer one once you ask for metrics. Declare a bean of your own
 > only to send the outcomes somewhere else - see [Observability](#observability).
 
-Everything else - metadata resolution and its cache, the fingerprint and conflict providers, the operation
-creator, both halves of its serialization, the operation and response managers, and the processors - is
-declared by `IdempifyCoreAutoConfiguration`. The `TransactionTemplate` it needs is contributed by Spring Boot
+Everything else - metadata resolution and its cache, the fingerprint and conflict providers, the
+serialization of both kinds of operation, the lock token generator, the operation and response managers, and
+the processors - is declared by `IdempifyCoreAutoConfiguration`. The `TransactionTemplate` it needs is contributed by Spring Boot
 itself once a transaction manager is present.
 
 5. Annotate a write endpoint with `@Idempotent`:
@@ -184,9 +183,7 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
 ## Example & Test Environment
 
 > [!WARNING]
-> **Coming soon.** `idempify-example` is not part of the Maven reactor, depends on `idempify-aop` alone and
-> points at a named config (`@Idempotent(config = "specificConfig")`) that nothing registers. It is a
-> placeholder, not a working reference.
+> **Coming soon.**
 
 ## Design
 
@@ -207,7 +204,8 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
    `RequestType`, reading the header as a UUID) and, when the call site fingerprints, the fingerprint via
    `FingerprintPolicy.generate(...)`.
 4. `DelegatingIdempotentProcessor` routes the call by `metadata.getProcessorType()` -
-   `BLOCKING` to `BlockingIdempotentProcessor`, `NON_BLOCKING` to a stub.
+   `BLOCKING` to `BlockingIdempotentProcessor`, `NON_BLOCKING` to `NonBlockingIdempotentProcessor` (see
+   [Processing Branches](#processing-branches)).
 5. `BlockingIdempotentProcessor` opens a transaction of its own and refuses one it did not start
    (`status.isNewTransaction()`, see [Transaction Boundary](#transaction-boundary)), then runs everything
    inside that one `TransactionTemplate.execute(...)`:
@@ -222,11 +220,13 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
      Otherwise the stored result is deserialized and handed back as a replay.
    - Otherwise `startOrReply` answers with an `OperationDetail` still in `IN_PROCESS`, meaning the caller's
      business logic actually runs.
-   - `complete(key, result, ttl)` then serializes the result, dates the expiry from this moment and performs a
-     conditional `UPDATE ... SET result = ?, status = ?, expires_at = ? WHERE idempotency_key = ? AND
-     status = 'IN_PROCESS'`. A condition that matches no row is not a silent no-op but an
-     `OperationStatusMismatchException`. What it hands back is the caller's own result object, not a copy read
-     back through the serializer.
+   - `complete(key, result, ttl)` then serializes the result and performs a conditional
+     `UPDATE ... SET result = ?, status = ?, expires_at = clock_timestamp() + ttl WHERE idempotency_key = ? AND
+     status = 'IN_PROCESS'` - the expiry is counted by the database's clock from this write. A condition that
+     matches no row is not a silent no-op but an `OperationStatusMismatchException`. What it hands back is the
+     caller's own result object, not a copy read back through the serializer.
+   - An exception from the business method rolls the transaction back and reaches the caller exactly as it was
+     thrown, checked or not.
 6. Once the transaction has committed - and only then - the processor publishes the operation's state to the
    `OperationStateChannel` and reports the outcome to `IdempotencyEventListener`: `onDuplicate()` for a replay,
    `onSuccess()` for an operation it ran itself.
@@ -278,29 +278,28 @@ Two processors, and one question tells them apart: **can a duplicate that arrive
 still running wait for it?** Everything else follows from the answer - whether a conflict handler is ever
 reached, whether a failed result can be kept, and what the store has to provide.
 
-|                                 | `BLOCKING`                                                                                   | `NON_BLOCKING` |
-|---------------------------------|----------------------------------------------------------------------------------------------|----------------|
-| Atomicity                       | commit or roll back together                                                                 | -              |
-| Transaction boundary            | the processor owns it - a transaction it did not start is refused                            | -              |
-| A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | -              |
-| A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | -              |
-| Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | -              |
-| Error responses on record       | refused at start-up: under this processor a `4xx` or `5xx` answer may not be kept            | -              |
-| Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | -              |
-| Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -              |
-| Today                           | implemented                                                                                  | a stub         |
+|                                 | `BLOCKING`                                                                                   | `NON_BLOCKING`                                                                                           |
+|---------------------------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| Atomicity                       | commit or roll back together                                                                 | the record lives apart from the business effect and outlives its rollback                                |
+| Transaction boundary            | the processor owns it - a transaction it did not start is refused                            | none of its own - a call inside an active transaction is refused                                         |
+| The claim                       | the row lock of the insert, held until commit                                                | a lease: a lock token of its own, held for `lockTtl` by the store's clock                                |
+| A duplicate arriving mid-flight | blocks on the store's insert, then replays the result                                        | meets the claim and is handed to the call site's `ConflictHandler`                                       |
+| A failed operation              | leaves no row - it rolls back with the business effect, and the next call is a first attempt | `releaseFor` decides: a listed exception deletes the record, any other is kept and thrown to repeats     |
+| Conflict handling               | rejected by `IdempotencyConfig.validate()`: a duplicate waits instead of reaching a handler  | required: switching it off is refused                                                                    |
+| `releaseFor`                    | changes nothing: an exception rolls the record back, so the key is always released           | decides whether a failure releases the key or stays on the record                                        |
+| Store contract                  | `saveIfAbsent` that holds the key's row until commit, compare-and-swap updates               | `lockOrSaveAndLock` under a token, every way out of the claim conditional on that token                  |
+| Isolation                       | correct at `READ COMMITTED` only, see [Isolation](#isolation)                                | -                                                                                                        |
 
-The `NON_BLOCKING` column is empty on purpose: the branch does not exist yet, and what it guarantees will be
-written here once it does. What it is *for* is the mirror image of the column beside it - a claim that is not
-the business transaction's is met rather than waited on, which is what finally gives a conflict handler
-something to answer; it outlives a rollback, which is what lets a failed result stay on the record; and it
-can be taken in a store that offers no transaction-scoped lock. See [Roadmap](#roadmap).
+What the non-blocking branch is *for* is the mirror image of the blocking one: a claim that is not the
+business transaction's is met rather than waited on, which is what gives a conflict handler something to
+answer; it outlives a rollback, which is what lets a failed outcome stay on the record; and it can be taken in
+a store that offers no transaction-scoped lock.
 
 ### Idempotency Guarantees
 
-> [!WARNING]
-> Everything below describes the `BLOCKING` processor - the only one implemented. See
-> [Processing Branches](#processing-branches) and [Limitations](#limitations).
+> [!NOTE]
+> Everything below describes the `BLOCKING` processor. How the non-blocking one differs is laid out in
+> [Processing Branches](#processing-branches).
 
 #### At-Most-Once Execution
 
@@ -314,7 +313,7 @@ a second time.
 
 The operation's record shares the business transaction, so a rollback takes both away: an operation that
 threw leaves no row behind, and the next request with the same key is treated as a first attempt and runs
-again. Only a completed operation is replayable. Keeping a failed result on record is what the
+again. Only a completed operation is replayable. Keeping a failed outcome on record is what the
 non-blocking branch is for.
 
 #### Transaction Boundary
@@ -369,25 +368,32 @@ A call site takes its key from one of two sources, and naming both is refused wh
 An operation's persisted `status` is one of:
 
 ```text
-IN_PROCESS --complete()--> PROCESSED
+IN_PROCESS --complete()--------------> PROCESSED
+IN_PROCESS --a failure kept on record--> EXCEPTIONALLY_PROCESSED   (non-blocking branch only)
 ```
 
-`CONFLICT` is a third `OperationStatus` value, but it is a transient, in-memory marker produced by
-`Operation.hasConflict()` when a second writer loses the `saveIfAbsent` race while the row is still
-`IN_PROCESS` - it decides which `ConflictHandler` runs and is never persisted back to the row.
+Both finished statuses carry an expiry and are replayed until it passes: `PROCESSED` with its result,
+`EXCEPTIONALLY_PROCESSED` by throwing the failure again.
+
+`CONFLICT` is a fourth `OperationStatus` value, but it describes an attempt, not a record: the non-blocking
+branch assigns it in memory when a call finds the key's claim held by another one, hands that call to the
+`ConflictHandler`, and never writes it to the store.
 
 ### Conflict Handling
 
 > [!NOTE]
-> Conflict handling belongs to the non-blocking branch and is unreachable today: the blocking processor
-> settles a duplicate on the store's own insert - the loser blocks, then replays - so `IdempotencyConfig`
-> rejects an enabled `conflictConfig` under `BLOCKING`. The handlers below are implemented and unit-tested,
-> waiting for the processor that uses them.
+> Conflict handling belongs to the non-blocking branch: the blocking processor settles a duplicate on the
+> store's own insert - the loser blocks, then replays - so `IdempotencyConfig` rejects an enabled
+> `conflictConfig` under `BLOCKING`, while `NON_BLOCKING` refuses to run without it.
+
+A handler answers with the completed operation the call replays, or throws to refuse it. One that returns
+`null` or an operation still in progress is refused with `ConflictHandlerResultException`, answered on HTTP as
+a 500 with the `conflict-handler-broken` type.
 
 | Strategy           | Behavior                                                                                                                                                                                                                                                                                                                   |
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `REJECT` (default) | Throws `IdempotencyConflictException` immediately.                                                                                                                                                                                                                                                                         |
-| `WAIT`             | Polls `OperationRepository.findByIdempotencyKey` with exponential backoff (`delay * multiplier ^ attempt`) until the row is `PROCESSED`, then replays it. Tuned by `WaitConflictHandlerConfig` (`delay`, `multiplier`, `maxAttempts`, `maxDuration`); gives up with `WaitTimeoutException` when the duration runs out and `WaitAttemptsExhaustedException` when the attempts do.                                    |
+| `WAIT`             | Polls `NonBlockingOperationRepository.find` with exponential backoff (`delay * multiplier ^ attempt`, never sleeping past `maxDuration`) until the operation is finished - `PROCESSED` or `EXCEPTIONALLY_PROCESSED` - then replays it. Tuned by `WaitConflictHandlerConfig` (`delay`, `multiplier`, `maxAttempts`, `maxDuration`); gives up with `WaitTimeoutException` when the duration runs out, `WaitAttemptsExhaustedException` when the attempts do and `WaitInterruptedException` when the thread is interrupted - all three are a `WaitAbortedException`. |
 | your own handler   | There is no `CUSTOM` constant: a hand-written `ConflictHandler` reaches the call site as an instance - `ConflictConfig.custom(handler)` - and being supplied is what makes it custom. It outranks the strategy, so no discriminator can disagree with it.                                                                    |
 
 ### Fingerprinting
@@ -450,20 +456,22 @@ your own rather than the `@Idempotent` aspect - casts once at its own boundary.
 
 The store contract is split by concurrency model rather than by table:
 
-- `OperationRepository` - the read side (`findByIdempotencyKey`), shared by everything;
 - `BlockingOperationRepository` - the write side that relies on the store's own atomicity: `saveIfAbsent`
-  must let exactly one concurrent request claim a key, and `update` / `saveResultAndUpdateStatus` must be
-  conditional on the row's current `status`, since concurrent requests for the same key race through this code
-  path inside a transaction;
-- `NonBlockingOperationRepository` - the write side for a store that gets mutual exclusion from an external lock.
-  Declared, not designed;
+  must let exactly one concurrent request claim a key and hold that claim until the caller's transaction
+  ends, and `update` / `saveResultAndUpdateStatus` must be conditional on the row's current `status`, since
+  concurrent requests for the same key race through this code path inside a transaction;
+- `NonBlockingOperationRepository` - the write side whose claim is a lease: `lockOrSaveAndLock` takes it under
+  a lock token for `lockTtl`, and completing, recording a failure, releasing and deleting are all conditional
+  on that token. It extends `OperationRepository`, whose `find` reads a row without claiming it;
 - `ResponseRepository` - the recorded response, read and written where it lives: on the row the operation
   already occupies. Its write is conditional on that operation having completed, and it hands back the
-  replayable part alone - the response, the fingerprint to check it against, and the expiry that bounds both.
-  This is also the seam a cache decorates.
+  replayable part alone - the response, the fingerprint to check it against, and the time the record has
+  left. This is also the seam a cache decorates.
 
-All four deal in rows rather than domain objects: a backend stores the components it is given and returns the
-components it holds, and never learns what they decode into.
+All of them deal in rows rather than domain objects: a backend stores the components it is given and returns
+the components it holds, and never learns what they decode into. Time is the store's too: it sets the creation
+time itself, counts an expiry from the ttl it is handed, and answers every read with how long the row has left
+by its own clock - so no instance ever compares a stored moment against a clock of its own.
 
 ```sql
 CREATE TABLE IF NOT EXISTS idempotent_operations(
@@ -471,20 +479,24 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
     status VARCHAR(20) NOT NULL,
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
+    exception_class_name TEXT,
     response TEXT,
     fingerprint VARCHAR(255),
-    expires_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    lock_token UUID,
+    lock_until TIMESTAMPTZ
 );
 ```
 
 ### Expiry & Cleanup
 
 `expires_at` is written when the operation **completes** - the moment its result exists, plus the ttl resolved
-for that call site (24 hours by default). Past that moment the key is free again: the next request carrying it
-overwrites the row and runs the business method as a first attempt. The recorded response is bounded by the
-very same column, and a cache entry standing in for that row reads the expiry off it rather than being given
-one - which is why no entry can outlive what it replays.
+for that call site (24 hours by default), both counted by the database's `clock_timestamp()` rather than by the
+application. Past that moment the key is free again: the next request carrying it overwrites the row and runs
+the business method as a first attempt. The recorded response is bounded by the very same column, and a cache
+entry standing in for that row takes the time the record has left from it rather than being given a ttl of its
+own - which is why no entry can outlive what it replays.
 
 Counting from completion rather than from the claim is what keeps a slow operation replayable: one that ran
 longer than its own ttl would otherwise commit a row that is already stale, serve no replay to anybody, and
@@ -538,7 +550,7 @@ idempify:
 
 | Metric Name           | Description                                   | Tags                                                                      |
 |:----------------------|:----------------------------------------------|:--------------------------------------------------------------------------|
-| `idempify.operations` | Idempotent calls, by the outcome they reached | `outcome={duplicate, conflict, fingerprint-mismatch, exception, success}` |
+| `idempify.operations` | Idempotent calls, by the outcome they reached | `outcome={duplicate, conflict, fingerprint-mismatch, exception, success, exceptionally-processed}` |
 | `idempify.cache.gets` | Response cache lookups, by what they found    | `result={hit, miss}`                                                      |
 
 One meter per subject and the difference in a tag, the way micrometer's own binders report `cache.gets`: the
@@ -585,6 +597,7 @@ idempify:
   enabled: true
   header-name: Idempotency-Key
   ttl: 24h
+  lock-ttl: 5m
   processor-type: NON_BLOCKING
   conflict:
     enabled: true
@@ -604,8 +617,7 @@ idempify:
       included-fields: []
       excluded-fields: []
   response:
-    should-cache-4xx: false
-    should-cache-5xx: false
+    release-for: []   # left out: the library's own exceptions
     included-headers: []
     excluded-headers: []
   cache:
@@ -622,6 +634,7 @@ idempify:
 | `enabled`                                   | Switches the library on. `false` keeps every idempify bean out of the context              | `true`                    |
 | `header-name`                               | Header the idempotency key is read from                                                    | `Idempotency-Key`         |
 | `ttl`                                       | How long a completed operation's result stays replayable                                   | `24h`                     |
+| `lock-ttl`                                  | How long a non-blocking claim is held; refused under `BLOCKING`                            | `5m`                      |
 | `processor-type`                            | Which processor runs the operation: `NON_BLOCKING` or `BLOCKING`                           | `NON_BLOCKING`            |
 | `conflict.enabled`                          | Whether a duplicate that meets an operation still in flight is handled                     | `true`                    |
 | `conflict.strategy`                         | What such a duplicate gets: `REJECT` answers at once, `WAIT` polls for the result          | `REJECT`                  |
@@ -636,8 +649,7 @@ idempify:
 | `fingerprint.canonicalizer.strategy`        | Order keys are put in before hashing                                                       | `LEXICOGRAPHICAL`         |
 | `fingerprint.canonicalizer.included-fields` | Only these fields take part in the fingerprint; mutually exclusive with the excluded list  | empty                     |
 | `fingerprint.canonicalizer.excluded-fields` | These fields are left out of the fingerprint; mutually exclusive with the included list    | empty                     |
-| `response.should-cache-4xx`                 | Whether a `4xx` answer is kept on the record and replayed                                  | `false`                   |
-| `response.should-cache-5xx`                 | Whether a `5xx` answer is kept on the record and replayed                                  | `false`                   |
+| `response.release-for`                      | Exceptions that release the key, so a repeat runs again; any other one stays on the record | library exceptions        |
 | `response.included-headers`                 | Only these response headers are recorded; empty keeps every header the answer carries      | empty                     |
 | `response.excluded-headers`                 | These response headers are left out; subtracted after the included set                     | empty                     |
 | `cache.enabled`                             | Whether a cache stands in front of the response store                                      | `false`                   |
@@ -658,12 +670,20 @@ idempify:
 > inventing. `cache.type: DISTRIBUTED` without a name fails at start-up with a message naming both ways out,
 > and so does a non-positive `cache.capacity` for an in-memory one.
 
+> [!NOTE]
+> `response.release-for` names exception types, the way `@Transactional(rollbackFor)` does: an operation that
+> throws one of them gives its key back, and the next call is a first attempt; an exception it does not name
+> leaves the outcome on the record, and a repeat gets the same answer. Left out, the list holds the library's
+> own exceptions (`IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST`); written empty, it releases the key for none. A
+> type that is not an exception is refused at start-up. Only the non-blocking branch can keep a failed
+> outcome, so under `BLOCKING` the list changes nothing.
+
 > [!WARNING]
-> Two combinations are refused at start-up rather than at the first request: with
-> `processor-type: BLOCKING`, `conflict.enabled` must be false, and so must both
-> `response.should-cache-4xx` and `response.should-cache-5xx`. The blocking processor settles duplicates
-> on the store's insert, so no conflict is left to handle; and it writes the record in the same transaction as
-> the business operation, so keeping a failed answer is what the non-blocking branch is for.
+> Some combinations are refused at start-up rather than at the first request. With
+> `processor-type: BLOCKING`, `conflict.enabled` must be false - the blocking processor settles duplicates on
+> the store's insert, so no conflict is left to handle - and `lock-ttl` must be left out, since the claim
+> lives in the business transaction. With `processor-type: NON_BLOCKING`, `conflict.enabled` must stay true:
+> a duplicate meets the unfinished operation there, and only a handler can answer it.
 
 > [!NOTE]
 > The cache is governed by properties alone - `@Idempotent` has no attribute for it. A call site allowed to
@@ -688,29 +708,30 @@ IdempotencyConfig idempotencyConfigRegistry(IdempotencyConfigRegistry registry) 
 
 ### 3. Annotation
 
-| Attribute        | Description                                                                   | Unspecified value |
-|------------------|-------------------------------------------------------------------------------|-------------------|
-| `config`         | Name of a registered `IdempotencyConfig` to layer under this call site        | `""`              |
-| `idempotencyKey` | SpEL expression the key is computed from; the header is read when it is blank | `""`              |
-| `headerName`     | Header this call site reads the key from                                      | `""`              |
-| `ttl`            | How long the result stays replayable, counted in `timeUnit`                   | `-1`              |
-| `timeUnit`       | Unit `ttl` is written in; read only when `ttl` is non-negative                | `HOURS`           |
-| `processorType`  | Which processor runs the operation: `BLOCKING` or `NON_BLOCKING`              | `UNSELECTED`      |
-| `onConflict`     | What a duplicate meeting an operation in flight gets: `REJECT` or `WAIT`      | `UNSELECTED`      |
-| `useFingerprint` | Whether a duplicate must match the original request: `ENABLE` or `DISABLE`    | `UNSELECTED`      |
-| `cache4xx`       | Whether a `4xx` answer is worth an entry: `ENABLE` or `DISABLE`               | `UNSELECTED`      |
-| `cache5xx`       | Whether a `5xx` answer is worth an entry: `ENABLE` or `DISABLE`               | `UNSELECTED`      |
+| Attribute        | Description                                                                      | Unspecified value |
+|------------------|----------------------------------------------------------------------------------|-------------------|
+| `config`         | Name of a registered `IdempotencyConfig` to layer under this call site           | `""`              |
+| `idempotencyKey` | SpEL expression the key is computed from; the header is read when it is blank    | `""`              |
+| `headerName`     | Header this call site reads the key from                                         | `""`              |
+| `ttl`            | How long the result stays replayable, counted in `timeUnit`                      | `-1`              |
+| `lockTtl`        | How long a non-blocking claim is held, counted in `timeUnit`                     | `-1`              |
+| `timeUnit`       | Unit `ttl` and `lockTtl` are written in                                          | `HOURS`           |
+| `processorType`  | Which processor runs the operation: `BLOCKING` or `NON_BLOCKING`                 | `UNSELECTED`      |
+| `onConflict`     | What a duplicate meeting an operation in flight gets: `REJECT` or `WAIT`         | `UNSELECTED`      |
+| `useFingerprint` | Whether a duplicate must match the original request: `ENABLE` or `DISABLE`       | `UNSELECTED`      |
+| `useReleaseFor`  | Whether a failure may release the key at all: `ENABLE` or `DISABLE`              | `UNSELECTED`      |
+| `releaseFor`     | Exceptions that release the key; an empty list leaves the choice to other layers | `{}`              |
 
 Every attribute is optional and each has a value meaning "not decided here" - an empty string, a negative
-`ttl`, `UNSELECTED`. That value is not a setting of its own: it hands the decision to the named config, and
-failing that to the global properties. A hand-written `ConflictHandler` or `FingerprintPolicy` is not named
-here at all: it is an instance on the config, not a class on the annotation.
+`ttl` or `lockTtl`, `UNSELECTED`, an empty `releaseFor`; `timeUnit` only qualifies the two durations. That value is not a setting of its own: it hands the decision to
+the named config, and failing that to the global properties. A hand-written `ConflictHandler` or
+`FingerprintPolicy` is not named here at all: it is an instance on the config, not a class on the annotation.
 
 ### Examples
 
 #### Blocking, Header Key
 
-What a working setup looks like today: the store decides the races, the key travels in a header, and the one
+The store decides the races, the key travels in a header, and the one
 section the blocking processor refuses is switched off. Error answers stay off the record by default, so
 that half needs no line here.
 
@@ -780,10 +801,10 @@ response does not apply here - a repeat is answered from the result instead, see
 ```
 
 ## Roadmap
-- A working `NON_BLOCKING` processor, and with it conflict handling and a record that survives a failed operation
+- A store for the `NON_BLOCKING` branch, and with it conflict handling and a record that survives a failed operation
 - Named configuration profiles declared in YAML
 - Automatic table creation
 - A working `idempify-example` demo application
 - Maven Central publishing
 - gRPC transport support (`RequestType.GRPC` is reserved but unimplemented) and WebFlux support
-- MySQL and Oracle `OperationRepository` implementations
+- MySQL and Oracle store implementations
