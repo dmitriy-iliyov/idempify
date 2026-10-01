@@ -12,6 +12,7 @@ public interface IdempotentInterceptor {
      *
      * @param context what the aspect observed about the call.
      * @return the value to return to the caller.
+     * @throws Throwable what the intercepted method threw, exactly as it was thrown.
      */
-    Object intercept(InterceptContext context);
+    Object intercept(InterceptContext context) throws Throwable;
 }

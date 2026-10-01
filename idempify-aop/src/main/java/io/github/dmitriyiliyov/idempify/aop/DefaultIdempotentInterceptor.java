@@ -20,15 +20,14 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
     }
 
     @Override
-    public Object intercept(InterceptContext context) {
+    public Object intercept(InterceptContext context) throws Throwable {
         UUID idempotencyKey = context.getIdempotencyKey();
 
         if (idempotencyKey == null) {
             if (!context.getOperationMetadata().useHeaderName()) {
                 throw new IllegalStateException("""
-                        Operation has no idempotency key: the call site takes it from an expression rather than 
-                        from a request attribute, nothing else can supply it
-                """);
+                        Operation has no idempotency key: the call site takes it from an expression rather than \
+                        from a request attribute, nothing else can supply it""");
             }
             idempotencyKey = keyExtractor.extract(
                     context.getOperationMetadata().getHeaderName(),

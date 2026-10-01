@@ -159,8 +159,7 @@ class IdempifyAopComponentTest {
             assertThat(raw.getTtl()).isEqualTo(Duration.ofHours(48));
             assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
             assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
-            assertThat(raw.getCache4xxToggle()).isEqualTo(Toggle.DISABLE);
-            assertThat(raw.getCache5xxToggle()).isEqualTo(Toggle.DISABLE);
+            assertThat(raw.getReleaseFor()).containsExactly(IllegalStateException.class);
         });
     }
 
@@ -308,8 +307,7 @@ class IdempifyAopComponentTest {
                 timeUnit = TimeUnit.HOURS,
                 onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                cache4xx = Toggle.DISABLE,
-                cache5xx = Toggle.DISABLE
+                releaseFor = IllegalStateException.class
         )
         public String pay(String amount) {
             payCalls++;

@@ -4,6 +4,9 @@ import io.github.dmitriyiliyov.idempify.core.Idempotent;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import org.aopalliance.intercept.MethodInterceptor;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
@@ -115,6 +118,36 @@ class AdvisorIdempotentEntryUnitTest {
         assertThat(result).isFalse();
     }
 
+    @Test
+    @DisplayName("UT intercepts() when a jdk proxy exposes the annotated method on its interface should answer true")
+    void intercepts_whenJdkProxyExposesAnnotatedMethodOnItsInterface_shouldAnswerTrue() {
+        // given
+        AspectJProxyFactory factory = new AspectJProxyFactory(new AnnotatedService());
+        factory.setProxyTargetClass(false);
+        factory.addAspect(advisor());
+
+        // when
+        boolean result = tested.intercepts(factory.getProxy(), methodOf(Payments.class, "pay"));
+
+        // then
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    @DisplayName("UT intercepts() when the proxy carries another aspect's advice only should answer false")
+    void intercepts_whenProxyCarriesAnotherAspectsAdviceOnly_shouldAnswerFalse() {
+        // given
+        AspectJProxyFactory factory = new AspectJProxyFactory(new TestController());
+        factory.setProxyTargetClass(true);
+        factory.addAspect(new OtherAspect());
+
+        // when
+        boolean result = tested.intercepts(factory.getProxy(), method("pay"));
+
+        // then
+        assertThat(result).isFalse();
+    }
+
     private static Object advisedProxy(Object target) {
         AspectJProxyFactory factory = new AspectJProxyFactory(target);
         factory.setProxyTargetClass(true);
@@ -175,6 +208,29 @@ class AdvisorIdempotentEntryUnitTest {
 
         @Idempotent
         public void payOffInterface() { }
+    }
+
+    /**
+     * Carries the annotated method on the interface a jdk proxy exposes, so the proxy can reach it.
+     */
+    public static class AnnotatedService implements Payments {
+
+        @Idempotent
+        @Override
+        public void pay() { }
+    }
+
+    /**
+     * An aspect advising the same methods as {@link IdempotentAdvisor}, so that only the declaring class of
+     * the advice tells the two apart.
+     */
+    @Aspect
+    public static class OtherAspect {
+
+        @Around("@annotation(io.github.dmitriyiliyov.idempify.core.Idempotent)")
+        public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
+            return joinPoint.proceed();
+        }
     }
 
     public interface Payments {

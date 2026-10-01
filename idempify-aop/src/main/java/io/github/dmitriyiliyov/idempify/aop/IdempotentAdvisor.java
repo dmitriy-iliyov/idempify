@@ -14,7 +14,7 @@ import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.expression.EvaluationException;
+import org.springframework.expression.ExpressionException;
 
 import java.lang.reflect.Method;
 import java.util.Objects;
@@ -87,8 +87,8 @@ public class IdempotentAdvisor {
                     target,
                     jp.getArgs()
             );
-        } catch (EvaluationException ee) {
-            log.warn("Cannot evaluate idempotency key expression '{}'", spel, ee);
+        } catch (ExpressionException ee) {
+            log.warn("Cannot evaluate idempotency key expression '{}' on {}", spel, method, ee);
             throw ee;
         }
 

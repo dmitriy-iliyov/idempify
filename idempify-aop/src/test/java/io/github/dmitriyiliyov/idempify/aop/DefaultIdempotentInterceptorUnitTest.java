@@ -63,7 +63,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when context carries an idempotencyKey should use it without calling keyExtractor")
-    void intercept_whenContextCarriesIdempotencyKey_shouldUseItWithoutCallingKeyExtractor() {
+    void intercept_whenContextCarriesIdempotencyKey_shouldUseItWithoutCallingKeyExtractor() throws Throwable {
         // given
         UUID idempotencyKey = UUID.randomUUID();
         InterceptContext context = interceptContext(idempotencyKey, fingerprintingMetadata());
@@ -82,7 +82,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when context has no idempotencyKey should extract it from the request")
-    void intercept_whenContextHasNoIdempotencyKey_shouldExtractItFromRequest() {
+    void intercept_whenContextHasNoIdempotencyKey_shouldExtractItFromRequest() throws Throwable {
         // given
         UUID extractedKey = UUID.randomUUID();
         OperationMetadata metadata = fingerprintingMetadata();
@@ -103,7 +103,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when the key comes from an expression should not look for it in the request")
-    void intercept_whenKeyComesFromExpression_shouldNotLookForItInRequest() {
+    void intercept_whenKeyComesFromExpression_shouldNotLookForItInRequest() throws Throwable {
         // given
         UUID idempotencyKey = UUID.randomUUID();
         InterceptContext context = interceptContext(idempotencyKey, expressionKeyedMetadata());
@@ -133,7 +133,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when metadata uses fingerprint should generate it with the metadata policy")
-    void intercept_whenMetadataUsesFingerprint_shouldGenerateItWithMetadataPolicy() {
+    void intercept_whenMetadataUsesFingerprint_shouldGenerateItWithMetadataPolicy() throws Throwable {
         // given
         String fingerprint = "fingerprint";
         InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
@@ -152,7 +152,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when metadata does not use fingerprint should pass an empty fingerprint")
-    void intercept_whenMetadataDoesNotUseFingerprint_shouldPassEmptyFingerprint() {
+    void intercept_whenMetadataDoesNotUseFingerprint_shouldPassEmptyFingerprint() throws Throwable {
         // given
         InterceptContext context = interceptContext(UUID.randomUUID(), plainMetadata());
         ArgumentCaptor<OperationContext> captor = operationContextCaptor();
@@ -198,7 +198,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when called should pass the result type and the callback through untouched")
-    void intercept_whenCalled_shouldPassResultTypeAndCallbackThroughUntouched() {
+    void intercept_whenCalled_shouldPassResultTypeAndCallbackThroughUntouched() throws Throwable {
         // given
         InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
         ArgumentCaptor<OperationContext> captor = operationContextCaptor();
@@ -216,7 +216,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when called should pass the context metadata to the processor")
-    void intercept_whenCalled_shouldPassContextMetadataToProcessor() {
+    void intercept_whenCalled_shouldPassContextMetadataToProcessor() throws Throwable {
         // given
         OperationMetadata metadata = fingerprintingMetadata();
         InterceptContext context = interceptContext(UUID.randomUUID(), metadata);
@@ -232,7 +232,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when processor returns a result should return it to the caller")
-    void intercept_whenProcessorReturnsResult_shouldReturnItToCaller() {
+    void intercept_whenProcessorReturnsResult_shouldReturnItToCaller() throws Throwable {
         // given
         String response = "response";
         InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
@@ -249,7 +249,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
     @Test
     @DisplayName("UT intercept() when processor throws should let the exception through")
-    void intercept_whenProcessorThrows_shouldLetExceptionThrough() {
+    void intercept_whenProcessorThrows_shouldLetExceptionThrough() throws Throwable {
         // given
         InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
 

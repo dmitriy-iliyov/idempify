@@ -39,6 +39,11 @@ final class TestOperationMetadata implements OperationMetadata {
     }
 
     @Override
+    public Duration getLockTtl() {
+        return null;
+    }
+
+    @Override
     public ProcessorType getProcessorType() {
         return processorType;
     }
@@ -71,7 +76,7 @@ final class TestOperationMetadata implements OperationMetadata {
 
         private String headerName = "Idempotency-Key";
         private Duration ttl = Duration.ofHours(24);
-        private ProcessorType processorType = ProcessorType.BLOCKING;
+        private ProcessorType processorType = ProcessorType.TRANSACTIONAL_BLOCKING;
         private ConflictHandler conflictHandler;
         private boolean useFingerprint;
         private FingerprintPolicy fingerprintPolicy;

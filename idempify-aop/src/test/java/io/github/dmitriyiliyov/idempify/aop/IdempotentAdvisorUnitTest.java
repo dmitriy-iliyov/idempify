@@ -332,7 +332,7 @@ class IdempotentAdvisorUnitTest {
 
     @Test
     @DisplayName("UT advice() when the interceptor throws should let the exception through")
-    void advice_whenInterceptorThrows_shouldLetExceptionThrough() throws NoSuchMethodException {
+    void advice_whenInterceptorThrows_shouldLetExceptionThrough() throws Throwable {
         // given
         Idempotent annotation = annotation("action");
 
@@ -366,7 +366,7 @@ class IdempotentAdvisorUnitTest {
         when(jp.getArgs()).thenReturn(args);
     }
 
-    private InterceptContext capturedContext() {
+    private InterceptContext capturedContext() throws Throwable {
         ArgumentCaptor<InterceptContext> captor = interceptContextCaptor();
         verify(interceptor, times(1)).intercept(captor.capture());
         return captor.getValue();
