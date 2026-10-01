@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
@@ -16,12 +15,6 @@ import java.util.Set;
 @AutoConfiguration
 @ConditionalOnIdempifyEnabled
 public class IdempifyPostgreSqlAutoConfiguration {
-
-    @Bean
-    @ConditionalOnMissingBean
-    public OperationRepository idempifyOperationRepository(JdbcClient jdbcClient) {
-        return new PostgreSqlOperationRepository(jdbcClient);
-    }
 
     @Bean
     @ConditionalOnMissingBean

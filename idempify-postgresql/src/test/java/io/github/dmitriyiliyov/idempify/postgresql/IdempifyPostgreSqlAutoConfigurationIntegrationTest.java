@@ -1,6 +1,5 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
-import io.github.dmitriyiliyov.idempify.core.OperationRepository;
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
@@ -26,14 +25,11 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
             .withBean(JdbcClient.class, () -> mock(JdbcClient.class));
 
     @Test
-    @DisplayName("IT context when a JdbcClient is present should register all three repositories")
-    void context_whenJdbcClientIsPresent_shouldRegisterAllThreeRepositories() {
+    @DisplayName("IT context when a JdbcClient is present should register both repositories")
+    void context_whenJdbcClientIsPresent_shouldRegisterBothRepositories() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(PostgreSqlBlockingOperationRepository.class);
             assertThat(context).hasSingleBean(BlockingOperationRepository.class);
-
-            assertThat(context).hasSingleBean(PostgreSqlOperationRepository.class);
-            assertThat(context).hasSingleBean(OperationRepository.class);
 
             assertThat(context).hasSingleBean(PostgreSqlResponseRepository.class);
             assertThat(context).hasSingleBean(ResponseRepository.class);
@@ -52,17 +48,6 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
                 });
     }
 
-    @Test
-    @DisplayName("IT context when the application brings a reader of its own should not register the postgres one")
-    void context_whenApplicationBringsReaderOfItsOwn_shouldNotRegisterPostgresOne() {
-        contextRunner
-                .withBean("applicationOperationRepository", OperationRepository.class,
-                        () -> mock(OperationRepository.class))
-                .run(context -> {
-                    assertThat(context).hasSingleBean(OperationRepository.class);
-                    assertThat(context).doesNotHaveBean(PostgreSqlOperationRepository.class);
-                });
-    }
 
     @Test
     @DisplayName("IT context when the application brings a response store of its own should not register the postgres one")

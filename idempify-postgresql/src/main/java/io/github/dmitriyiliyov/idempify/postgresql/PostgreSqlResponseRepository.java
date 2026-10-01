@@ -25,8 +25,8 @@ public class PostgreSqlResponseRepository implements ResponseRepository {
                     UPDATE idempotent_operations
                     SET response = ?
                     WHERE idempotency_key = ? AND status = ?
-                    RETURNING response, fingerprint, expires_at
-                """)
+                    RETURNING response, fingerprint, %s
+                """.formatted(PostgreSqlRepositoryUtils.REMAINING_MILLIS_COLUMN))
                 .params(response, idempotencyKey, OperationStatus.PROCESSED.name())
                 .query((rs, rowNum) -> PostgreSqlRepositoryUtils.toRawResponseContainer(rs))
                 .optional();
@@ -44,10 +44,10 @@ public class PostgreSqlResponseRepository implements ResponseRepository {
     public Optional<RawResponseContainer> findByIdempotencyKey(UUID idempotencyKey) {
         return jdbcClient
                 .sql("""
-                    SELECT response, fingerprint, expires_at
+                    SELECT response, fingerprint, %s
                     FROM idempotent_operations
                     WHERE idempotency_key = ?
-                """)
+                """.formatted(PostgreSqlRepositoryUtils.REMAINING_MILLIS_COLUMN))
                 .params(idempotencyKey)
                 .query((rs, rowNum) -> PostgreSqlRepositoryUtils.toRawResponseContainer(rs))
                 .optional();

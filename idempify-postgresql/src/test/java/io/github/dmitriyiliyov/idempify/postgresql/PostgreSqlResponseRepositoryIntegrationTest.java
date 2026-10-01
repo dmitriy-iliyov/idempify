@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -28,11 +29,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * The answer is written onto the row the operation already occupies, so the write is conditional on that
  * operation having completed: a row still running, or none at all, must not collect somebody's answer. The
- * read hands back the expiry as well, because that is what a cache in front of this store counts its own
+ * read hands back the time the record has left as well, because that is what a cache in front of this store counts its own
  * lifetime from.
  */
 @Testcontainers
 class PostgreSqlResponseRepositoryIntegrationTest {
+
+    private static final long AN_HOUR = Duration.ofHours(1).toMillis();
+    private static final long TOLERANCE = Duration.ofMinutes(1).toMillis();
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -76,7 +80,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
         // then
         assertThat(result.getResponse()).isEqualTo("raw-response");
         assertThat(result.getFingerprint()).isEqualTo("fingerprint");
-        assertThat(result.getExpiresAt()).isNotNull();
+        assertThat(result.getRemainingMillis()).isNotNull();
     }
 
     @Test
@@ -84,13 +88,12 @@ class PostgreSqlResponseRepositoryIntegrationTest {
     void save_shouldHandBackRecordAsItNowStandsSoCacheCanBoundItsOwnCopy() {
         // given
         UUID key = completedOperation();
-        Instant expiresAt = storedExpiry(key);
 
         // when
         RawResponseContainer result = tested.save(key, "raw-response");
 
         // then
-        assertThat(result.getExpiresAt()).isEqualTo(expiresAt);
+        assertThat(result.getRemainingMillis()).isBetween(AN_HOUR - TOLERANCE, AN_HOUR);
     }
 
     @Test
@@ -121,8 +124,8 @@ class PostgreSqlResponseRepositoryIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT findByIdempotencyKey() when the answer was written should read it back with its expiry")
-    void findByIdempotencyKey_whenAnswerWasWritten_shouldReadItBackWithItsExpiry() {
+    @DisplayName("IT findByIdempotencyKey() when the answer was written should read it back with the time it has left")
+    void findByIdempotencyKey_whenAnswerWasWritten_shouldReadItBackWithTimeItHasLeft() {
         // given
         UUID key = completedOperation();
         RawResponseContainer saved = tested.save(key, "raw-response");
@@ -131,7 +134,28 @@ class PostgreSqlResponseRepositoryIntegrationTest {
         Optional<RawResponseContainer> result = tested.findByIdempotencyKey(key);
 
         // then
-        assertThat(result).contains(saved);
+        assertThat(result).hasValueSatisfying(container -> {
+            assertThat(container.getResponse()).isEqualTo(saved.getResponse());
+            assertThat(container.getFingerprint()).isEqualTo(saved.getFingerprint());
+            assertThat(container.getRemainingMillis()).isBetween(AN_HOUR - TOLERANCE, saved.getRemainingMillis());
+        });
+    }
+
+    @Test
+    @DisplayName("IT findByIdempotencyKey() when the record has expired should read it back with no time left")
+    void findByIdempotencyKey_whenRecordHasExpired_shouldReadItBackWithNoTimeLeft() {
+        // given
+        UUID key = completedOperation(-AN_HOUR);
+        tested.save(key, "raw-response");
+
+        // when
+        Optional<RawResponseContainer> result = tested.findByIdempotencyKey(key);
+
+        // then
+        assertThat(result).hasValueSatisfying(container -> {
+            assertThat(container.getResponse()).isEqualTo("raw-response");
+            assertThat(container.getRemainingMillis()).isNegative();
+        });
     }
 
     @Test
@@ -147,7 +171,7 @@ class PostgreSqlResponseRepositoryIntegrationTest {
         // then
         assertThat(result).hasValueSatisfying(container -> {
             assertThat(container.getResponse()).isNull();
-            assertThat(container.getExpiresAt()).isNull();
+            assertThat(container.getRemainingMillis()).isNull();
             assertThat(container.getFingerprint()).isEqualTo("fingerprint");
         });
     }
@@ -160,23 +184,15 @@ class PostgreSqlResponseRepositoryIntegrationTest {
     }
 
     private UUID completedOperation() {
-        UUID key = UUID.randomUUID();
-        operations.saveIfAbsent(claim(key));
-        operations.saveResultAndUpdateStatus(
-                key,
-                "result",
-                OperationStatus.PROCESSED,
-                Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS),
-                OperationStatus.IN_PROCESS
-        );
-        return key;
+        return completedOperation(AN_HOUR);
     }
 
-    private Instant storedExpiry(UUID idempotencyKey) {
-        return new PostgreSqlOperationRepository(jdbcClient)
-                .findByIdempotencyKey(idempotencyKey)
-                .orElseThrow()
-                .expiresAt();
+    private UUID completedOperation(long ttlMillis) {
+        UUID key = UUID.randomUUID();
+        operations.saveIfAbsent(claim(key));
+        operations.saveResultAndUpdateStatus(key, "result", OperationStatus.PROCESSED, ttlMillis,
+                OperationStatus.IN_PROCESS);
+        return key;
     }
 
     private static RawOperation claim(UUID idempotencyKey) {

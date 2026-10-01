@@ -1,13 +1,11 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
+import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.OperationStatus;
 import io.github.dmitriyiliyov.idempify.core.OperationStatusMismatchException;
 import io.github.dmitriyiliyov.idempify.core.RawOperation;
-import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -24,21 +22,20 @@ public class PostgreSqlBlockingOperationRepository implements BlockingOperationR
         return jdbcClient
                 .sql("""
                     INSERT INTO idempotent_operations 
-                        (idempotency_key, status, is_first_attempt, result, response, fingerprint, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (idempotency_key, status, is_first_attempt, result, response, fingerprint)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(idempotency_key) 
                     DO UPDATE 
                         SET is_first_attempt = false
-                    RETURNING *
-                """)
+                    RETURNING *, %s
+                """.formatted(PostgreSqlRepositoryUtils.REMAINING_MILLIS_COLUMN))
                 .params(
                         operation.idempotencyKey(),
                         operation.status().name(),
                         operation.isFirstAttempt(),
                         operation.result(),
                         operation.response(),
-                        operation.fingerprint(),
-                        Timestamp.from(operation.createdAt())
+                        operation.fingerprint()
                 )
                 .query((rs, rowNum) -> PostgreSqlRepositoryUtils.toRawOperation(rs))
                 .single();
@@ -54,19 +51,17 @@ public class PostgreSqlBlockingOperationRepository implements BlockingOperationR
                             result = ?,
                             response = ?,
                             fingerprint = ?,
-                            expires_at = ?,
-                            created_at = ?
+                            expires_at = ?
                     WHERE idempotency_key = ? AND status = ?
-                    RETURNING *
-                """)
+                    RETURNING *, %s
+                """.formatted(PostgreSqlRepositoryUtils.REMAINING_MILLIS_COLUMN))
                 .params(
                         operation.status().name(),
                         operation.isFirstAttempt(),
                         operation.result(),
                         operation.response(),
                         operation.fingerprint(),
-                        PostgreSqlRepositoryUtils.toTimestamp(operation.expiresAt()),
-                        Timestamp.from(operation.createdAt()),
+                        null,
                         operation.idempotencyKey(),
                         onStatus.name()
                 )
@@ -79,15 +74,15 @@ public class PostgreSqlBlockingOperationRepository implements BlockingOperationR
     public void saveResultAndUpdateStatus(UUID idempotencyKey,
                                           String result,
                                           OperationStatus status,
-                                          Instant expiresAt,
+                                          long ttlMillis,
                                           OperationStatus onStatus) {
         int updated = jdbcClient
                 .sql("""
                     UPDATE idempotent_operations
-                        SET result = ?, status = ?, expires_at = ?
+                        SET result = ?, status = ?, expires_at = clock_timestamp() + (? * INTERVAL '1 millisecond')
                     WHERE idempotency_key = ? AND status = ?
                 """)
-                .params(result, status.name(), Timestamp.from(expiresAt), idempotencyKey, onStatus.name())
+                .params(result, status.name(), ttlMillis, idempotencyKey, onStatus.name())
                 .update();
 
         if (updated == 0) throw new OperationStatusMismatchException(idempotencyKey, onStatus);
