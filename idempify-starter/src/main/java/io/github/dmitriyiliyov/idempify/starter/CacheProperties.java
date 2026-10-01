@@ -43,9 +43,9 @@ public final class CacheProperties implements CachePropertiesHolder {
 
             if (CacheType.DISTRIBUTED.equals(type) && StringUtils.isBlank(name)) {
                 throw new IllegalArgumentException("""
-                        'idempify.cache.name' cannot be null when type is %s, empty or blank: set 'idempify.cache.name', 
-                        or set 'idempify.cache.enabled' to false if the application does not cache responses
-            """.formatted(type));
+                        'idempify.cache.name' cannot be null when type is %s, empty or blank: set 'idempify.cache.name', \
+                        or set 'idempify.cache.enabled' to false if the application does not cache responses\
+                        """.formatted(type));
             }
             this.name = name;
 

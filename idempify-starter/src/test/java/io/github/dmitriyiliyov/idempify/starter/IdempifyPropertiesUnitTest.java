@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,7 +73,7 @@ class IdempifyPropertiesUnitTest {
         // when
         IdempifyProperties tested = properties()
                 .enabled(false)
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(conflictProperties(true))
                 .build();
 
@@ -186,7 +188,7 @@ class IdempifyPropertiesUnitTest {
     void constructor_whenBlockingProcessorMeetsConflictHandling_shouldNamePropertyToSwitchOff() {
         // when / then
         assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(conflictProperties(true))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
@@ -195,44 +197,64 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor() when the blocking processor keeps client errors should name the property to switch off")
-    void constructor_whenBlockingProcessorKeepsClientErrors_shouldNamePropertyToSwitchOff() {
+    @DisplayName("UT constructor() when the blocking processor is given a lock ttl should name the property to drop")
+    void constructor_whenBlockingProcessorIsGivenLockTtl_shouldNamePropertyToDrop() {
         // when / then
         assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(conflictProperties(false))
-                .response(new ResponseProperties(true, false, Set.of(), Set.of()))
+                .lockTtl(Duration.ofMinutes(1))
                 .build())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
+                .hasMessageContaining("'idempify.lock-ttl' cannot be set")
                 .hasMessageContaining("'idempify.processor-type' is BLOCKING");
     }
 
     @Test
-    @DisplayName("UT constructor() when the blocking processor keeps server errors should name the property to switch off")
-    void constructor_whenBlockingProcessorKeepsServerErrors_shouldNamePropertyToSwitchOff() {
-        // when / then
-        assertThatThrownBy(() -> properties()
-                .processorType(ProcessorType.BLOCKING)
-                .conflict(conflictProperties(false))
-                .response(new ResponseProperties(false, true, Set.of(), Set.of()))
-                .build())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false")
-                .hasMessageContaining("'idempify.processor-type' is BLOCKING");
+    @DisplayName("UT constructor() when nothing names a lock ttl should answer with the one core holds")
+    void constructor_whenNothingNamesLockTtl_shouldAnswerWithOneCoreHolds() {
+        // when
+        IdempifyProperties tested = properties().build();
+
+        // then
+        assertThat(tested.getLockTtl()).isEqualTo(Duration.parse(IdempifyDefaults.LOCK_TTL_VALUE));
+        assertThat(tested.provide().getLockTtl()).isEqualTo(Duration.parse(IdempifyDefaults.LOCK_TTL_VALUE));
     }
 
     @Test
-    @DisplayName("UT constructor() when the blocking processor meets neither section should be accepted")
-    void constructor_whenBlockingProcessorMeetsNeitherSection_shouldBeAccepted() {
+    @DisplayName("UT constructor() when a lock ttl is not positive should throw IllegalArgumentException")
+    void constructor_whenLockTtlIsNotPositive_shouldThrowIllegalArgumentException() {
+        // when / then
+        assertThatThrownBy(() -> properties().lockTtl(Duration.ZERO).build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("lockTtl must be positive");
+    }
+
+    @Test
+    @DisplayName("UT constructor() when the blocking processor releases the key for nothing should release it on any failure")
+    void constructor_whenBlockingProcessorReleasesKeyForNothing_shouldReleaseKeyOnAnyFailure() {
         // when
         IdempifyProperties tested = properties()
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .conflict(conflictProperties(false))
+                .response(new ResponseProperties(List.of(), Set.of(), Set.of()))
+                .build();
+
+        // then
+        assertThat(tested.provide().getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+    }
+
+    @Test
+    @DisplayName("UT constructor() when the blocking processor meets no conflict section should be accepted")
+    void constructor_whenBlockingProcessorMeetsNoConflictSection_shouldBeAccepted() {
+        // when
+        IdempifyProperties tested = properties()
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(conflictProperties(false))
                 .build();
 
         // then
-        assertThat(tested.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(tested.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
         tested.provide().validate();
     }
 
@@ -259,7 +281,7 @@ class IdempifyPropertiesUnitTest {
         IdempifyProperties tested = properties()
                 .headerName("X-Request-Id")
                 .ttl(Duration.ofHours(2))
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .build();
 
         // when
@@ -268,7 +290,7 @@ class IdempifyPropertiesUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Request-Id");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(2));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
     }
 
     @Test
@@ -295,10 +317,13 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT provide() when conflict handling is switched off should say so instead of leaving it open")
-    void provide_whenConflictHandlingIsSwitchedOff_shouldSaySoInsteadOfLeavingItOpen() {
+    @DisplayName("UT provide() when a blocking processor switches conflict handling off should say so instead of leaving it open")
+    void provide_whenBlockingProcessorSwitchesConflictHandlingOff_shouldSaySoInsteadOfLeavingItOpen() {
         // given
-        IdempifyProperties tested = properties().conflict(conflictProperties(false)).build();
+        IdempifyProperties tested = properties()
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .conflict(conflictProperties(false))
+                .build();
 
         // when
         IdempotencyConfig result = tested.provide();
@@ -306,6 +331,18 @@ class IdempifyPropertiesUnitTest {
         // then
         assertThat(result.getConflictConfig()).isNotNull();
         assertThat(result.getConflictConfig().isEnabled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT provide() when a non-blocking processor switches conflict handling off should refuse it")
+    void provide_whenNonBlockingProcessorSwitchesConflictHandlingOff_shouldRefuseIt() {
+        // given
+        IdempifyProperties tested = properties().conflict(conflictProperties(false)).build();
+
+        // when / then
+        assertThatThrownBy(tested::provide)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("NON_BLOCKING");
     }
 
     @Test
@@ -339,19 +376,18 @@ class IdempifyPropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT provide() when response caching is asked for should carry it")
-    void provide_whenResponseCachingIsAskedFor_shouldCarryIt() {
+    @DisplayName("UT provide() when releaseFor is configured should carry it")
+    void provide_whenReleaseForIsConfigured_shouldCarryIt() {
         // given
         IdempifyProperties tested = properties()
-                .response(new ResponseProperties(true, false, Set.of(), Set.of()))
+                .response(new ResponseProperties(List.of(IllegalStateException.class), Set.of(), Set.of()))
                 .build();
 
         // when
         IdempotencyConfig result = tested.provide();
 
         // then
-        assertThat(result.getResponseConfig().shouldCache4xx()).isTrue();
-        assertThat(result.getResponseConfig().shouldCache5xx()).isFalse();
+        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -404,7 +440,7 @@ class IdempifyPropertiesUnitTest {
         // given
         ConflictProperties conflict = conflictProperties(true);
         FingerprintProperties fingerprint = fingerprintProperties(true);
-        ResponseProperties response = new ResponseProperties(false, false, Set.of(), Set.of());
+        ResponseProperties response = new ResponseProperties(List.of(), Set.of(), Set.of());
         CacheProperties cache = new CacheProperties(false, CacheType.IN_MEMORY, null, 100);
         MetricsProperties metrics = new MetricsProperties(false);
 
@@ -477,10 +513,11 @@ class IdempifyPropertiesUnitTest {
         private Boolean enabled = true;
         private String headerName = "Idempotency-Key";
         private Duration ttl = Duration.ofHours(24);
-        private ProcessorType processorType = ProcessorType.NON_BLOCKING;
+        private Duration lockTtl;
+        private ProcessorType processorType = ProcessorType.TRANSACTIONAL_NON_BLOCKING;
         private ConflictProperties conflict = conflictProperties(true);
         private FingerprintProperties fingerprint = fingerprintProperties(true);
-        private ResponseProperties response = new ResponseProperties(false, false, Set.of(), Set.of());
+        private ResponseProperties response = new ResponseProperties(List.of(), Set.of(), Set.of());
         private CacheProperties cache = new CacheProperties(false, CacheType.IN_MEMORY, null, 100);
         private MetricsProperties metrics = new MetricsProperties(true);
 
@@ -501,6 +538,11 @@ class IdempifyPropertiesUnitTest {
 
         private PropertiesBuilder ttl(Duration ttl) {
             this.ttl = ttl;
+            return this;
+        }
+
+        private PropertiesBuilder lockTtl(Duration lockTtl) {
+            this.lockTtl = lockTtl;
             return this;
         }
 
@@ -534,6 +576,7 @@ class IdempifyPropertiesUnitTest {
                     enabled,
                     headerName,
                     ttl,
+                    lockTtl,
                     processorType,
                     conflict,
                     fingerprint,

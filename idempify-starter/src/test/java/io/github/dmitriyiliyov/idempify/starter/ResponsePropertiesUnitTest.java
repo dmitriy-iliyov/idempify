@@ -1,9 +1,11 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
+import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,28 +18,44 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ResponsePropertiesUnitTest {
 
     @Test
-    @DisplayName("UT constructor() when shouldCache4xx is null should throw NullPointerException")
-    void constructor_whenShouldCache4xxIsNull_shouldThrowNullPointerException() {
-        // when / then
-        assertThatThrownBy(() -> new ResponseProperties(null, false, Set.of(), Set.of()))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("shouldCache4xx cannot be null");
+    @DisplayName("UT constructor() when releaseFor is not configured should fall back to the core default list")
+    void constructor_whenReleaseForIsNotConfigured_shouldFallBackToCoreDefaultList() {
+        // when
+        ResponseProperties result = new ResponseProperties(null, Set.of(), Set.of());
+
+        // then
+        assertThat(result.getReleaseFor()).isEqualTo(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
     }
 
     @Test
-    @DisplayName("UT constructor() when shouldCache5xx is null should throw NullPointerException")
-    void constructor_whenShouldCache5xxIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor() when releaseFor is configured empty should release the key for nothing")
+    void constructor_whenReleaseForIsConfiguredEmpty_shouldReleaseKeyForNothing() {
+        // when
+        ResponseProperties result = new ResponseProperties(List.of(), Set.of(), Set.of());
+
+        // then
+        assertThat(result.getReleaseFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT constructor() when releaseFor names a class that is not an exception should throw IllegalArgumentException")
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void constructor_whenReleaseForNamesNonThrowable_shouldThrowIllegalArgumentException() {
+        // given
+        List releaseFor = List.of(String.class);
+
         // when / then
-        assertThatThrownBy(() -> new ResponseProperties(false, null, Set.of(), Set.of()))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessage("shouldCache5xx cannot be null");
+        assertThatThrownBy(() -> new ResponseProperties(releaseFor, Set.of(), Set.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'idempify.response.release-for'")
+                .hasMessageContaining(String.class.getName());
     }
 
     @Test
     @DisplayName("UT constructor() when includedHeaders is null should throw NullPointerException")
     void constructor_whenIncludedHeadersIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new ResponseProperties(false, false, null, Set.of()))
+        assertThatThrownBy(() -> new ResponseProperties(List.of(), null, Set.of()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("includedHeaders cannot be null");
     }
@@ -46,23 +64,23 @@ class ResponsePropertiesUnitTest {
     @DisplayName("UT constructor() when excludedHeaders is null should throw NullPointerException")
     void constructor_whenExcludedHeadersIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> new ResponseProperties(false, false, Set.of(), null))
+        assertThatThrownBy(() -> new ResponseProperties(List.of(), Set.of(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("excludedHeaders cannot be null");
     }
 
     @Test
-    @DisplayName("UT toResponseConfig() should carry what the application decided about failure answers")
-    void toResponseConfig_shouldCarryWhatApplicationDecidedAboutFailureAnswers() {
+    @DisplayName("UT toResponseConfig() should carry the exceptions the application releases the key for")
+    void toResponseConfig_shouldCarryExceptionsApplicationReleasesKeyFor() {
         // given
-        ResponseProperties tested = new ResponseProperties(true, false, Set.of(), Set.of());
+        ResponseProperties tested = new ResponseProperties(
+                List.of(IllegalStateException.class), Set.of(), Set.of());
 
         // when
         ResponseConfig result = tested.toResponseConfig();
 
         // then
-        assertThat(result.shouldCache4xx()).isTrue();
-        assertThat(result.shouldCache5xx()).isFalse();
+        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -70,7 +88,7 @@ class ResponsePropertiesUnitTest {
     void toResponseConfig_whenHeadersAreNamed_shouldCarryBothSetsLowercased() {
         // given
         ResponseProperties tested = new ResponseProperties(
-                false, false, Set.of("Location", "ETag"), Set.of("Set-Cookie"));
+                List.of(), Set.of("Location", "ETag"), Set.of("Set-Cookie"));
 
         // when
         ResponseConfig result = tested.toResponseConfig();
@@ -84,7 +102,7 @@ class ResponsePropertiesUnitTest {
     @DisplayName("UT toResponseConfig() when no header is named should narrow nothing")
     void toResponseConfig_whenNoHeaderIsNamed_shouldNarrowNothing() {
         // given
-        ResponseProperties tested = new ResponseProperties(false, false, Set.of(), Set.of());
+        ResponseProperties tested = new ResponseProperties(List.of(), Set.of(), Set.of());
 
         // when
         ResponseConfig result = tested.toResponseConfig();
@@ -99,11 +117,10 @@ class ResponsePropertiesUnitTest {
     void getters_shouldAnswerWhatWasConfigured() {
         // when
         ResponseProperties result = new ResponseProperties(
-                true, true, Set.of("Location"), Set.of("Set-Cookie"));
+                List.of(IllegalStateException.class), Set.of("Location"), Set.of("Set-Cookie"));
 
         // then
-        assertThat(result.getShouldCache4xx()).isTrue();
-        assertThat(result.getShouldCache5xx()).isTrue();
+        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
         assertThat(result.getIncludedHeaders()).containsExactly("Location");
         assertThat(result.getExcludedHeaders()).containsExactly("Set-Cookie");
     }
@@ -112,12 +129,12 @@ class ResponsePropertiesUnitTest {
     @DisplayName("UT toString() should name every setting it carries")
     void toString_shouldNameEverySettingItCarries() {
         // when
-        String result = new ResponseProperties(true, false, Set.of("Location"), Set.of("Set-Cookie")).toString();
+        String result = new ResponseProperties(
+                List.of(IllegalStateException.class), Set.of("Location"), Set.of("Set-Cookie")).toString();
 
         // then
         assertThat(result).contains(
-                "shouldCache4xx=true",
-                "shouldCache5xx=false",
+                "releaseFor=[class java.lang.IllegalStateException]",
                 "includedHeaders=[Location]",
                 "excludedHeaders=[Set-Cookie]"
         );

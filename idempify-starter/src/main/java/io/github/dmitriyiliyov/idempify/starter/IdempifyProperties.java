@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -18,10 +19,11 @@ import java.util.Objects;
  * block is dropped rather than kept for a call site that will never run - and nothing below is checked
  * either, since an application that turned idempotency off owes no answer for a ttl nobody reads.
  * <p>
- * Two sections are refused outright when {@code idempify.processor-type} is
- * {@link ProcessorType#BLOCKING}: conflict handling, which that processor never reaches, and keeping a
- * 4xx or a 5xx response, which it cannot promise because the response is written in the operation's own
- * transaction. Either flag on its own is enough to fail startup.
+ * Conflict handling and a lock ttl are refused outright when {@code idempify.processor-type} is
+ * {@link ProcessorType#TRANSACTIONAL_BLOCKING}: that processor never reaches a conflict and claims the key inside the
+ * business transaction, so either setting on its own is enough to fail startup. Under
+ * {@link ProcessorType#TRANSACTIONAL_NON_BLOCKING} it is the other way round for conflict handling: a duplicate meets the
+ * unfinished operation there, so switching the handling off fails startup too.
  */
 @ConfigurationProperties(prefix = "idempify")
 public final class IdempifyProperties implements IdempotencyConfigProvider {
@@ -29,6 +31,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
     private final Boolean enabled;
     private final String headerName;
     private final Duration ttl;
+    private final Duration lockTtl;
     private final ProcessorType processorType;
     @NestedConfigurationProperty
     private final ConflictProperties conflict;
@@ -44,6 +47,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
     public IdempifyProperties(@DefaultValue(IdempifyDefaults.ENABLED_VALUE) Boolean enabled,
                               @DefaultValue(IdempifyDefaults.HEADER_NAME) String headerName,
                               @DefaultValue(IdempifyDefaults.TTL_VALUE) Duration ttl,
+                              Duration lockTtl,
                               @DefaultValue(IdempifyDefaults.PROCESSOR_TYPE_NAME) ProcessorType processorType,
                               @DefaultValue ConflictProperties conflict,
                               @DefaultValue FingerprintProperties fingerprint,
@@ -65,15 +69,18 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
             this.ttl = ttl;
 
             this.processorType = Objects.requireNonNull(processorType, "processorType cannot be null");
+            this.lockTtl = resolveLockTtl(lockTtl, this.processorType);
             this.conflict = Objects.requireNonNull(conflict, "conflict cannot be null");
             this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint cannot be null");
             this.response = Objects.requireNonNull(response, "response cannot be null");
             this.cache = Objects.requireNonNull(cache, "cache cannot be null");
             this.metrics = Objects.requireNonNull(metrics, "metrics cannot be null");
             rejectSectionsTheBlockingProcessorCannotUse();
+            rejectSectionsTheNonBlockingProcessorCannotLack();
         } else {
             this.headerName = null;
             this.ttl = null;
+            this.lockTtl = null;
             this.processorType = null;
             this.conflict = null;
             this.fingerprint = null;
@@ -83,24 +90,52 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
         }
     }
 
+    /**
+     * The blocking processor holds its claim in the business transaction, which commits or rolls the
+     * record back with it, so there is no claim of its own to give a lifetime to - a lock ttl named
+     * there is refused rather than substituted, because this layer is one that can leave it unsaid.
+     * Left unsaid anywhere else, it gets the built-in answer.
+     */
+    private static Duration resolveLockTtl(Duration lockTtl, ProcessorType processorType) {
+        if (ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
+            if (lockTtl != null) {
+                throw new IllegalStateException("""
+                        'idempify.lock-ttl' cannot be set when 'idempify.processor-type' is BLOCKING: \
+                        that processor claims the key inside the business transaction, so there is no \
+                        separate claim to hold for a while""");
+            }
+            return null;
+        }
+
+        Duration resolved = lockTtl == null ? Duration.parse(IdempifyDefaults.LOCK_TTL_VALUE) : lockTtl;
+        if (!resolved.isPositive()) {
+            throw new IllegalArgumentException("lockTtl must be positive");
+        }
+        return resolved;
+    }
+
+    private void rejectSectionsTheNonBlockingProcessorCannotLack() {
+        if (!ProcessorType.TRANSACTIONAL_NON_BLOCKING.equals(processorType)) {
+            return;
+        }
+
+        if (Boolean.FALSE.equals(conflict.isEnabled())) {
+            throw new IllegalStateException("""
+                    'idempify.conflict.enabled' must be true when 'idempify.processor-type' is NON_BLOCKING: \
+                    a duplicate meets the unfinished operation there, and only a conflict handler can answer it""");
+        }
+    }
+
     private void rejectSectionsTheBlockingProcessorCannotUse() {
-        if (!ProcessorType.BLOCKING.equals(processorType)) {
+        if (!ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
             return;
         }
 
         if (Boolean.TRUE.equals(conflict.isEnabled())) {
             throw new IllegalStateException("""
-                'idempify.conflict.enabled' must be false when 'idempify.processor-type' is BLOCKING: the transactional 
-                processor settles a duplicate on the store's own insert, so there is no conflict left for a handler to see
-            """);
-        }
-
-        if (Boolean.TRUE.equals(response.getShouldCache4xx()) || Boolean.TRUE.equals(response.getShouldCache5xx())) {
-            throw new IllegalStateException("""
-                'idempify.response.should-cache-4xx' and 'idempify.response.should-cache-5xx' must be false when 
-                'idempify.processor-type' is BLOCKING: the response is written in the same transaction as the 
-                operation, so a cache in front of it would serve answers a rollback has already taken back
-            """);
+                    'idempify.conflict.enabled' must be false when 'idempify.processor-type' is BLOCKING: \
+                    the blocking processor settles a duplicate on the store's own insert, so there is no \
+                    conflict left for a handler to see""");
         }
     }
 
@@ -121,6 +156,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
         IdempotencyConfig.Builder builder = IdempotencyConfig.builder()
                 .headerName(headerName)
                 .ttl(ttl)
+                .lockTtl(lockTtl)
                 .processorType(processorType);
 
         builder.conflict(conflict.isEnabled()
@@ -133,7 +169,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                 : FingerprintConfig.disabled()
         );
 
-        builder.response(response.toResponseConfig());
+        builder.response(ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)
+                ? ResponseConfig.builder(response.toResponseConfig()).releaseFor(List.of(Throwable.class)).build()
+                : response.toResponseConfig()
+        );
 
         IdempotencyConfig config = builder.build();
         config.validate();
@@ -150,6 +189,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
 
     public Duration getTtl() {
         return ttl;
+    }
+
+    public Duration getLockTtl() {
+        return lockTtl;
     }
 
     public ProcessorType getProcessorType() {
@@ -182,6 +225,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                 "enabled=" + enabled +
                 ", headerName='" + headerName + '\'' +
                 ", ttl=" + ttl +
+                ", lockTtl=" + lockTtl +
                 ", processorType=" + processorType +
                 ", conflict=" + conflict +
                 ", fingerprint=" + fingerprint +

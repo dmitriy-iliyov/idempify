@@ -15,6 +15,7 @@ import org.springframework.boot.convert.DurationStyle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Parameter;
 import java.time.Duration;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -126,13 +127,13 @@ class PropertyDefaultsUnitTest {
     @Test
     @DisplayName("UT constructor defaults of the response block should repeat the answers core holds")
     void constructorDefaults_ofResponseBlock_shouldRepeatAnswersCoreHolds() {
-        // when
-        String shouldCache4xx = defaultValueOf(ResponseProperties.class, "shouldCache4xx");
-        String shouldCache5xx = defaultValueOf(ResponseProperties.class, "shouldCache5xx");
+        // given
+        // releaseFor has no @DefaultValue: a list of types cannot be spelled in one, so the constructor answers it
+        ResponseProperties properties = new ResponseProperties(null, Set.of(), Set.of());
 
-        // then
-        assertThat(Boolean.parseBoolean(shouldCache4xx)).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_4XX);
-        assertThat(Boolean.parseBoolean(shouldCache5xx)).isEqualTo(ResponseConfig.DEFAULT_SHOULD_CACHE_5XX);
+        // when / then
+        assertThat(properties.toResponseConfig().getReleaseFor())
+                .isEqualTo(ResponseConfig.defaults().getReleaseFor());
     }
 
     @Test
