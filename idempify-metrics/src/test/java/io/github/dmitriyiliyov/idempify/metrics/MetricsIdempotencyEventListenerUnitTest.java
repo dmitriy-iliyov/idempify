@@ -19,6 +19,7 @@ class MetricsIdempotencyEventListenerUnitTest {
     private static final String MISMATCH = "fingerprint-mismatch";
     private static final String EXCEPTION = "exception";
     private static final String SUCCESS = "success";
+    private static final String EXCEPTIONALLY_PROCESSED = "exceptionally-processed";
 
     private final MeterRegistry registry = new SimpleMeterRegistry();
 
@@ -38,7 +39,7 @@ class MetricsIdempotencyEventListenerUnitTest {
         new MetricsIdempotencyEventListener(registry);
 
         // then
-        assertThat(registry.get(METER).counters()).hasSize(5);
+        assertThat(registry.get(METER).counters()).hasSize(6);
         for (String outcome : outcomes()) {
             assertThat(count(outcome)).as(outcome).isZero();
         }
@@ -129,6 +130,20 @@ class MetricsIdempotencyEventListenerUnitTest {
     }
 
     @Test
+    @DisplayName("UT onExceptionallySuccess() should count the failure kept on the record and nothing else")
+    void onExceptionallySuccess_shouldCountFailureKeptOnRecordAndNothingElse() {
+        // given
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
+
+        // when
+        tested.onExceptionallySuccess();
+
+        // then
+        assertThat(count(EXCEPTIONALLY_PROCESSED)).isEqualTo(1.0);
+        assertThatEveryOtherOutcomeStayedAtZero(EXCEPTIONALLY_PROCESSED);
+    }
+
+    @Test
     @DisplayName("UT onSuccess() when the same outcome comes back should add up rather than replace")
     void onSuccess_whenSameOutcomeComesBack_shouldAddUpRatherThanReplace() {
         // given
@@ -171,7 +186,7 @@ class MetricsIdempotencyEventListenerUnitTest {
         second.onSuccess();
 
         // then
-        assertThat(registry.get(METER).counters()).hasSize(5);
+        assertThat(registry.get(METER).counters()).hasSize(6);
         assertThat(count(SUCCESS)).isEqualTo(2.0);
     }
 
@@ -184,7 +199,7 @@ class MetricsIdempotencyEventListenerUnitTest {
     }
 
     private static String[] outcomes() {
-        return new String[]{DUPLICATE, CONFLICT, MISMATCH, EXCEPTION, SUCCESS};
+        return new String[]{DUPLICATE, CONFLICT, MISMATCH, EXCEPTION, SUCCESS, EXCEPTIONALLY_PROCESSED};
     }
 
     private double count(String outcome) {

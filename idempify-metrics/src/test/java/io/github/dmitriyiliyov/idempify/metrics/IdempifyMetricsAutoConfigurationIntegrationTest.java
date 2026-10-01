@@ -244,7 +244,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .withBean(IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME, IdempotencyConfig.class,
                         IdempifyMetricsAutoConfigurationIntegrationTest::globalConfig)
                 .withBean(BlockingOperationRepository.class, () -> mock(BlockingOperationRepository.class))
-                .withBean(OperationRepository.class, () -> mock(OperationRepository.class))
+                .withBean(NonBlockingOperationRepository.class, () -> mock(NonBlockingOperationRepository.class))
                 .withBean(ResponseRepository.class, () -> mock(ResponseRepository.class))
                 .withBean(ResponseSerializer.class, () -> mock(ResponseSerializer.class))
                 .withBean(ResponseDeserializer.class, () -> mock(ResponseDeserializer.class))

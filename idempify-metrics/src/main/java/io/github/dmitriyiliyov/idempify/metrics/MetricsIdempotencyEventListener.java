@@ -16,6 +16,7 @@ public class MetricsIdempotencyEventListener implements IdempotencyEventListener
     private final Counter fingerprintMismatchCounter;
     private final Counter exceptionCounter;
     private final Counter successCounter;
+    private final Counter exceptionallyProcessedCounter;
 
     public MetricsIdempotencyEventListener(MeterRegistry registry) {
         Objects.requireNonNull(registry, "registry cannot be null");
@@ -24,6 +25,14 @@ public class MetricsIdempotencyEventListener implements IdempotencyEventListener
         this.fingerprintMismatchCounter = outcomeCounter(registry, "fingerprint-mismatch");
         this.exceptionCounter = outcomeCounter(registry, "exception");
         this.successCounter = outcomeCounter(registry, "success");
+        this.exceptionallyProcessedCounter = outcomeCounter(registry, "exceptionally-processed");
+    }
+
+    private static Counter outcomeCounter(MeterRegistry registry, String outcome) {
+        return Counter.builder(OPERATIONS_METER)
+                .description(OPERATIONS_DESCRIPTION)
+                .tag(OUTCOME_TAG, outcome)
+                .register(registry);
     }
 
     @Override
@@ -51,10 +60,8 @@ public class MetricsIdempotencyEventListener implements IdempotencyEventListener
         successCounter.increment();
     }
 
-    private static Counter outcomeCounter(MeterRegistry registry, String outcome) {
-        return Counter.builder(OPERATIONS_METER)
-                .description(OPERATIONS_DESCRIPTION)
-                .tag(OUTCOME_TAG, outcome)
-                .register(registry);
+    @Override
+    public void onExceptionallySuccess() {
+        exceptionallyProcessedCounter.increment();
     }
 }

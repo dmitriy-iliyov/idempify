@@ -47,7 +47,7 @@ class MetricsCacheComponentTest {
     void findByIdempotencyKey_whenKeyRepeats_shouldCountMissAndThenHit() {
         contextRunner.run(context -> {
             // given
-            RecordingRepository repository = new RecordingRepository(container(NOW.plus(TTL)));
+            RecordingRepository repository = new RecordingRepository(container(TTL.toMillis()));
             ResponseRepository tested = cacheOver(repository, context.getBean(CacheEventListener.class));
 
             // when
@@ -85,7 +85,7 @@ class MetricsCacheComponentTest {
     void findByIdempotencyKey_whenCachedEntryHasOutlivedRecord_shouldCountMissNotHit() {
         contextRunner.run(context -> {
             // given
-            RecordingRepository repository = new RecordingRepository(container(NOW.plus(TTL)));
+            RecordingRepository repository = new RecordingRepository(container(TTL.toMillis()));
             ResponseRepository tested = cacheOver(repository, context.getBean(CacheEventListener.class));
             tested.findByIdempotencyKey(KEY);
 
@@ -128,8 +128,8 @@ class MetricsCacheComponentTest {
         return registry.get(METER).tag(TAG, result).counter().count();
     }
 
-    private static RawResponseContainer container(Instant expiresAt) {
-        return new DefaultRawResponseContainer("raw-response", "fingerprint", expiresAt);
+    private static RawResponseContainer container(long remainingMillis) {
+        return new DefaultRawResponseContainer("raw-response", "fingerprint", remainingMillis);
     }
 
     /**
@@ -149,7 +149,7 @@ class MetricsCacheComponentTest {
 
         @Override
         public RawResponseContainer save(UUID idempotencyKey, String response) {
-            RawResponseContainer saved = container(NOW.plus(TTL));
+            RawResponseContainer saved = container(TTL.toMillis());
             containers.put(idempotencyKey, saved);
             return saved;
         }
