@@ -31,14 +31,14 @@ class OperationSerializationComponentTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Instant CREATED_AT = Instant.parse("2026-08-09T12:00:00Z");
-    private static final Instant EXPIRES_AT = CREATED_AT.plusSeconds(3600);
+    private static final long REMAINING_MILLIS = 3_600_000L;
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final OperationSerializer serializer = new DefaultOperationSerializer(
+    private final OperationSerializer<Operation, RawOperation> serializer = new DefaultOperationSerializer(
             new JacksonResultSerializer(mapper),
             new GenericJacksonSerializer(mapper)::serialize
     );
-    private final OperationDeserializer deserializer = new DefaultOperationDeserializer(
+    private final OperationDeserializer<RawOperation, Operation> deserializer = new DefaultOperationDeserializer(
             new JacksonResultDeserializer(mapper),
             new JacksonResponseDeserializer(mapper)
     );
@@ -59,7 +59,7 @@ class OperationSerializationComponentTest {
         assertThat(result.getStatus()).isEqualTo(OperationStatus.PROCESSED);
         assertThat(result.isFirstAttempt()).isTrue();
         assertThat(result.getFingerprint()).isEqualTo("fingerprint");
-        assertThat(result.getExpiresAt()).isEqualTo(EXPIRES_AT);
+        assertThat(result.getRemainingMillis()).isEqualTo(REMAINING_MILLIS);
         assertThat(result.getCreatedAt()).isEqualTo(CREATED_AT);
     }
 
@@ -133,8 +133,8 @@ class OperationSerializationComponentTest {
         Operation result = deserializer.deserialize(raw, resultType);
 
         // then
-        assertThat(raw.expiresAt()).isNull();
-        assertThat(result.getExpiresAt()).isNull();
+        assertThat(raw.remainingMillis()).isNull();
+        assertThat(result.getRemainingMillis()).isNull();
         assertThat(result.getStatus()).isEqualTo(OperationStatus.IN_PROCESS);
     }
 
@@ -168,7 +168,7 @@ class OperationSerializationComponentTest {
                 resultType,
                 response,
                 "fingerprint",
-                EXPIRES_AT,
+                REMAINING_MILLIS,
                 CREATED_AT
         );
     }

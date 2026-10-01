@@ -7,12 +7,14 @@ import io.github.dmitriyiliyov.idempify.core.DeserializationException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultDeserializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 
+import java.util.Objects;
+
 public class JacksonResultDeserializer implements ResultDeserializer {
 
     private final ObjectMapper mapper;
 
     public JacksonResultDeserializer(ObjectMapper mapper) {
-        this.mapper = mapper;
+        this.mapper = Objects.requireNonNull(mapper, "mapper cannot be null");
     }
 
     @Override

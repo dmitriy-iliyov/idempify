@@ -57,7 +57,7 @@ public class JsonBodyCanonicalizer implements BodyCanonicalizer {
         return sb.toString();
     }
 
-    private String writeWithIncluded(JsonNode root, Set<String> includedFields, StringBuilder sb) {
+    private void writeWithIncluded(JsonNode root, Set<String> includedFields, StringBuilder sb) {
         List<String> paths = new ArrayList<>(includedFields);
         if (CanonicalizeStrategy.LEXICOGRAPHICAL.equals(config.getCanonicalizeStrategy())) {
             paths.sort(Comparator.naturalOrder());
@@ -70,8 +70,6 @@ public class JsonBodyCanonicalizer implements BodyCanonicalizer {
             sb.append(TextNode.valueOf(path)).append(NAME_VALUE_SEPARATOR);
             write(resolve(root, path), path, sb);
         }
-
-        return sb.toString();
     }
 
     private JsonNode readTree(byte [] body) {

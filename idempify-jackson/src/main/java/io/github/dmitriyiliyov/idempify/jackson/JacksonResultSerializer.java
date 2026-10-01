@@ -5,12 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.SerializationException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 
+import java.util.Objects;
+
 public class JacksonResultSerializer implements ResultSerializer {
 
     private final ObjectMapper mapper;
 
     public JacksonResultSerializer(ObjectMapper mapper) {
-        this.mapper = mapper;
+        this.mapper = Objects.requireNonNull(mapper, "mapper cannot be null");
     }
 
     @Override
