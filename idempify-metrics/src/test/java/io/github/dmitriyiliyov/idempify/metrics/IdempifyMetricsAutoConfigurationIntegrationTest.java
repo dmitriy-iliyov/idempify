@@ -265,7 +265,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
                 .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build();
     }
 

@@ -1,11 +1,14 @@
 package io.github.dmitriyiliyov.idempify.metrics;
 
+import io.github.dmitriyiliyov.idempify.core.FailureType;
 import io.github.dmitriyiliyov.idempify.core.IdempotencyEventListener;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -14,10 +17,13 @@ class MetricsIdempotencyEventListenerUnitTest {
 
     private static final String METER = "idempify.operations";
     private static final String TAG = "outcome";
+    private static final String FAILURE_TAG = "failure";
+    private static final String NO_FAILURE = "none";
+    private static final String FAILURE = "failure";
     private static final String DUPLICATE = "duplicate";
     private static final String CONFLICT = "conflict";
     private static final String MISMATCH = "fingerprint-mismatch";
-    private static final String EXCEPTION = "exception";
+    private static final String BUSINESS_FAILURE = "business-failure";
     private static final String SUCCESS = "success";
     private static final String EXCEPTIONALLY_PROCESSED = "exceptionally-processed";
 
@@ -39,9 +45,12 @@ class MetricsIdempotencyEventListenerUnitTest {
         new MetricsIdempotencyEventListener(registry);
 
         // then
-        assertThat(registry.get(METER).counters()).hasSize(6);
+        assertThat(registry.get(METER).counters()).hasSize(6 + FailureType.values().length);
         for (String outcome : outcomes()) {
             assertThat(count(outcome)).as(outcome).isZero();
+        }
+        for (FailureType type : FailureType.values()) {
+            assertThat(failureCount(type)).as(type.name()).isZero();
         }
     }
 
@@ -102,17 +111,45 @@ class MetricsIdempotencyEventListenerUnitTest {
     }
 
     @Test
-    @DisplayName("UT onException() should count the exception and nothing else")
-    void onException_shouldCountExceptionAndNothingElse() {
+    @DisplayName("UT onBusinessFailure() should count the business failure and nothing else")
+    void onBusinessFailure_shouldCountBusinessFailureAndNothingElse() {
         // given
         IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
         // when
-        tested.onException();
+        tested.onBusinessFailure();
 
         // then
-        assertThat(count(EXCEPTION)).isEqualTo(1.0);
-        assertThatEveryOtherOutcomeStayedAtZero(EXCEPTION);
+        assertThat(count(BUSINESS_FAILURE)).isEqualTo(1.0);
+        assertThatEveryOtherOutcomeStayedAtZero(BUSINESS_FAILURE);
+    }
+
+    @ParameterizedTest
+    @EnumSource(FailureType.class)
+    @DisplayName("UT onFailure() should count the failure under its type and nothing else")
+    void onFailure_shouldCountFailureUnderItsTypeAndNothingElse(FailureType type) {
+        // given
+        IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
+
+        // when
+        tested.onFailure(type);
+
+        // then
+        assertThat(failureCount(type)).isEqualTo(1.0);
+        assertThat(registry.get(METER).counters().stream().mapToDouble(Counter::count).sum()).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("UT constructor() should give every series the same tag keys")
+    void constructor_shouldGiveEverySeriesSameTagKeys() {
+        // when
+        new MetricsIdempotencyEventListener(registry);
+
+        // then
+        assertThat(registry.get(METER).counters()).allSatisfy(counter -> {
+            assertThat(counter.getId().getTag(TAG)).isNotNull();
+            assertThat(counter.getId().getTag(FAILURE_TAG)).isNotNull();
+        });
     }
 
     @Test
@@ -131,7 +168,7 @@ class MetricsIdempotencyEventListenerUnitTest {
 
     @Test
     @DisplayName("UT onExceptionallySuccess() should count the failure kept on the record and nothing else")
-    void onExceptionallySuccess_shouldCountFailureKeptOnRecordAndNothingElse() {
+    void onExceptionallySuccess_shouldCountFailureKeptOnBusinessRecordAndNothingElse() {
         // given
         IdempotencyEventListener tested = new MetricsIdempotencyEventListener(registry);
 
@@ -186,7 +223,7 @@ class MetricsIdempotencyEventListenerUnitTest {
         second.onSuccess();
 
         // then
-        assertThat(registry.get(METER).counters()).hasSize(6);
+        assertThat(registry.get(METER).counters()).hasSize(6 + FailureType.values().length);
         assertThat(count(SUCCESS)).isEqualTo(2.0);
     }
 
@@ -199,10 +236,18 @@ class MetricsIdempotencyEventListenerUnitTest {
     }
 
     private static String[] outcomes() {
-        return new String[]{DUPLICATE, CONFLICT, MISMATCH, EXCEPTION, SUCCESS, EXCEPTIONALLY_PROCESSED};
+        return new String[]{DUPLICATE, CONFLICT, MISMATCH, BUSINESS_FAILURE, SUCCESS, EXCEPTIONALLY_PROCESSED};
     }
 
     private double count(String outcome) {
-        return registry.get(METER).tag(TAG, outcome).counter().count();
+        return registry.get(METER).tag(TAG, outcome).tag(FAILURE_TAG, NO_FAILURE).counter().count();
+    }
+
+    private double failureCount(FailureType type) {
+        return registry.get(METER)
+                .tag(TAG, FAILURE)
+                .tag(FAILURE_TAG, type.name().toLowerCase().replace('_', '-'))
+                .counter()
+                .count();
     }
 }
