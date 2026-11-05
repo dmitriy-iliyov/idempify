@@ -2,10 +2,10 @@ package io.github.dmitriyiliyov.idempify.http;
 
 import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.*;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -88,11 +88,11 @@ class IdempifyControllerAdviceUnitTest {
     }
 
     @Test
-    @DisplayName("UT handleIdempotencyConflictException() should answer 409 with the in process type")
-    void handleIdempotencyConflictException_shouldAnswer409WithInProcessType() {
+    @DisplayName("UT handleOperationInProgressException() should answer 409 with the in process type")
+    void handleOperationInProgressException_shouldAnswer409WithInProcessType() {
         // when
-        ProblemDetail detail = tested.handleIdempotencyConflictException(
-                new IdempotencyConflictException("already in process"), request);
+        ProblemDetail detail = tested.handleOperationInProgressException(
+                new OperationInProgressException("already in process"), request);
 
         // then
         assertProblem(detail, HttpStatus.CONFLICT, ProblemTypes.OPERATION_IN_PROCESS);
@@ -166,10 +166,10 @@ class IdempifyControllerAdviceUnitTest {
     }
 
     @Test
-    @DisplayName("UT handleInvalidFingerprintException() should answer the same way the filter does, carrying the key")
-    void handleInvalidFingerprintException_shouldAnswerSameWayFilterDoesCarryingKey() {
+    @DisplayName("UT handleEmptyFingerprintException() should answer the same way the filter does, carrying the key")
+    void handleEmptyFingerprintException_shouldAnswerSameWayFilterDoesCarryingKey() {
         // when
-        ProblemDetail detail = tested.handleInvalidFingerprintException(new InvalidFingerprintException(KEY), request);
+        ProblemDetail detail = tested.handleEmptyFingerprintException(new EmptyFingerprintException(KEY), request);
 
         // then
         assertProblem(detail, HttpStatus.INTERNAL_SERVER_ERROR, ProblemTypes.FINGERPRINT_POLICY_BROKEN);
@@ -275,8 +275,8 @@ class IdempifyControllerAdviceUnitTest {
         prefixed.setContextPath("/api");
 
         // when
-        ProblemDetail detail = tested.handleIdempotencyConflictException(
-                new IdempotencyConflictException("already in process"), prefixed);
+        ProblemDetail detail = tested.handleOperationInProgressException(
+                new OperationInProgressException("already in process"), prefixed);
 
         // then
         assertThat(detail.getInstance()).isEqualTo(URI.create("/api/payments"));

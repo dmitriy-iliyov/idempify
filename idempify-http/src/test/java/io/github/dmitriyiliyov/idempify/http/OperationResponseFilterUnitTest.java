@@ -786,11 +786,11 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 4xx should store it whatever releaseFor says")
-    void doFilter_whenResponseIs4xx_shouldStoreItWhateverReleaseForSays() throws Exception {
+    @DisplayName("UT doFilter() when the response is 4xx should store it whatever recordFor says")
+    void doFilter_whenResponseIs4xx_shouldStoreItWhateverRecordForSays() throws Exception {
         // given
         byte [] body = "{\"error\":\"bad request\"}".getBytes(StandardCharsets.UTF_8);
-        givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
+        givenIdempotentUri(metadata().responseConfig(ResponseConfig.defaults()).build());
         givenExtractedKey();
         givenRecordedOperation();
         RecordingFilterChain chain = respondingChain(400, "application/json", body);
@@ -805,11 +805,11 @@ class OperationResponseFilterUnitTest {
     }
 
     @Test
-    @DisplayName("UT doFilter() when the response is 5xx should store it whatever releaseFor says")
-    void doFilter_whenResponseIs5xx_shouldStoreItWhateverReleaseForSays() throws Exception {
+    @DisplayName("UT doFilter() when the response is 5xx should store it whatever recordFor says")
+    void doFilter_whenResponseIs5xx_shouldStoreItWhateverRecordForSays() throws Exception {
         // given
         byte [] body = "{\"error\":\"boom\"}".getBytes(StandardCharsets.UTF_8);
-        givenIdempotentUri(metadata().responseConfig(ResponseConfig.disabled()).build());
+        givenIdempotentUri(metadata().responseConfig(ResponseConfig.defaults()).build());
         givenExtractedKey();
         givenRecordedOperation();
         RecordingFilterChain chain = respondingChain(500, "application/json", body);
@@ -1014,7 +1014,7 @@ class OperationResponseFilterUnitTest {
     private static TestOperationMetadata.Builder metadata() {
         return TestOperationMetadata.builder()
                 .headerName(HEADER_NAME)
-                .responseConfig(ResponseConfig.all());
+                .responseConfig(ResponseConfig.defaults());
     }
 
     private static MockHttpServletRequest request(String body) {

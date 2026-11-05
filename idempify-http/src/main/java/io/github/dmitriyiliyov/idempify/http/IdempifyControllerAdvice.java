@@ -2,12 +2,12 @@ package io.github.dmitriyiliyov.idempify.http;
 
 import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerResultException;
-import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
+import io.github.dmitriyiliyov.idempify.core.conflict.OperationInProgressException;
 import io.github.dmitriyiliyov.idempify.core.conflict.WaitAbortedException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchContext;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,8 +43,8 @@ public class IdempifyControllerAdvice {
         return ProblemDetailFactory.emptyRequestBody(e.getMessage(), request.getRequestURI(), clock.instant());
     }
 
-    @ExceptionHandler(IdempotencyConflictException.class)
-    public ProblemDetail handleIdempotencyConflictException(IdempotencyConflictException e,
+    @ExceptionHandler(OperationInProgressException.class)
+    public ProblemDetail handleOperationInProgressException(OperationInProgressException e,
                                                             HttpServletRequest request) {
         return ProblemDetailFactory.operationInProcess(e.getMessage(), request.getRequestURI(), clock.instant());
     }
@@ -57,8 +57,8 @@ public class IdempifyControllerAdvice {
         return ProblemDetailFactory.idempotencyKeyReuse(request.getRequestURI(), clock.instant(), idempotencyKey);
     }
 
-    @ExceptionHandler(InvalidFingerprintException.class)
-    public ProblemDetail handleInvalidFingerprintException(InvalidFingerprintException e,
+    @ExceptionHandler(EmptyFingerprintException.class)
+    public ProblemDetail handleEmptyFingerprintException(EmptyFingerprintException e,
                                                            HttpServletRequest request) {
         return ProblemDetailFactory.fingerprintPolicyBroken(
                 e.getMessage(),

@@ -3,7 +3,7 @@ package io.github.dmitriyiliyov.idempify.http;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
-import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
+import io.github.dmitriyiliyov.idempify.core.conflict.OperationInProgressException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.DefaultFingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.RawHashingFingerprintPolicy;
@@ -582,7 +582,7 @@ class IdempifyHttpComponentTest {
         @PostMapping("/payments/conflicting")
         public String conflicting() {
             conflictingCalls++;
-            throw new IdempotencyConflictException("another request is already processing this key");
+            throw new OperationInProgressException("another request is already processing this key");
         }
 
         @Idempotent(headerName = HEADER_NAME)
@@ -610,7 +610,7 @@ class IdempifyHttpComponentTest {
         @PostMapping("/payments/conflicting-after-commit")
         public String conflictingAfterCommit() {
             channel.getObject().publish(TestOperationState.of(true));
-            throw new IdempotencyConflictException("another request is already processing this key");
+            throw new OperationInProgressException("another request is already processing this key");
         }
 
         /**
