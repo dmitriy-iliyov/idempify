@@ -31,7 +31,7 @@ public class Operation {
 
     public Operation(UUID idempotencyKey,
                      OperationStatus status,
-                     Boolean isFirstAttempt,
+                     boolean isFirstAttempt,
                      Object result,
                      ResultType resultType,
                      Response response,
@@ -94,11 +94,11 @@ public class Operation {
         this.status = status;
     }
 
-    public Boolean isFirstAttempt() {
+    public boolean isFirstAttempt() {
         return isFirstAttempt;
     }
 
-    public void setFirstAttempt(Boolean firstAttempt) {
+    public void setFirstAttempt(boolean firstAttempt) {
         isFirstAttempt = firstAttempt;
     }
 

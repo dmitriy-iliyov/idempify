@@ -31,7 +31,7 @@ public interface RawOperationMetadata {
 
     Toggle getFingerprintToggle();
 
-    Toggle getReleaseForToggle();
+    Toggle getRecordForToggle();
 
-    List<Class<? extends Throwable>> getReleaseFor();
+    List<Class<? extends Throwable>> getRecordFor();
 }

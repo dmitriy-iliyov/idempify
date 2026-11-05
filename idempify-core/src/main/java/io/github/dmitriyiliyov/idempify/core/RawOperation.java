@@ -7,9 +7,9 @@ import java.util.UUID;
  * One row of the operation store as the store itself sees it - every part that needs a serializer already
  * reduced to text, and nothing that needs one still an object.
  * <p>
- * Which components may be {@code null} is not this type's decision but the row's: {@code result},
- * {@code response} and {@code remainingMillis} are all empty on a claim and stay empty until the operation
- * completes.
+ * {@code isFirstAttempt} is never absent - a store that cannot say answers {@code false}. Which of the other
+ * components may be {@code null} is not this type's decision but the row's: {@code result}, {@code response} and
+ * {@code remainingMillis} are all empty on a claim and stay empty until the operation completes.
  * <p>
  * {@code remainingMillis} is not a column but the store's answer at the moment of reading - how long the row
  * has left by the store's own clock, so that no caller compares it against a clock of its own. A write ignores
@@ -21,7 +21,7 @@ import java.util.UUID;
 public record RawOperation(
         UUID idempotencyKey,
         OperationStatus status,
-        Boolean isFirstAttempt,
+        boolean isFirstAttempt,
         String result,
         String response,
         String fingerprint,

@@ -1,16 +1,23 @@
 package io.github.dmitriyiliyov.idempify.core;
 
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
+import io.github.dmitriyiliyov.idempify.core.conflict.OperationInProgressException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -18,13 +25,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Duration;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class BlockingIdempotentProcessorUnitTest {
+class TransactionalBlockingIdempotentProcessorUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final Duration TTL = Duration.parse(IdempifyDefaults.TTL_VALUE);
@@ -43,20 +49,44 @@ class BlockingIdempotentProcessorUnitTest {
     IdempotencyEventListener eventListener;
 
     @InjectMocks
-    BlockingIdempotentProcessor tested;
+    TransactionalBlockingIdempotentProcessor tested;
+
+    @AfterEach
+    void tearDown() {
+        Thread.interrupted();
+    }
 
     @Test
     @DisplayName("UT constructor when transactionTemplate is null should throw NullPointerException")
     void constructor_whenTransactionTemplateIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new BlockingIdempotentProcessor(null, operationManager, channel, eventListener))
+        assertThatThrownBy(() -> new TransactionalBlockingIdempotentProcessor(null, operationManager, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("transactionTemplate cannot be null");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Propagation.class, names = {"SUPPORTS", "NOT_SUPPORTED", "NEVER", "MANDATORY"})
+    @DisplayName("UT constructor when the template cannot open a transaction of its own should throw IllegalArgumentException")
+    void constructor_whenTemplateCannotOpenTransactionOfItsOwn_shouldThrowIllegalArgumentException(Propagation propagation) {
+        assertThatThrownBy(() -> new TransactionalBlockingIdempotentProcessor(
+                template(propagation), operationManager, channel, eventListener))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must open a transaction of its own");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Propagation.class, names = {"REQUIRED", "REQUIRES_NEW", "NESTED"})
+    @DisplayName("UT constructor when the template opens a transaction of its own should be built")
+    void constructor_whenTemplateOpensTransactionOfItsOwn_shouldBeBuilt(Propagation propagation) {
+        assertThatCode(() -> new TransactionalBlockingIdempotentProcessor(
+                template(propagation), operationManager, channel, eventListener))
+                .doesNotThrowAnyException();
     }
 
     @Test
     @DisplayName("UT constructor when operationManager is null should throw NullPointerException")
     void constructor_whenOperationManagerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, null, channel, eventListener))
+        assertThatThrownBy(() -> new TransactionalBlockingIdempotentProcessor(transactionTemplate, null, channel, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("operationManager cannot be null");
     }
@@ -64,7 +94,7 @@ class BlockingIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when stateChannel is null should throw NullPointerException")
     void constructor_whenStateChannelIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
+        assertThatThrownBy(() -> new TransactionalBlockingIdempotentProcessor(transactionTemplate, operationManager, null, eventListener))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("stateChannel cannot be null");
     }
@@ -72,7 +102,7 @@ class BlockingIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT constructor when eventListener is null should throw NullPointerException")
     void constructor_whenEventListenerIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new BlockingIdempotentProcessor(transactionTemplate, operationManager, channel, null))
+        assertThatThrownBy(() -> new TransactionalBlockingIdempotentProcessor(transactionTemplate, operationManager, channel, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("eventListener cannot be null");
     }
@@ -80,7 +110,7 @@ class BlockingIdempotentProcessorUnitTest {
     @Test
     @DisplayName("UT getType() should return BLOCKING")
     void getType_shouldReturnBlocking() {
-        assertThat(tested.getType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(tested.getType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
     }
 
     @Test
@@ -305,21 +335,24 @@ class BlockingIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT process() when the transaction itself fails should report the failure and tell the transport nothing")
-    void process_whenTransactionItselfFails_shouldReportFailureAndTellTransportNothing() {
+    @DisplayName("UT process() when the transaction cannot be opened should fail as before the operation ran and tell the transport nothing")
+    void process_whenTransactionCannotBeOpened_shouldFailAsBeforeRunAndTellTransportNothing() {
         // given
-        OperationContext context = context(new RecordingCallback("fresh"));
+        RecordingCallback callback = new RecordingCallback("fresh");
+        OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
-        TransactionSystemException thrown = new TransactionSystemException("commit failed");
+        CannotCreateTransactionException thrown = new CannotCreateTransactionException("no connection");
 
         when(transactionTemplate.execute(any())).thenThrow(thrown);
 
         // when / then
-        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isExactlyInstanceOf(EarlyFailureException.class)
+                .hasMessageContaining(KEY.toString())
+                .hasCause(thrown);
 
-        verifyNoInteractions(channel);
-        verify(eventListener, times(1)).onException();
-        verify(eventListener, never()).onSuccess();
+        assertThat(callback.calls).isZero();
+        verifyNoInteractions(channel, eventListener);
     }
 
     @Test
@@ -338,30 +371,64 @@ class BlockingIdempotentProcessorUnitTest {
                 .isInstanceOf(IllegalStateException.class);
 
         // then
-        verify(eventListener, times(1)).onException();
+        verify(eventListener, times(1)).onBusinessFailure();
+        verify(eventListener, never()).onFailure(any());
         verify(eventListener, never()).onSuccess();
     }
 
     @Test
-    @DisplayName("UT process() when the operation manager throws should report the failure to the event listener")
-    void process_whenOperationManagerThrows_shouldReportFailureToEventListener() {
+    @DisplayName("UT process() when starting the operation fails in the store should fail as before the operation ran")
+    void process_whenStartingOperationFailsInStore_shouldFailAsBeforeRun() {
         // given
         RecordingCallback callback = new RecordingCallback("fresh");
         OperationContext context = context(callback);
         OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationStatusMismatchException mismatch = new OperationStatusMismatchException(KEY, OperationStatus.PROCESSED);
 
         runCallbackInTransaction();
-        when(operationManager.startOrReply(context, metadata))
-                .thenThrow(new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS));
+        when(operationManager.startOrReply(context, metadata)).thenThrow(mismatch);
 
-        // when
+        // when / then
         assertThatThrownBy(() -> tested.process(context, metadata))
-                .isInstanceOf(OperationStatusMismatchException.class);
+                .isExactlyInstanceOf(EarlyFailureException.class)
+                .hasCause(mismatch);
 
-        // then
         assertThat(callback.calls).isZero();
-        verify(eventListener, times(1)).onException();
-        verify(eventListener, never()).onSuccess();
+        verify(operationManager, never()).complete(any(), any(), any());
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation manager throws a failure of the library should let that very failure out")
+    void process_whenOperationManagerThrowsFailureOfLibrary_shouldLetThatVeryFailureOut() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationLockFailedException thrown =
+                new OperationLockFailedException(KEY, new IllegalStateException("store down"));
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata)).thenThrow(thrown);
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(thrown);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation manager throws a conflict refusal should let that very refusal out")
+    void process_whenOperationManagerThrowsConflictRefusal_shouldLetThatVeryRefusalOut() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationInProgressException refusal = new OperationInProgressException("in progress");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata)).thenThrow(refusal);
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(refusal);
+        verifyNoInteractions(channel, eventListener);
     }
 
     @Test
@@ -377,7 +444,8 @@ class BlockingIdempotentProcessorUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(error);
-        verify(eventListener, times(1)).onException();
+        verify(eventListener, never()).onBusinessFailure();
+        verify(eventListener, never()).onFailure(any());
     }
 
     @Test
@@ -397,7 +465,7 @@ class BlockingIdempotentProcessorUnitTest {
         tested.process(context, metadata);
 
         // then
-        verify(eventListener, never()).onException();
+        verify(eventListener, never()).onBusinessFailure();
     }
 
     @Test
@@ -434,7 +502,7 @@ class BlockingIdempotentProcessorUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.process(context, metadata))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ForeignTransactionException.class)
                 .hasMessageContaining("must own its transaction");
 
         assertThat(callback.calls).isZero();
@@ -442,8 +510,8 @@ class BlockingIdempotentProcessorUnitTest {
     }
 
     @Test
-    @DisplayName("UT process() when it joined somebody else's transaction should publish no state and count no success")
-    void process_whenItJoinedSomebodyElsesTransaction_shouldPublishNoStateAndCountNoSuccess() {
+    @DisplayName("UT process() when it joined somebody else's transaction should publish no state and count nothing")
+    void process_whenItJoinedSomebodyElsesTransaction_shouldPublishNoStateAndCountNothing() {
         // given
         OperationContext context = context(new RecordingCallback("fresh"));
         OperationMetadata metadata = TestOperationMetadata.builder().build();
@@ -451,12 +519,196 @@ class BlockingIdempotentProcessorUnitTest {
         runCallbackInJoinedTransaction();
 
         // when
-        assertThatThrownBy(() -> tested.process(context, metadata)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> tested.process(context, metadata)).isInstanceOf(ForeignTransactionException.class);
 
         // then
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when completing the operation fails should say its outcome was not recorded")
+    void process_whenCompletingOperationFails_shouldSayItsOutcomeWasNotRecorded() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationStatusMismatchException mismatch = new OperationStatusMismatchException(KEY, OperationStatus.IN_PROCESS);
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+        when(operationManager.complete(KEY, "fresh", TTL)).thenThrow(mismatch);
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isExactlyInstanceOf(ResultNotRecordedException.class)
+                .hasMessageContaining(KEY.toString())
+                .hasCause(mismatch);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when completing the operation throws an error should let that very error out unwrapped")
+    void process_whenCompletingOperationThrowsError_shouldLetThatVeryErrorOutUnwrapped() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OutOfMemoryError error = new OutOfMemoryError("heap exhausted");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+        when(operationManager.complete(KEY, "fresh", TTL)).thenThrow(error);
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(error);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation's nested call is refused should let the refusal out without counting a business failure")
+    void process_whenOperationsNestedCallIsRefused_shouldLetRefusalOutWithoutCountingBusinessFailure() {
+        // given
+        NestedIdempotencyException refusal = new NestedIdempotencyException();
+        OperationContext context = context(new ThrowingCallback(refusal));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(refusal);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation is interrupted should let the interruption out without counting a business failure")
+    void process_whenOperationIsInterrupted_shouldLetInterruptionOutWithoutCountingBusinessFailure() {
+        // given
+        InterruptedException interruption = new InterruptedException("shutting down");
+        OperationContext context = context(new ThrowingCallback(interruption));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(interruption);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the operation fails on an interrupted thread should count no business failure and leave the flag set")
+    void process_whenOperationFailsOnInterruptedThread_shouldCountNoBusinessFailureAndLeaveFlagSet() {
+        // given
+        IllegalStateException failure = new IllegalStateException("gateway call aborted");
+        OperationContext context = context(() -> {
+            Thread.currentThread().interrupt();
+            throw failure;
+        });
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata)).isSameAs(failure);
+        assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the transport fails to take the state should still answer and count the success")
+    void process_whenTransportFailsToTakeState_shouldStillAnswerAndCountSuccess() throws Throwable {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        OperationDetail completed = detail(OperationStatus.PROCESSED, true, "fresh");
+
+        runCallbackInTransaction();
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+        when(operationManager.complete(KEY, "fresh", TTL)).thenReturn(completed);
+        doThrow(new IllegalStateException("no request bound to thread")).when(channel).publish(completed);
+
+        // when
+        Object result = tested.process(context, metadata);
+
+        // then
+        assertThat(result).isEqualTo("fresh");
+        verify(eventListener).onSuccess();
+        verify(eventListener, never()).onFailure(any());
+    }
+
+    @Test
+    @DisplayName("UT process() when the commit of a replay fails should fail as before the operation ran")
+    void process_whenCommitOfReplayFails_shouldFailAsBeforeRun() {
+        // given
+        RecordingCallback callback = new RecordingCallback("fresh");
+        OperationContext context = context(callback);
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        TransactionSystemException commitFailure = new TransactionSystemException("commit failed");
+
+        runCallbackThenFailCommit(commitFailure);
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.PROCESSED, false, "replayed"));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isExactlyInstanceOf(EarlyFailureException.class)
+                .hasCause(commitFailure);
+        assertThat(callback.calls).isZero();
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the commit after the operation ran fails should say its outcome was not recorded")
+    void process_whenCommitAfterOperationRanFails_shouldSayItsOutcomeWasNotRecorded() {
+        // given
+        OperationContext context = context(new RecordingCallback("fresh"));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        TransactionSystemException commitFailure = new TransactionSystemException("commit failed");
+
+        runCallbackThenFailCommit(commitFailure);
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+        when(operationManager.complete(KEY, "fresh", TTL))
+                .thenReturn(detail(OperationStatus.PROCESSED, true, "fresh"));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isExactlyInstanceOf(ResultNotRecordedException.class)
+                .hasCause(commitFailure);
+        verifyNoInteractions(channel, eventListener);
+    }
+
+    @Test
+    @DisplayName("UT process() when the rollback after the operation threw fails should say its outcome was not recorded")
+    void process_whenRollbackAfterOperationThrewFails_shouldSayItsOutcomeWasNotRecorded() {
+        // given
+        OperationContext context = context(new ThrowingCallback(new IllegalStateException("business blew up")));
+        OperationMetadata metadata = TestOperationMetadata.builder().build();
+        TransactionSystemException rollbackFailure = new TransactionSystemException("rollback failed");
+
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            try {
+                invocation.getArgument(0, TransactionCallback.class).doInTransaction(new SimpleTransactionStatus(true));
+            } catch (RuntimeException e) {
+                throw rollbackFailure;
+            }
+            throw new AssertionError("the callback was expected to throw");
+        });
+        when(operationManager.startOrReply(context, metadata))
+                .thenReturn(detail(OperationStatus.IN_PROCESS, true, null));
+
+        // when / then
+        assertThatThrownBy(() -> tested.process(context, metadata))
+                .isExactlyInstanceOf(ResultNotRecordedException.class)
+                .hasCause(rollbackFailure);
+        verify(eventListener, never()).onBusinessFailure();
         verifyNoInteractions(channel);
-        verify(eventListener, never()).onSuccess();
-        verify(eventListener, times(1)).onException();
     }
 
     private void runCallbackInTransaction() {
@@ -476,7 +728,14 @@ class BlockingIdempotentProcessorUnitTest {
                 .thenAnswer(invocation -> invocation.getArgument(0, TransactionCallback.class).doInTransaction(status));
     }
 
-    private OperationContext context(ExternalOperationCallback callback) {
+    private void runCallbackThenFailCommit(TransactionSystemException commitFailure) {
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            invocation.getArgument(0, TransactionCallback.class).doInTransaction(new SimpleTransactionStatus(true));
+            throw commitFailure;
+        });
+    }
+
+    private OperationContext context(BusinessOperationCallback callback) {
         return new DefaultOperationContext(RESULT_TYPE, callback, KEY, "fingerprint");
     }
 
@@ -484,7 +743,7 @@ class BlockingIdempotentProcessorUnitTest {
         return new DefaultOperationDetail(KEY, status, result, shouldRecordResponse);
     }
 
-    private static final class RecordingCallback implements ExternalOperationCallback {
+    private static final class RecordingCallback implements BusinessOperationCallback {
 
         private final String result;
         private int calls;
@@ -500,11 +759,17 @@ class BlockingIdempotentProcessorUnitTest {
         }
     }
 
-    private record ThrowingCallback(Throwable thrown) implements ExternalOperationCallback {
+    private record ThrowingCallback(Throwable thrown) implements BusinessOperationCallback {
 
         @Override
         public String call() throws Throwable {
             throw thrown;
         }
+    }
+
+    private static TransactionTemplate template(Propagation propagation) {
+        TransactionTemplate template = new TransactionTemplate(mock(PlatformTransactionManager.class));
+        template.setPropagationBehavior(propagation.value());
+        return template;
     }
 }

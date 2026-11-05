@@ -35,13 +35,13 @@ class DelegatingIdempotentProcessorUnitTest {
     @DisplayName("UT constructor when two processors serve the same type should throw IllegalStateException naming both")
     void constructor_whenTwoProcessorsServeSameType_shouldThrowIllegalStateExceptionNamingBoth() {
         // given
-        RecordingProcessor first = new RecordingProcessor(ProcessorType.NON_BLOCKING, "from-first");
-        RecordingProcessor second = new RecordingProcessor(ProcessorType.NON_BLOCKING, "from-second");
+        RecordingProcessor first = new RecordingProcessor(ProcessorType.TRANSACTIONAL_NON_BLOCKING, "from-first");
+        RecordingProcessor second = new RecordingProcessor(ProcessorType.TRANSACTIONAL_NON_BLOCKING, "from-second");
 
         // when / then
         assertThatThrownBy(() -> new DelegatingIdempotentProcessor(List.of(first, second)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(ProcessorType.NON_BLOCKING.name())
+                .hasMessageContaining(ProcessorType.TRANSACTIONAL_NON_BLOCKING.name())
                 .hasMessageContaining(RecordingProcessor.class.getName());
     }
 
@@ -49,17 +49,19 @@ class DelegatingIdempotentProcessorUnitTest {
     @DisplayName("UT process() should route the call to the processor the metadata names")
     void process_shouldRouteCallToProcessorMetadataNames() throws Throwable {
         // given
-        RecordingProcessor blocking = new RecordingProcessor(ProcessorType.BLOCKING, "from-blocking");
-        RecordingProcessor nonBlocking = new RecordingProcessor(ProcessorType.NON_BLOCKING, "from-non-blocking");
-        DelegatingIdempotentProcessor tested = new DelegatingIdempotentProcessor(List.of(blocking, nonBlocking));
+        RecordingProcessor blocking = new RecordingProcessor(ProcessorType.TRANSACTIONAL_BLOCKING, "from-blocking");
+        RecordingProcessor nonBlocking = new RecordingProcessor(ProcessorType.TRANSACTIONAL_NON_BLOCKING, "from-non-blocking");
+        RecordingProcessor external = new RecordingProcessor(ProcessorType.EXTERNAL_NON_BLOCKING, "from-external");
+        DelegatingIdempotentProcessor tested = new DelegatingIdempotentProcessor(List.of(blocking, nonBlocking, external));
 
         // when
-        Object result = tested.process(context(), metadata(ProcessorType.NON_BLOCKING));
+        Object result = tested.process(context(), metadata(ProcessorType.EXTERNAL_NON_BLOCKING));
 
         // then
-        assertThat(result).isEqualTo("from-non-blocking");
-        assertThat(nonBlocking.calls).isEqualTo(1);
+        assertThat(result).isEqualTo("from-external");
+        assertThat(external.calls).isEqualTo(1);
         assertThat(blocking.calls).isZero();
+        assertThat(nonBlocking.calls).isZero();
     }
 
     @Test
@@ -67,10 +69,10 @@ class DelegatingIdempotentProcessorUnitTest {
     void process_whenNoProcessorServesNamedType_shouldThrowIllegalStateExceptionNamingKey() {
         // given
         DelegatingIdempotentProcessor tested = new DelegatingIdempotentProcessor(
-                List.of(new RecordingProcessor(ProcessorType.BLOCKING, "from-blocking")));
+                List.of(new RecordingProcessor(ProcessorType.TRANSACTIONAL_BLOCKING, "from-blocking")));
 
         // when / then
-        assertThatThrownBy(() -> tested.process(context(), metadata(ProcessorType.NON_BLOCKING)))
+        assertThatThrownBy(() -> tested.process(context(), metadata(ProcessorType.TRANSACTIONAL_NON_BLOCKING)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no processor found")
                 .hasMessageContaining(KEY.toString());

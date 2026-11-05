@@ -47,21 +47,34 @@ public final class IdempotencyConfig {
      * Refuses a resolved config whose sections contradict the processor it chose, rather than hand a
      * processor settings it would have to ignore or leave it without one it needs.
      * <p>
-     * Under {@link ProcessorType#BLOCKING} the claim is the business transaction's own, so a lock TTL has no
+     * Under {@link ProcessorType#TRANSACTIONAL_BLOCKING} the claim is the business transaction's own, so a lock TTL has no
      * claim to time, a conflict handler has nothing to handle - a duplicate waits on the store's own insert -
      * and every failure releases the key, since the rollback takes the record away. Under
-     * {@link ProcessorType#NON_BLOCKING} a duplicate meets the unfinished operation, so the claim needs a lock
+     * {@link ProcessorType#TRANSACTIONAL_NON_BLOCKING} a duplicate meets the unfinished operation, so the claim needs a lock
      * TTL and conflicts need handling.
+     * <p>
+     * A ttl or lock ttl that is named must be positive whatever the processor: a record that expires when it is
+     * written replays nothing, so every repeat runs the business method again, and a lease of no length is
+     * taken over by the next caller while its holder still works.
      * <p>
      * Called after a merge rather than from {@link Builder#build()}: a single layer is allowed to be partial,
      * so only the resolved config is worth judging.
      *
-     * @throws IllegalStateException if a section contradicts the chosen processor.
+     * @throws IllegalStateException if a section contradicts the chosen processor, or a named ttl or lock ttl
+     * is zero.
      * @throws NullPointerException if no layer decided the processor type.
      */
     public void validate() {
         Objects.requireNonNull(processorType, "processorType cannot be null");
-        if (ProcessorType.BLOCKING.equals(processorType)) {
+        if (ttl != null && !ttl.isPositive()) {
+            throw new IllegalStateException("ttl must be positive, but was %s".formatted(ttl));
+        }
+
+        if (lockTtl != null && !lockTtl.isPositive()) {
+            throw new IllegalStateException("lockTtl must be positive, but was %s".formatted(lockTtl));
+        }
+
+        if (isBlocking(processorType)) {
             if (lockTtl != null) {
                 throw new IllegalStateException("lockTtl cannot be passed if processorType is %s".formatted(processorType));
             }
@@ -70,15 +83,16 @@ public final class IdempotencyConfig {
                 throw new IllegalStateException("conflictConfig cannot be enabled if processorType is %s".formatted(processorType));
             }
 
-            if (responseConfig != null && responseConfig.getReleaseFor() != null
-                    && !responseConfig.getReleaseFor().contains(Throwable.class)) {
+            if (responseConfig != null && responseConfig.getRecordFor() != null
+                    && !responseConfig.getRecordFor().isEmpty()) {
                 throw new IllegalStateException(
-                        "releaseFor cannot keep a failed operation on the record if processorType is %s".formatted(processorType)
+                        "recordFor cannot keep a failed operation on the record if processorType is %s, but named %s"
+                                .formatted(processorType, responseConfig.getRecordFor())
                 );
             }
         }
 
-        if (ProcessorType.NON_BLOCKING.equals(processorType)) {
+        if (isNonBlocking(processorType)) {
             if (lockTtl == null) {
                 throw new IllegalStateException("lockTtl cannot be null if processorType is %s".formatted(processorType));
             }
@@ -90,11 +104,21 @@ public final class IdempotencyConfig {
                         .formatted(processorType)
                 );
             }
+
         }
 
         if (conflictConfig != null) {
             conflictConfig.validate();
         }
+    }
+
+    public static boolean isBlocking(ProcessorType type) {
+        return ProcessorType.TRANSACTIONAL_BLOCKING.equals(type);
+    }
+
+    public static boolean isNonBlocking(ProcessorType type) {
+        return ProcessorType.TRANSACTIONAL_NON_BLOCKING.equals(type)
+                || ProcessorType.EXTERNAL_NON_BLOCKING.equals(type);
     }
 
     public String getHeaderName() {
@@ -126,9 +150,17 @@ public final class IdempotencyConfig {
     }
 
     public boolean notEmpty() {
+        if (processorType == null) return false;
+        if (isBlocking(processorType)) {
+            return headerName != null
+                    && ttl != null
+                    && conflictConfig != null
+                    && fingerprintConfig != null
+                    && responseConfig != null;
+        }
         return headerName != null
                 && ttl != null
-                && processorType != null
+                && lockTtl != null
                 && conflictConfig != null
                 && fingerprintConfig != null
                 && responseConfig != null;
@@ -166,6 +198,12 @@ public final class IdempotencyConfig {
 
         IdempotencyConfig.Builder mergedConfigBuilder = IdempotencyConfig.builder(reference);
 
+        ProcessorType processorType = target.getProcessorType();
+        if (processorType != null && !processorType.equals(reference.getProcessorType())) {
+            mergedConfigBuilder.processorType(processorType);
+        }
+        processorType = mergedConfigBuilder.processorType;
+
         String headerName = target.getHeaderName();
         if (!StringUtils.isBlank(headerName) && !reference.getHeaderName().equals(headerName)) {
             mergedConfigBuilder.headerName(headerName);
@@ -177,22 +215,25 @@ public final class IdempotencyConfig {
         }
 
         Duration lockTtl = target.getLockTtl();
-        if (lockTtl != null && !lockTtl.isNegative() && !lockTtl.equals(reference.getLockTtl())) {
-            mergedConfigBuilder.lockTtl(lockTtl);
-        }
-
-        ProcessorType processorType = target.getProcessorType();
-        if (processorType != null && !processorType.equals(reference.getProcessorType())) {
-            mergedConfigBuilder.processorType(processorType);
+        if (isBlocking(processorType) && target.getLockTtl() == null) {
+            mergedConfigBuilder.lockTtl = null;
+        } else {
+            if (lockTtl != null && !lockTtl.isNegative() && !lockTtl.equals(reference.getLockTtl())) {
+                mergedConfigBuilder.lockTtl(lockTtl);
+            }
         }
 
         ConflictConfig conflictConfig = target.getConflictConfig();
-        if (conflictConfig != null && !conflictConfig.equals(reference.getConflictConfig())) {
-            ConflictConfig referenceConflictConfig = reference.getConflictConfig();
-            mergedConfigBuilder.conflict(referenceConflictConfig == null
-                    ? conflictConfig
-                    : ConflictConfig.merge(referenceConflictConfig, conflictConfig)
-            );
+        if (isBlocking(processorType) && target.getConflictConfig() == null) {
+            mergedConfigBuilder.conflictConfig = ConflictConfig.disabled();
+        } else {
+            if (conflictConfig != null && !conflictConfig.equals(reference.getConflictConfig())) {
+                ConflictConfig referenceConflictConfig = reference.getConflictConfig();
+                mergedConfigBuilder.conflict(referenceConflictConfig == null
+                        ? conflictConfig
+                        : ConflictConfig.merge(referenceConflictConfig, conflictConfig)
+                );
+            }
         }
 
         FingerprintConfig fingerprintConfig = target.getFingerprintConfig();
@@ -203,6 +244,12 @@ public final class IdempotencyConfig {
         }
 
         ResponseConfig responseConfig = target.getResponseConfig();
+        boolean targetHasNotRecordForList = responseConfig == null;
+        if (!targetHasNotRecordForList) {
+            targetHasNotRecordForList = responseConfig.getRecordFor() == null;
+        }
+
+
         if (responseConfig != null && !responseConfig.equals(reference.getResponseConfig())) {
             ResponseConfig referenceResponseConfig = reference.getResponseConfig();
             mergedConfigBuilder.response(referenceResponseConfig == null
@@ -210,6 +257,7 @@ public final class IdempotencyConfig {
                     : ResponseConfig.merge(referenceResponseConfig, responseConfig)
             );
         }
+
 
         IdempotencyConfig mergedConfig = mergedConfigBuilder.build();
         mergedConfig.validate();

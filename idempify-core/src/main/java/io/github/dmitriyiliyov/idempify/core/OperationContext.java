@@ -17,7 +17,7 @@ public interface OperationContext {
 
     ResultType getResultType();
 
-    ExternalOperationCallback getCallback();
+    BusinessOperationCallback getCallback();
 
     /**
      * Returns the fingerprint of the current request, or {@link Optional#empty()} if fingerprinting is off

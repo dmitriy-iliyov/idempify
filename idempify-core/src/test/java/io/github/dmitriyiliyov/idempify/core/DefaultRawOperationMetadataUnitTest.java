@@ -26,8 +26,8 @@ class DefaultRawOperationMetadataUnitTest {
         assertThat(result.getLockTtl()).isNull();
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(result.getReleaseFor()).isNull();
+        assertThat(result.getRecordForToggle()).isEqualTo(Toggle.UNSELECTED);
+        assertThat(result.getRecordFor()).isNull();
     }
 
     @Test
@@ -39,22 +39,22 @@ class DefaultRawOperationMetadataUnitTest {
                 .ttl(30)
                 .lockTtl(2)
                 .timeUnit(TimeUnit.MINUTES)
-                .processorType(ProcessorTypeToggle.BLOCKING)
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .releaseForToggle(Toggle.ENABLE)
-                .releaseFor(List.of(IllegalStateException.class))
+                .recordForToggle(Toggle.ENABLE)
+                .recordFor(List.of(IllegalStateException.class))
                 .build();
 
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Payment-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(30));
         assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(2));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING);
         assertThat(result.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.WAIT);
         assertThat(result.getFingerprintToggle()).isEqualTo(Toggle.ENABLE);
-        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.ENABLE);
-        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getRecordForToggle()).isEqualTo(Toggle.ENABLE);
+        assertThat(result.getRecordFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -143,11 +143,11 @@ class DefaultRawOperationMetadataUnitTest {
     void build_whenNamedExceptionsKeepFailureOnRecord_shouldSwitchReleasingOnByItself() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .releaseFor(List.of(IllegalStateException.class))
+                .recordFor(List.of(IllegalStateException.class))
                 .build();
 
         // then
-        assertThat(result.getReleaseForToggle()).isEqualTo(Toggle.ENABLE);
+        assertThat(result.getRecordForToggle()).isEqualTo(Toggle.ENABLE);
     }
 
     @Test
@@ -155,13 +155,13 @@ class DefaultRawOperationMetadataUnitTest {
     void build_whenReleasingIsSwitchedOffWhileExceptionsAreNamed_shouldRefusePair() {
         // given
         DefaultRawOperationMetadata.Builder tested = DefaultRawOperationMetadata.builder()
-                .releaseForToggle(Toggle.DISABLE)
-                .releaseFor(List.of(IllegalStateException.class));
+                .recordForToggle(Toggle.DISABLE)
+                .recordFor(List.of(IllegalStateException.class));
 
         // when / then
         assertThatThrownBy(tested::build)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("releaseForToggle cannot be DISABLE");
+                .hasMessageContaining("recordForToggle cannot be DISABLE");
     }
 
     @Test
@@ -169,13 +169,13 @@ class DefaultRawOperationMetadataUnitTest {
     void build_whenReleasingIsSwitchedOffWhileEveryFailureIsNamed_shouldRefusePairToo() {
         // given
         DefaultRawOperationMetadata.Builder tested = DefaultRawOperationMetadata.builder()
-                .releaseForToggle(Toggle.DISABLE)
-                .releaseFor(List.of(Throwable.class));
+                .recordForToggle(Toggle.DISABLE)
+                .recordFor(List.of(Throwable.class));
 
         // when / then
         assertThatThrownBy(tested::build)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("releaseForToggle cannot be DISABLE");
+                .hasMessageContaining("recordForToggle cannot be DISABLE");
     }
 
     @Test
@@ -268,41 +268,41 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT releaseFor() when the list is null should leave it unspecified")
-    void releaseFor_whenListIsNull_shouldLeaveItUnspecified() {
+    @DisplayName("UT recordFor() when the list is null should leave it unspecified")
+    void recordFor_whenListIsNull_shouldLeaveItUnspecified() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .releaseFor(null)
+                .recordFor(null)
                 .build();
 
         // then
-        assertThat(result.getReleaseFor()).isNull();
+        assertThat(result.getRecordFor()).isNull();
     }
 
     @Test
-    @DisplayName("UT releaseFor() when the list is empty should leave it unspecified, as an annotation default does")
-    void releaseFor_whenListIsEmpty_shouldLeaveItUnspecified() {
+    @DisplayName("UT recordFor() when the list is empty should leave it unspecified, as an annotation default does")
+    void recordFor_whenListIsEmpty_shouldLeaveItUnspecified() {
         // when
         RawOperationMetadata result = DefaultRawOperationMetadata.builder()
-                .releaseFor(List.of())
+                .recordFor(List.of())
                 .build();
 
         // then
-        assertThat(result.getReleaseFor()).isNull();
+        assertThat(result.getRecordFor()).isNull();
     }
 
     @Test
-    @DisplayName("UT releaseFor() when the caller changes its list afterwards should keep what it was given")
-    void releaseFor_whenCallerChangesItsListAfterwards_shouldKeepWhatItWasGiven() {
+    @DisplayName("UT recordFor() when the caller changes its list afterwards should keep what it was given")
+    void recordFor_whenCallerChangesItsListAfterwards_shouldKeepWhatItWasGiven() {
         // given
-        List<Class<? extends Throwable>> releaseFor = new ArrayList<>(List.of(IllegalStateException.class));
-        DefaultRawOperationMetadata.Builder builder = DefaultRawOperationMetadata.builder().releaseFor(releaseFor);
+        List<Class<? extends Throwable>> recordFor = new ArrayList<>(List.of(IllegalStateException.class));
+        DefaultRawOperationMetadata.Builder builder = DefaultRawOperationMetadata.builder().recordFor(recordFor);
 
         // when
-        releaseFor.add(IllegalArgumentException.class);
+        recordFor.add(IllegalArgumentException.class);
 
         // then
-        assertThat(builder.build().getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(builder.build().getRecordFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -343,8 +343,8 @@ class DefaultRawOperationMetadataUnitTest {
     @DisplayName("UT equals() when the processor type differs should treat the metadata as different")
     void equals_whenProcessorTypeDiffers_shouldTreatMetadataAsDifferent() {
         // given
-        RawOperationMetadata one = fullyConfigured().processorType(ProcessorTypeToggle.BLOCKING).build();
-        RawOperationMetadata other = fullyConfigured().processorType(ProcessorTypeToggle.NON_BLOCKING).build();
+        RawOperationMetadata one = fullyConfigured().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build();
+        RawOperationMetadata other = fullyConfigured().processorType(ProcessorTypeToggle.TRANSACTIONAL_NON_BLOCKING).build();
 
         // then
         assertThat(one).isNotEqualTo(other);
@@ -352,11 +352,11 @@ class DefaultRawOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT equals() when releaseFor differs should treat the metadata as different")
-    void equals_whenReleaseForDiffers_shouldTreatMetadataAsDifferent() {
+    @DisplayName("UT equals() when recordFor differs should treat the metadata as different")
+    void equals_whenRecordForDiffers_shouldTreatMetadataAsDifferent() {
         // given
-        RawOperationMetadata one = fullyConfigured().releaseFor(List.of(IllegalStateException.class)).build();
-        RawOperationMetadata other = fullyConfigured().releaseFor(List.of(IllegalArgumentException.class)).build();
+        RawOperationMetadata one = fullyConfigured().recordFor(List.of(IllegalStateException.class)).build();
+        RawOperationMetadata other = fullyConfigured().recordFor(List.of(IllegalArgumentException.class)).build();
 
         // then
         assertThat(one).isNotEqualTo(other);
@@ -378,10 +378,10 @@ class DefaultRawOperationMetadataUnitTest {
         assertThat(result).contains(
                 "headerName='X-Payment-Key'",
                 "ttl=PT30M",
-                "processorType=BLOCKING",
+                "processorType=TRANSACTIONAL_BLOCKING",
                 "conflictHandleStrategy=WAIT",
                 "fingerprintToggle=ENABLE",
-                "releaseFor=[class java.lang.IllegalStateException]"
+                "recordFor=[class java.lang.IllegalStateException]"
         );
     }
 
@@ -390,10 +390,10 @@ class DefaultRawOperationMetadataUnitTest {
                 .headerName("X-Payment-Key")
                 .ttl(30)
                 .timeUnit(TimeUnit.MINUTES)
-                .processorType(ProcessorTypeToggle.BLOCKING)
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .releaseFor(List.of(IllegalStateException.class));
+                .recordFor(List.of(IllegalStateException.class));
     }
 
     @Test

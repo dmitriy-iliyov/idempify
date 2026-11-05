@@ -34,13 +34,14 @@ public interface OperationMetadata {
 
     /**
      * Returns how long a claim on the key stays held, or {@code null} when the claim has no lifetime of
-     * its own: under {@code BLOCKING} it lives and dies with the business transaction.
+     * its own: under {@link ProcessorType#TRANSACTIONAL_BLOCKING} it lives and dies with the business transaction.
      */
     Duration getLockTtl();
 
     /**
-     * Returns which {@code IdempotentProcessor} runs this operation - under {@code BLOCKING} a duplicate waits
-     * on the first call's claim, under {@code NON_BLOCKING} it meets the unfinished operation instead.
+     * Returns which {@code IdempotentProcessor} runs this operation - under
+     * {@link ProcessorType#TRANSACTIONAL_BLOCKING} a duplicate waits on the first call's claim, under either
+     * non-blocking type it meets the unfinished operation instead.
      * {@code DelegatingIdempotentProcessor} dispatches on this value and fails when no processor serves it.
      */
     ProcessorType getProcessorType();

@@ -9,12 +9,12 @@ import java.util.UUID;
 public final class DefaultOperationContext implements OperationContext {
 
     private final ResultType operationResultType;
-    private final ExternalOperationCallback operationCallback;
+    private final BusinessOperationCallback operationCallback;
     private final UUID idempotencyKey;
     private final String fingerprint;
 
     public DefaultOperationContext(ResultType operationResultType,
-                                   ExternalOperationCallback operationCallback,
+                                   BusinessOperationCallback operationCallback,
                                    UUID idempotencyKey,
                                    String fingerprint) {
         this.operationResultType = Objects.requireNonNull(operationResultType, "operationResultType cannot be null");
@@ -29,7 +29,7 @@ public final class DefaultOperationContext implements OperationContext {
     }
 
     @Override
-    public ExternalOperationCallback getCallback() {
+    public BusinessOperationCallback getCallback() {
         return operationCallback;
     }
 

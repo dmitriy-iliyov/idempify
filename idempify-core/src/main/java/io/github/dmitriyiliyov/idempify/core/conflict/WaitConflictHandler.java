@@ -54,9 +54,16 @@ public class WaitConflictHandler implements ConflictHandler {
                 );
             }
 
-            RawNonBlockingOperation operation = nullableOperation.get();
-            if (OperationStatus.isProcessedStatus(operation.status())) {
-                return deserialize.deserialize(operation, context.getOperationResultType());
+            RawNonBlockingOperation rawOperation = nullableOperation.get();
+            if (OperationStatus.isProcessedStatus(rawOperation.status())) {
+                NonBlockingOperation operation = deserialize.deserialize(rawOperation, context.getOperationResultType());
+                if (operation.isExpired()) {
+                    throw new WaitAbortedException(
+                            "Operation (idempotencyKey=%s) had already expired when it was found completed while waiting for it"
+                                    .formatted(idempotencyKey)
+                    );
+                }
+                return operation;
             } else {
                 backoff(i, start, idempotencyKey);
             }

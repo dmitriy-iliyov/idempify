@@ -1,8 +1,8 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,7 +103,6 @@ class DefaultBlockingOperationManagerUnitTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("resultSerializer cannot be null");
     }
-
 
     @Test
     @DisplayName("UT startOrReply() when the key is seen for the first time should hand back an operation nobody has completed")
@@ -249,8 +248,8 @@ class DefaultBlockingOperationManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT startOrReply() when fingerprinting is on and the key repeats without a fingerprint should throw InvalidFingerprintException")
-    void startOrReply_whenFingerprintingIsOnAndKeyRepeatsWithoutFingerprint_shouldThrowInvalidFingerprintException() {
+    @DisplayName("UT startOrReply() when fingerprinting is on and the key repeats without a fingerprint should throw EmptyFingerprintException")
+    void startOrReply_whenFingerprintingIsOnAndKeyRepeatsWithoutFingerprint_shouldThrowEmptyFingerprintException() {
         // given
         givenClaimAnsweredWith(repeated("stored"), context(null));
         OperationContext context = context(null);
@@ -258,7 +257,7 @@ class DefaultBlockingOperationManagerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.startOrReply(context, metadata))
-                .isInstanceOf(InvalidFingerprintException.class)
+                .isInstanceOf(EmptyFingerprintException.class)
                 .hasMessageContaining(KEY.toString());
         verifyNoInteractions(fingerprintMatcher);
     }
@@ -300,7 +299,6 @@ class DefaultBlockingOperationManagerUnitTest {
         verify(repository, times(1)).saveResultAndUpdateStatus(
                 KEY, "raw-result", OperationStatus.PROCESSED, TTL.toMillis(), OperationStatus.IN_PROCESS);
     }
-
 
     @Test
     @DisplayName("UT complete() should hand back a detail whose response is still to be recorded")

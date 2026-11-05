@@ -25,10 +25,17 @@ public interface ConflictHandler {
      * There is no third outcome: the call never runs the business method itself, so a handler that hands back
      * an operation still in progress, or nothing at all, leaves it with nothing to answer, and the call is
      * refused with {@link ConflictHandlerResultException}.
+     * <p>
+     * The operation returned must be the stored record the key was claimed under, with the fingerprint it
+     * was claimed with: the caller compares the fingerprint of the conflicting request against it once the
+     * handler has answered, so an operation built from the request itself would match it by construction
+     * and let a request with a different body replay another request's result.
      *
      * @param context the contended key and the type a replayed result would have.
      * @return the completed operation whose outcome the call replays - {@link OperationStatus#PROCESSED} or
      *         {@link OperationStatus#EXCEPTIONALLY_PROCESSED}, never {@code null}.
+     * @throws ConflictException to refuse the call - the type the library recognises as a refusal and passes to
+     *         the caller as it is.
      */
     NonBlockingOperation handle(ConflictContext context);
 }

@@ -7,7 +7,7 @@ package io.github.dmitriyiliyov.idempify.core;
  * that declares checked exceptions.
  */
 @FunctionalInterface
-public interface ExternalOperationCallback {
+public interface BusinessOperationCallback {
 
     /**
      * Runs the business operation and returns its result.

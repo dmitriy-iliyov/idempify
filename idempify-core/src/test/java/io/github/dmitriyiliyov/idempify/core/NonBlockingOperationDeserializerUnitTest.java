@@ -128,6 +128,7 @@ class NonBlockingOperationDeserializerUnitTest {
                 OperationStatus.PROCESSED,
                 false,
                 result,
+                null,
                 response,
                 "fingerprint",
                 REMAINING_MILLIS,

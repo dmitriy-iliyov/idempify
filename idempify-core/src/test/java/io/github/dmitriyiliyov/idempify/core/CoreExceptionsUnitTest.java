@@ -1,8 +1,13 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.conflict.ConflictException;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.lang.reflect.Modifier;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +39,18 @@ class CoreExceptionsUnitTest {
     void operationStatusMismatchException_shouldBeUncheckedSoConditionalWriteNeedNotDeclareIt() {
         assertThat(RuntimeException.class)
                 .isAssignableFrom(OperationStatusMismatchException.class);
+    }
+
+    @Test
+    @DisplayName("UT OperationLockLostException should name the key whose claim was lost")
+    void operationLockLostException_shouldNameKeyWhoseClaimWasLost() {
+        // when
+        OperationLockLostException tested = new OperationLockLostException(KEY);
+
+        // then
+        assertThat(tested)
+                .hasMessage("Operation (idempotencyKey=%s) is no longer held under its lock token".formatted(KEY))
+                .hasNoCause();
     }
 
     @Test
@@ -163,6 +180,123 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
+    @DisplayName("UT OperationLockFailedException should name the key and keep the failure of the claim as its cause")
+    void operationLockFailedException_shouldNameKeyAndKeepFailureOfClaimAsItsCause() {
+        // given
+        IllegalStateException cause = new IllegalStateException("store down");
+
+        // when
+        OperationLockFailedException tested = new OperationLockFailedException(KEY, cause);
+
+        // then
+        assertThat(tested)
+                .isInstanceOf(IdempotentProcessingException.class)
+                .hasMessage("Operation (idempotencyKey=%s) could not be claimed".formatted(KEY))
+                .hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("UT EarlyFailureException should name the key and keep the failure as its cause")
+    void earlyFailureException_shouldNameKeyAndKeepFailureAsItsCause() {
+        // given
+        IllegalStateException cause = new IllegalStateException("store down");
+
+        // when
+        EarlyFailureException tested = new EarlyFailureException(KEY, cause);
+
+        // then
+        assertThat(tested)
+                .isInstanceOf(IdempotentProcessingException.class)
+                .hasMessage("Operation (idempotencyKey=%s) failed before the business method ran".formatted(KEY))
+                .hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("UT OperationLockFailedException should belong to the failures before the operation ran so a caller catches both with one type")
+    void operationLockFailedException_shouldBelongToFailuresBeforeRunSoCallerCatchesBothWithOneType() {
+        assertThat(EarlyFailureException.class).isAssignableFrom(OperationLockFailedException.class);
+    }
+
+    @Test
+    @DisplayName("UT ResultNotRecordedException should name the key and keep the failure of the store as its cause")
+    void resultNotRecordedException_shouldNameKeyAndKeepFailureOfStoreAsItsCause() {
+        // given
+        IllegalStateException cause = new IllegalStateException("store down");
+
+        // when
+        ResultNotRecordedException tested = new ResultNotRecordedException(KEY, cause);
+
+        // then
+        assertThat(tested)
+                .isInstanceOf(IdempotentProcessingException.class)
+                .hasMessage("Operation (idempotencyKey=%s) ran, but its result could not be recorded".formatted(KEY))
+                .hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("UT OutcomeNotRecordedException should be abstract so a caller can only meet it as a result or a failure")
+    void outcomeNotRecordedException_shouldBeAbstractSoCallerMeetsItOnlyAsResultOrFailure() {
+        assertThat(Modifier.isAbstract(OutcomeNotRecordedException.class.getModifiers())).isTrue();
+    }
+
+    @Test
+    @DisplayName("UT ResultNotRecordedException should belong to the outcomes not recorded so a caller catches both with one type")
+    void resultNotRecordedException_shouldBelongToOutcomesNotRecordedSoCallerCatchesBothWithOneType() {
+        assertThat(OutcomeNotRecordedException.class).isAssignableFrom(ResultNotRecordedException.class);
+    }
+
+    @Test
+    @DisplayName("UT FailureNotRecordedException should belong to the outcomes not recorded so a caller catches both with one type")
+    void failureNotRecordedException_shouldBelongToOutcomesNotRecordedSoCallerCatchesBothWithOneType() {
+        assertThat(OutcomeNotRecordedException.class).isAssignableFrom(FailureNotRecordedException.class);
+    }
+
+    @Test
+    @DisplayName("UT FailureNotRecordedException should name the key and keep the failure of the store as its cause")
+    void failureNotRecordedException_shouldNameKeyAndKeepFailureOfStoreAsItsCause() {
+        // given
+        IllegalStateException cause = new IllegalStateException("store down");
+
+        // when
+        FailureNotRecordedException tested =
+                new FailureNotRecordedException(KEY, cause, new IllegalArgumentException("card declined"));
+
+        // then
+        assertThat(tested)
+                .isInstanceOf(IdempotentProcessingException.class)
+                .hasMessage("Operation (idempotencyKey=%s) could not be released or recorded after it failed".formatted(KEY))
+                .hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("UT FailureNotRecordedException should carry what the business method threw as suppressed")
+    void failureNotRecordedException_shouldCarryWhatBusinessMethodThrewAsSuppressed() {
+        // given
+        IllegalArgumentException businessFailure = new IllegalArgumentException("card declined");
+
+        // when
+        FailureNotRecordedException tested =
+                new FailureNotRecordedException(KEY, new IllegalStateException("store down"), businessFailure);
+
+        // then
+        assertThat(tested.getSuppressed()).containsExactly(businessFailure);
+    }
+
+    @Test
+    @DisplayName("UT FailureNotRecordedException when the store rethrew the business failure itself should not suppress it twice")
+    void failureNotRecordedException_whenStoreRethrewBusinessFailureItself_shouldNotSuppressItTwice() {
+        // given
+        IllegalStateException businessFailure = new IllegalStateException("card declined");
+
+        // when
+        FailureNotRecordedException tested = new FailureNotRecordedException(KEY, businessFailure, businessFailure);
+
+        // then
+        assertThat(tested).hasCause(businessFailure);
+        assertThat(tested.getSuppressed()).isEmpty();
+    }
+
+    @Test
     @DisplayName("UT SerializationException should be constructible from a message alone")
     void serializationException_shouldBeConstructibleFromMessageAlone() {
         // when
@@ -192,5 +326,40 @@ class CoreExceptionsUnitTest {
 
         // then
         assertThat(tested.getMessage()).isEqualTo("Row is gone");
+    }
+
+    @ParameterizedTest
+    @ValueSource(classes = {
+            IdempotentProcessingException.class,
+            ConflictException.class,
+            FingerprintException.class,
+            IdempotencyKeyException.class,
+            SerializationProcessingException.class,
+            OperationStatusMismatchException.class,
+            OperationLockLostException.class,
+            OperationDisappearedException.class
+    })
+    @DisplayName("UT every exception group of the library should be an IdempifyException so a caller catches them all with one type")
+    void exceptionGroupOfLibrary_shouldBeIdempifyExceptionSoCallerCatchesThemAllWithOneType(Class<?> type) {
+        assertThat(IdempifyException.class).isAssignableFrom(type);
+    }
+
+    @Test
+    @DisplayName("UT IdempifyException should be unchecked like every exception of the library")
+    void idempifyException_shouldBeUncheckedLikeEveryExceptionOfLibrary() {
+        assertThat(RuntimeException.class).isAssignableFrom(IdempifyException.class);
+    }
+
+    @Test
+    @DisplayName("UT IdempifyException should carry the message and keep the cause it was given")
+    void idempifyException_shouldCarryMessageAndKeepCauseItWasGiven() {
+        // given
+        IllegalStateException cause = new IllegalStateException("store down");
+
+        // when
+        IdempifyException tested = new IdempifyException("failed", cause);
+
+        // then
+        assertThat(tested).hasMessage("failed").hasCause(cause);
     }
 }

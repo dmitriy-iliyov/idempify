@@ -13,6 +13,9 @@ import java.lang.reflect.Method;
  * nothing about it looks wrong from outside: the endpoint answers, the key is accepted, and every request
  * runs. Asking the entry turns that into an answer available at start-up rather than into a duplicate in
  * production.
+ * <p>
+ * An entry also refuses a call made from inside a running operation, before any work on it - see
+ * {@link io.github.dmitriyiliyov.idempify.core.IdempotencyScope}.
  */
 public interface IdempotentEntry {
 

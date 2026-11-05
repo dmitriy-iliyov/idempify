@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-public class IdempotencyKeyException extends RuntimeException {
+public class IdempotencyKeyException extends IdempifyException {
 
     public IdempotencyKeyException(String message) {
         super(message);

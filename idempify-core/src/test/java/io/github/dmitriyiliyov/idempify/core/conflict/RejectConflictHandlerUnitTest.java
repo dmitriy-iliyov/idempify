@@ -14,12 +14,11 @@ class RejectConflictHandlerUnitTest {
     private final RejectConflictHandler tested = new RejectConflictHandler();
 
     @Test
-    @DisplayName("UT handle() should throw IdempotencyConflictException naming the key")
-    void handle_shouldThrowIdempotencyConflictExceptionNamingKey() {
+    @DisplayName("UT handle() should throw OperationInProgressException naming the key")
+    void handle_shouldThrowOperationInProgressExceptionNamingKey() {
         assertThatThrownBy(() -> tested.handle(new DefaultConflictContext(KEY, null)))
-                .isInstanceOf(IdempotencyConflictException.class)
+                .isInstanceOf(OperationInProgressException.class)
                 .hasMessageContaining(KEY.toString())
                 .hasMessageContaining("already in progress");
     }
-
 }

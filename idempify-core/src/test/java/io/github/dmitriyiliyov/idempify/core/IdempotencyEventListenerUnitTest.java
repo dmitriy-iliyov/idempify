@@ -18,8 +18,10 @@ class IdempotencyEventListenerUnitTest {
             tested.onDuplicate();
             tested.onConflict();
             tested.onFingerprintMismatch();
-            tested.onException();
+            tested.onBusinessFailure();
+            tested.onFailure(FailureType.FAILED_BEFORE_RUN);
             tested.onSuccess();
+            tested.onExceptionallySuccess();
         });
     }
 }

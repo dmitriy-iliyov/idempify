@@ -7,7 +7,7 @@ package io.github.dmitriyiliyov.idempify.core;
  * The transport catches this group rather than its members: both directions leave the caller with the same
  * thing, an operation whose stored answer cannot be reproduced.
  */
-public class SerializationProcessingException extends RuntimeException {
+public class SerializationProcessingException extends IdempifyException {
     public SerializationProcessingException(String message) {
         super(message);
     }

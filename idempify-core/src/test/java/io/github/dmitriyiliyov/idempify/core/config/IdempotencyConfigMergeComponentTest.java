@@ -37,7 +37,7 @@ class IdempotencyConfigMergeComponentTest {
                 .fingerprint(FingerprintConfig.builder()
                         .bodyCanonicalizerConfig(builder -> builder.includedFields("amount", "currency"))
                         .build())
-                .response(ResponseConfig.builder().releaseFor(List.of(IllegalStateException.class)).build())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalStateException.class)).build())
                 .build();
 
         // when
@@ -46,7 +46,7 @@ class IdempotencyConfigMergeComponentTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("X-Payment-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(15));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
 
         assertThat(result.getConflictConfig().getStrategy()).isEqualTo(ConflictHandleStrategy.WAIT);
         WaitConflictHandlerConfig backoff = (WaitConflictHandlerConfig) result.getConflictConfig().getHandlerConfig();
@@ -61,7 +61,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(canonicalizer.getIncludedFields()).containsExactlyInAnyOrder("amount", "currency");
         assertThat(canonicalizer.getExcludedFields()).isEmpty();
 
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
@@ -88,7 +88,7 @@ class IdempotencyConfigMergeComponentTest {
         // given
         IdempotencyConfig callSite = IdempotencyConfig.builder()
                 .fingerprint(FingerprintConfig.disabled())
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build();
 
         // when
@@ -100,7 +100,7 @@ class IdempotencyConfigMergeComponentTest {
         assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(5));
         assertThat(result.getConflictConfig().isEnabled()).isTrue();
         assertThat(result.getFingerprintConfig().isEnabled()).isFalse();
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     @Test
@@ -114,7 +114,7 @@ class IdempotencyConfigMergeComponentTest {
         // when / then
         assertThatThrownBy(() -> IdempotencyConfig.merge(global(), callSite))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("if processorType is NON_BLOCKING");
+                .hasMessageContaining("if processorType is TRANSACTIONAL_NON_BLOCKING");
     }
 
     @Test
@@ -148,7 +148,7 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig global = global();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
                 .ttl(Duration.ofMinutes(15))
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build();
 
         // when
@@ -169,7 +169,7 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
                 .build();
@@ -181,19 +181,47 @@ class IdempotencyConfigMergeComponentTest {
     }
 
     @Test
-    @DisplayName("CT resolution when the call site goes blocking while the global handles conflicts should refuse to resolve")
-    void resolution_whenCallSiteGoesBlockingWhileGlobalHandlesConflicts_shouldRefuseToResolve() {
+    @DisplayName("CT resolution when the call site goes blocking while the global leases and handles conflicts should resolve without both")
+    void resolution_whenCallSiteGoesBlockingWhileGlobalLeasesAndHandlesConflicts_shouldResolveWithoutBoth() {
         // given
-        // a global without a lease, so that conflict handling is the one thing the blocking call site contradicts
-        IdempotencyConfig global = IdempotencyConfig.builder(global()).lockTtl(null).build();
+        IdempotencyConfig global = global();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .build();
 
-        // when / then
-        assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("conflictConfig cannot be enabled if processorType is BLOCKING");
+        // when
+        IdempotencyConfig result = IdempotencyConfig.merge(global, callSite);
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
+        assertThat(result.getLockTtl()).isNull();
+        assertThat(result.getConflictConfig().isEnabled()).isFalse();
+        assertThat(result.getTtl()).isEqualTo(global.getTtl());
+        assertThat(result.getFingerprintConfig()).isEqualTo(global.getFingerprintConfig());
+    }
+
+    @Test
+    @DisplayName("CT resolution when the call site goes non-blocking over a blocking global should resolve with its own lease and conflict handling")
+    void resolution_whenCallSiteGoesNonBlockingOverBlockingGlobal_shouldResolveWithItsOwnLeaseAndConflictHandling() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .lockTtl(null)
+                .conflict(ConflictConfig.disabled())
+                .build();
+        IdempotencyConfig callSite = IdempotencyConfig.builder()
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+                .lockTtl(Duration.ofMinutes(1))
+                .conflict(ConflictConfig.reject())
+                .build();
+
+        // when
+        IdempotencyConfig result = IdempotencyConfig.merge(global, callSite);
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
+        assertThat(result.getLockTtl()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(result.getConflictConfig().isEnabled()).isTrue();
     }
 
     @Test
@@ -203,19 +231,19 @@ class IdempotencyConfigMergeComponentTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.defaults())
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build();
         IdempotencyConfig callSite = IdempotencyConfig.builder()
-                .response(ResponseConfig.all())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalStateException.class)).build())
                 .build();
 
         // when / then
         assertThatThrownBy(() -> IdempotencyConfig.merge(global, callSite))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("releaseFor cannot keep a failed operation on the record");
+                .hasMessageContaining("recordFor cannot keep a failed operation on the record");
     }
 
     @Test
@@ -256,14 +284,14 @@ class IdempotencyConfigMergeComponentTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
                 .lockTtl(Duration.ofMinutes(5))
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.builder()
                         .delay(50)
                         .maxAttempts(3)
                         .maxDuration(4_000)
                         .build()))
                 .fingerprint(fingerprintConfig)
-                .response(ResponseConfig.all())
+                .response(ResponseConfig.defaults())
                 .build();
     }
 

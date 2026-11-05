@@ -47,7 +47,8 @@ public interface BlockingOperationRepository {
      * <p>
      * The columns the row carries are written from {@code operation}, and the expiry is cleared - an
      * implementation that leaves it behind would let a row reclaimed after expiry keep the expiry of the
-     * operation it replaced.
+     * operation it replaced. The creation time is the exception: it stays what the insert set, the moment the key
+     * first appeared, and a reclaim does not move it.
      *
      * @param operation the row to update.
      * @param onStatus  the expected current status of the row for the update to proceed.

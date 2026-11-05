@@ -72,7 +72,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
     }
 
     @Test
@@ -148,16 +148,15 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site asks for a zero ttl should honour it rather than fall back to the global one")
-    void merge_whenCallSiteAsksForZeroTtl_shouldHonourItRatherThanFallBackToGlobalOne() {
+    @DisplayName("UT merge() when the call site asks for a zero ttl should refuse it")
+    void merge_whenCallSiteAsksForZeroTtl_shouldRefuseIt() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
 
-        // when
-        OperationMetadata result = tested.merge(raw().ttl(0).build());
-
-        // then
-        assertThat(result.getTtl()).isEqualTo(Duration.ZERO);
+        // when / then
+        assertThatThrownBy(() -> tested.merge(raw().ttl(0).build()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ttl must be positive");
     }
 
     @Test
@@ -167,10 +166,10 @@ class DefaultOperationMetadataManagerUnitTest {
         DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
     }
 
     @Test
@@ -246,10 +245,10 @@ class DefaultOperationMetadataManagerUnitTest {
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
         assertThat(result.getLockTtl()).isNull();
     }
 
@@ -262,7 +261,7 @@ class DefaultOperationMetadataManagerUnitTest {
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
         RawOperationMetadata rawMetadata = raw()
-                .processorType(ProcessorTypeToggle.BLOCKING)
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
                 .lockTtl(30)
                 .build();
 
@@ -282,10 +281,10 @@ class DefaultOperationMetadataManagerUnitTest {
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
         assertThat(result.getConflictHandler()).isNull();
     }
 
@@ -296,10 +295,10 @@ class DefaultOperationMetadataManagerUnitTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(ConflictConfig.disabled())
                 .fingerprint(FingerprintConfig.builder().bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH).build())
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
@@ -307,7 +306,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.UNSELECTED).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
     }
 
     @Test
@@ -367,22 +366,22 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site names releaseFor should let it win over the global one")
-    void merge_whenCallSiteNamesReleaseFor_shouldLetItWinOverGlobalOne() {
+    @DisplayName("UT merge() when the call site names recordFor should let it win over the global one")
+    void merge_whenCallSiteNamesRecordFor_shouldLetItWinOverGlobalOne() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
                 .response(ResponseConfig.builder()
-                        .releaseFor(List.of(IllegalArgumentException.class))
+                        .recordFor(List.of(IllegalArgumentException.class))
                         .includedHeaders(Set.of("Location"))
                         .build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().releaseFor(List.of(IllegalStateException.class)).build());
+        OperationMetadata result = tested.merge(raw().recordFor(List.of(IllegalStateException.class)).build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(IllegalStateException.class);
         assertThat(result.getResponseConfig().getIncludedHeaders()).containsExactly("location");
     }
 
@@ -418,7 +417,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // then
         assertThat(result.getTtl()).isEqualTo(Duration.ofMinutes(15));
         assertThat(result.getHeaderName()).isEqualTo("X-Named-Key");
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
     }
 
     @Test
@@ -457,7 +456,7 @@ class DefaultOperationMetadataManagerUnitTest {
         IdempotencyConfig global = IdempotencyConfig.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .build();
 
         // when / then
@@ -483,11 +482,11 @@ class DefaultOperationMetadataManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the call site leaves releaseFor undecided should keep the global answer")
-    void merge_whenCallSiteLeavesReleaseForUndecided_shouldKeepGlobalAnswer() {
+    @DisplayName("UT merge() when the call site leaves recordFor undecided should keep the global answer")
+    void merge_whenCallSiteLeavesRecordForUndecided_shouldKeepGlobalAnswer() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalArgumentException.class)).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
@@ -495,7 +494,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalArgumentException.class);
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(IllegalArgumentException.class);
     }
 
     @Test
@@ -513,24 +512,27 @@ class DefaultOperationMetadataManagerUnitTest {
         DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
         assertThat(result.getConflictHandler()).isNull();
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes blocking over a global that keeps failures should release the key on any failure")
-    void merge_whenCallSiteGoesBlockingOverGlobalThatKeepsFailures_shouldReleaseKeyOnAnyFailure() {
+    @DisplayName("UT merge() when the call site goes blocking over a global that keeps failures should keep none")
+    void merge_whenCallSiteGoesBlockingOverGlobalThatKeepsFailures_shouldKeepNone() {
         // given
-        DefaultOperationMetadataManager tested = manager(global());
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .response(ResponseConfig.builder().recordFor(List.of(Throwable.class)).build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     @Test
@@ -538,15 +540,15 @@ class DefaultOperationMetadataManagerUnitTest {
     void merge_whenBlockingCallSiteSaysNothingAboutReleasing_shouldStillTakeOverInheritedList() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalArgumentException.class)).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.BLOCKING).build());
+        OperationMetadata result = tested.merge(raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     @Test
@@ -555,9 +557,9 @@ class DefaultOperationMetadataManagerUnitTest {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
                 .lockTtl(null)
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(ConflictConfig.disabled())
-                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalArgumentException.class)).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
         RawOperationMetadata rawMetadata = raw().build();
@@ -565,7 +567,7 @@ class DefaultOperationMetadataManagerUnitTest {
         // when / then
         assertThatThrownBy(() -> tested.merge(rawMetadata))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("releaseFor cannot keep a failed operation on the record");
+                .hasMessageContaining("recordFor cannot keep a failed operation on the record");
     }
 
     @Test
@@ -574,14 +576,14 @@ class DefaultOperationMetadataManagerUnitTest {
         // given
         DefaultOperationMetadataManager tested = manager(global());
         RawOperationMetadata rawMetadata = raw()
-                .processorType(ProcessorTypeToggle.BLOCKING)
-                .releaseForToggle(Toggle.ENABLE)
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
+                .recordForToggle(Toggle.ENABLE)
                 .build();
 
         // when / then
         assertThatThrownBy(() -> tested.merge(rawMetadata))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("useReleaseFor cannot be set")
+                .hasMessageContaining("useRecordFor cannot be set")
                 .hasMessageContaining("BLOCKING");
     }
 
@@ -591,41 +593,40 @@ class DefaultOperationMetadataManagerUnitTest {
         // given
         DefaultOperationMetadataManager tested = manager(global());
         RawOperationMetadata rawMetadata = raw()
-                .processorType(ProcessorTypeToggle.BLOCKING)
-                .releaseForToggle(Toggle.DISABLE)
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
+                .recordForToggle(Toggle.DISABLE)
                 .build();
 
         // when / then
         assertThatThrownBy(() -> tested.merge(rawMetadata))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("useReleaseFor cannot be set");
+                .hasMessageContaining("useRecordFor cannot be set");
     }
 
     @Test
-    @DisplayName("UT merge() when the call site switches releasing off should release the key for nothing")
-    void merge_whenCallSiteSwitchesReleasingOff_shouldReleaseKeyForNothing() {
+    @DisplayName("UT merge() when the call site switches releasing off should keep no failure")
+    void merge_whenCallSiteSwitchesRecordingOff_shouldKeepNoFailure() {
         // given
         DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
 
         // when
-        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.DISABLE).build());
+        OperationMetadata result = tested.merge(raw().recordForToggle(Toggle.DISABLE).build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor()).isEmpty();
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     @Test
-    @DisplayName("UT merge() when the call site switches releasing on over a layer that releases for nothing should take the built-in list")
-    void merge_whenCallSiteSwitchesReleasingOnOverLayerThatReleasesForNothing_shouldTakeBuiltInList() {
+    @DisplayName("UT merge() when the call site switches releasing on and no layer names a list should keep no failure")
+    void merge_whenCallSiteSwitchesRecordingOnAndNoLayerNamesList_shouldRecordForNothing() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
 
         // when
-        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.ENABLE).build());
+        OperationMetadata result = tested.merge(raw().recordForToggle(Toggle.ENABLE).build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor())
-                .containsExactlyElementsOf(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     @Test
@@ -633,31 +634,31 @@ class DefaultOperationMetadataManagerUnitTest {
     void merge_whenCallSiteSwitchesReleasingOnOverLayerThatNamesExceptions_shouldKeepThatList() {
         // given
         IdempotencyConfig global = IdempotencyConfig.builder(global())
-                .response(ResponseConfig.builder().releaseFor(List.of(IllegalArgumentException.class)).build())
+                .response(ResponseConfig.builder().recordFor(List.of(IllegalArgumentException.class)).build())
                 .build();
         DefaultOperationMetadataManager tested = manager(global);
 
         // when
-        OperationMetadata result = tested.merge(raw().releaseForToggle(Toggle.ENABLE).build());
+        OperationMetadata result = tested.merge(raw().recordForToggle(Toggle.ENABLE).build());
 
         // then
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(IllegalArgumentException.class);
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(IllegalArgumentException.class);
     }
 
     @Test
-    @DisplayName("UT merge() when the call site goes blocking and names its own releaseFor should refuse the pair")
-    void merge_whenCallSiteGoesBlockingAndNamesItsOwnReleaseFor_shouldRefusePair() {
+    @DisplayName("UT merge() when the call site goes blocking and names its own recordFor should refuse the pair")
+    void merge_whenCallSiteGoesBlockingAndNamesItsOwnRecordFor_shouldRefusePair() {
         // given
         DefaultOperationMetadataManager tested = manager(global());
         RawOperationMetadata rawMetadata = raw()
-                .processorType(ProcessorTypeToggle.BLOCKING)
-                .releaseFor(List.of(IllegalStateException.class))
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
+                .recordFor(List.of(IllegalStateException.class))
                 .build();
 
         // when / then
         assertThatThrownBy(() -> tested.merge(rawMetadata))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("useReleaseFor cannot be set");
+                .hasMessageContaining("useRecordFor cannot be set");
     }
 
     @Test
@@ -783,7 +784,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().build());
 
         // then
-        assertThat(result.getResponseConfig()).isEqualTo(ResponseConfig.all());
+        assertThat(result.getResponseConfig()).isEqualTo(ResponseConfig.defaults());
     }
 
     @Test
@@ -833,9 +834,9 @@ class DefaultOperationMetadataManagerUnitTest {
         // given
         IdempotencyConfigRegistry registry = new DefaultIdempotencyConfigRegistry();
         registry.register(CONFIG_NAME, IdempotencyConfig.builder()
-                .processorType(ProcessorType.BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
                 .conflict(ConflictConfig.disabled())
-                .response(ResponseConfig.disabled())
+                .response(ResponseConfig.defaults())
                 .build());
         DefaultOperationMetadataManager tested = manager(global(), registry);
 
@@ -843,7 +844,7 @@ class DefaultOperationMetadataManagerUnitTest {
         OperationMetadata result = tested.merge(raw().build(), CONFIG_NAME);
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
     }
 
     @Test
@@ -858,11 +859,129 @@ class DefaultOperationMetadataManagerUnitTest {
 
         // when
         OperationMetadata result = tested.merge(
-                raw().processorType(ProcessorTypeToggle.BLOCKING).build(), CONFIG_NAME);
+                raw().processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING).build(), CONFIG_NAME);
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
         assertThat(result.getConflictHandler()).isNull();
+    }
+
+    @Test
+    @DisplayName("UT merge(name) when the named config goes blocking over an external global that left recordFor undecided should keep none")
+    void mergeWithName_whenNamedConfigGoesBlockingOverExternalGlobalWithUndecidedRecordFor_shouldKeepNone() {
+        // given
+        IdempotencyConfigRegistry registry = new DefaultIdempotencyConfigRegistry();
+        registry.register(CONFIG_NAME, IdempotencyConfig.builder()
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .build());
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.EXTERNAL_NON_BLOCKING)
+                .response(ResponseConfig.builder().build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global, registry);
+
+        // when
+        OperationMetadata result = tested.merge(raw().build(), CONFIG_NAME);
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT merge() when a blocking call site names a conflict strategy should refuse the pair")
+    void merge_whenBlockingCallSiteNamesConflictStrategy_shouldRefusePair() {
+        // given
+        DefaultOperationMetadataManager tested = manager(globalKeepingNoFailureResponses());
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.TRANSACTIONAL_BLOCKING)
+                .conflictHandleStrategy(ConflictHandleStrategyToggle.REJECT)
+                .build();
+
+        // when / then
+        assertThatThrownBy(() -> tested.merge(rawMetadata))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("conflict")
+                .hasMessageContaining("TRANSACTIONAL_BLOCKING");
+    }
+
+    @Test
+    @DisplayName("UT merge() when the global leaves recordFor undecided should give each processor its own answer")
+    void merge_whenGlobalLeavesRecordForUndecided_shouldGiveEachProcessorItsOwnAnswer() {
+        // given
+        DefaultOperationMetadataManager external = manager(IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.EXTERNAL_NON_BLOCKING)
+                .response(ResponseConfig.builder().build())
+                .build());
+        DefaultOperationMetadataManager transactional = manager(IdempotencyConfig.builder(global())
+                .response(ResponseConfig.builder().build())
+                .build());
+
+        // when
+        OperationMetadata externalResult = external.merge(raw().build());
+        OperationMetadata transactionalResult = transactional.merge(raw().build());
+
+        // then
+        assertThat(externalResult.getResponseConfig().getRecordFor()).containsExactly(Throwable.class);
+        assertThat(transactionalResult.getResponseConfig().getRecordFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site goes external over a blocking global should keep every failure")
+    void merge_whenCallSiteGoesExternalOverBlockingGlobal_shouldKeepEveryFailure() {
+        // given
+        IdempotencyConfig global = IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .lockTtl(null)
+                .conflict(ConflictConfig.disabled())
+                .response(ResponseConfig.builder().build())
+                .build();
+        DefaultOperationMetadataManager tested = manager(global);
+        RawOperationMetadata rawMetadata = raw()
+                .processorType(ProcessorTypeToggle.EXTERNAL_NON_BLOCKING)
+                .lockTtl(5)
+                .timeUnit(TimeUnit.MINUTES)
+                .conflictHandleStrategy(ConflictHandleStrategyToggle.REJECT)
+                .build();
+
+        // when
+        OperationMetadata result = tested.merge(rawMetadata);
+
+        // then
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.EXTERNAL_NON_BLOCKING);
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(Throwable.class);
+    }
+
+    @Test
+    @DisplayName("UT merge() when the global writes recordFor empty over an external processor should keep it empty")
+    void merge_whenGlobalWritesRecordForEmptyOverExternalProcessor_shouldKeepItEmpty() {
+        // given
+        DefaultOperationMetadataManager tested = manager(IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.EXTERNAL_NON_BLOCKING)
+                .response(ResponseConfig.builder().recordFor(List.of()).build())
+                .build());
+
+        // when
+        OperationMetadata result = tested.merge(raw().build());
+
+        // then
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT merge() when the call site switches recording on over an external global that left recordFor undecided should keep every failure")
+    void merge_whenCallSiteSwitchesRecordingOnOverExternalGlobalWithUndecidedRecordFor_shouldKeepEveryFailure() {
+        // given
+        DefaultOperationMetadataManager tested = manager(IdempotencyConfig.builder(global())
+                .processorType(ProcessorType.EXTERNAL_NON_BLOCKING)
+                .response(ResponseConfig.builder().build())
+                .build());
+
+        // when
+        OperationMetadata result = tested.merge(raw().recordForToggle(Toggle.ENABLE).build());
+
+        // then
+        assertThat(result.getResponseConfig().getRecordFor()).containsExactly(Throwable.class);
     }
 
     /**
@@ -896,12 +1015,12 @@ class DefaultOperationMetadataManagerUnitTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
                 .lockTtl(Duration.ofMinutes(5))
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .conflict(ConflictConfig.wait(WaitConflictHandlerConfig.defaults()))
                 .fingerprint(FingerprintConfig.builder()
                         .bodyHandleStrategy(BodyHandleStrategy.RAW_BYTES_HASH)
                         .build())
-                .response(ResponseConfig.all())
+                .response(ResponseConfig.defaults())
                 .build();
     }
 
@@ -980,12 +1099,12 @@ class DefaultOperationMetadataManagerUnitTest {
         }
 
         @Override
-        public Toggle getReleaseForToggle() {
+        public Toggle getRecordForToggle() {
             return Toggle.UNSELECTED;
         }
 
         @Override
-        public List<Class<? extends Throwable>> getReleaseFor() {
+        public List<Class<? extends Throwable>> getRecordFor() {
             return null;
         }
     }

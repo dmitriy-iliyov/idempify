@@ -6,7 +6,7 @@ import java.util.UUID;
 public record RawNonBlockingOperation(
         UUID idempotencyKey,
         OperationStatus status,
-        Boolean isFirstAttempt,
+        boolean isFirstAttempt,
         String result,
         String exceptionClassName,
         String response,

@@ -87,7 +87,7 @@ public final class ConflictConfig {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         ConflictConfig that = (ConflictConfig) o;
-        return enabled == that.enabled &&
+        return Objects.equals(enabled, that.enabled) &&
                 strategy == that.strategy &&
                 Objects.equals(handlerConfig, that.handlerConfig) &&
                 Objects.equals(handler, that.handler);

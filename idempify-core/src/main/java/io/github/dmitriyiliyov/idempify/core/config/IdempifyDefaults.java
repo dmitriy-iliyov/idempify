@@ -1,13 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.config;
 
-import io.github.dmitriyiliyov.idempify.core.*;
-import io.github.dmitriyiliyov.idempify.core.conflict.IdempotencyConflictException;
-import io.github.dmitriyiliyov.idempify.core.conflict.WaitAbortedException;
-import io.github.dmitriyiliyov.idempify.core.conflict.WaitAttemptsExhaustedException;
-import io.github.dmitriyiliyov.idempify.core.conflict.WaitTimeoutException;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyRequestBodyException;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMismatchException;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
+import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 
 import java.time.Duration;
 import java.util.List;
@@ -30,22 +23,13 @@ public final class IdempifyDefaults {
 
     public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
 
-    public static final List<Class<? extends Throwable>> DEFAULT_RELEASE_FOR_LIST = List.of(
-            IdempotentProcessingException.class,
-            IdempotencyKeyException.class,
-            OperationStatusMismatchException.class,
-            SerializationProcessingException.class,
-            SerializationException.class,
-            DeserializationException.class,
-            EmptyRequestBodyException.class,
-            InvalidFingerprintException.class,
-            FingerprintMismatchException.class,
-            IdempotencyConflictException.class,
-            OperationDisappearedException.class,
-            WaitAbortedException.class,
-            WaitAttemptsExhaustedException.class,
-            WaitTimeoutException.class
-    );
+    /**
+     * Names of the two dispatchers the core declares {@code @Primary}. Every transport and every processor type is a
+     * bean of the type the dispatcher answers to, so a replacement cannot be found by type: an application
+     * displaces the dispatcher by declaring a bean under its name.
+     */
+    public static final String DELEGATING_KEY_EXTRACTOR_BEAN_NAME = "idempifyDelegatingKeyExtractor";
+    public static final String DELEGATING_PROCESSOR_BEAN_NAME = "idempifyDelegatingIdempotentProcessor";
 
     public static final String HEADER_NAME = "Idempotency-Key";
 
@@ -53,7 +37,7 @@ public final class IdempifyDefaults {
 
     public static final String LOCK_TTL_VALUE = "PT5M";
 
-    public static final String PROCESSOR_TYPE_NAME = "NON_BLOCKING";
+    public static final String PROCESSOR_TYPE_NAME = "TRANSACTIONAL_NON_BLOCKING";
 
     public static final String CONFLICT_ENABLED_VALUE = "true";
     public static final String CONFLICT_HANDLE_STRATEGY_VALUE = "REJECT";
@@ -68,6 +52,37 @@ public final class IdempifyDefaults {
     public static final String EMPTY_BODY_FALLBACK_VALUE = "THROWING";
     public static final String BODY_FORMAT_VALUE = "JSON";
     public static final String CANONICALIZE_STRATEGY_VALUE = "LEXICOGRAPHICAL";
+
+    /**
+     * The built-in {@code recordFor} of {@link ProcessorType#EXTERNAL_NON_BLOCKING}: its effect is not rolled back,
+     * so every failure is kept rather than risk running the operation a second time.
+     */
+    public static final List<Class<? extends Throwable>> EXTERNAL_NON_BLOCKING_RECORD_FOR_LIST =
+            List.of(Throwable.class);
+
+    /**
+     * The built-in {@code recordFor} of {@link ProcessorType#TRANSACTIONAL_NON_BLOCKING}: the failure rolls the effect
+     * back, so every failure releases the key.
+     */
+    public static final List<Class<? extends Throwable>> TRANSACTIONAL_NON_BLOCKING_RECORD_FOR_LIST = List.of();
+
+    /**
+     * The built-in {@code recordFor} of {@link ProcessorType#TRANSACTIONAL_BLOCKING}, the only one it accepts: a
+     * rollback takes the record away with the failure.
+     */
+    public static final List<Class<? extends Throwable>> TRANSACTIONAL_BLOCKING_RECORD_FOR_LIST = List.of();
+
+    /**
+     * The built-in {@code recordFor} of a processor. It is asked for once, after the last layer has spoken: the
+     * answer depends on the processor that is finally chosen, which no layer below the last one can know.
+     */
+    public static List<Class<? extends Throwable>> recordForOf(ProcessorType processorType) {
+        return switch (processorType) {
+            case TRANSACTIONAL_BLOCKING -> TRANSACTIONAL_BLOCKING_RECORD_FOR_LIST;
+            case TRANSACTIONAL_NON_BLOCKING -> TRANSACTIONAL_NON_BLOCKING_RECORD_FOR_LIST;
+            case EXTERNAL_NON_BLOCKING -> EXTERNAL_NON_BLOCKING_RECORD_FOR_LIST;
+        };
+    }
 
     public static final String CACHE_ENABLED_VALUE = "false";
     public static final String CACHE_TYPE_VALUE = "IN_MEMORY";

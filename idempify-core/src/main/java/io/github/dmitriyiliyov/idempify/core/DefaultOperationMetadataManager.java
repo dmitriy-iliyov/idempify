@@ -69,11 +69,12 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
      * Layers the call site over the config already resolved for it, and refuses a result that contradicts
      * itself.
      * <p>
-     * A call site that goes {@link ProcessorType#BLOCKING} has its conflict handling switched off here
-     * instead of being refused, because it is the only layer that cannot switch it off itself: an annotation
-     * attribute has no value for "handle no conflicts", while a named config and the global properties both
-     * say it in one call. Every other contradiction travels on to {@link IdempotencyConfig#validate()} and is
-     * refused there - by then it was written by a layer that had the words to write it differently.
+     * A call site that goes {@link ProcessorType#TRANSACTIONAL_BLOCKING} drops what it merely inherited: the
+     * conflict handling, an inherited lock TTL, and the {@code recordFor} list, which is replaced by an empty one so
+     * every failure releases the key. What the call site named itself - a conflict strategy, a lock TTL, a
+     * {@code useRecordFor} - is never dropped silently: it travels on to {@link IdempotencyConfig#validate()} and is
+     * refused there. Every other contradiction travels on to {@link IdempotencyConfig#validate()} too - by
+     * then it was written by a layer that had the words to write it differently.
      */
     private IdempotencyConfig merge(IdempotencyConfig config, RawOperationMetadata rawMetadata) {
         IdempotencyConfig.Builder configBuilder = IdempotencyConfig.builder(config);
@@ -90,14 +91,17 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
         mergeResponse(config, configBuilder, rawMetadata, processorType);
         mergeFingerprint(config, configBuilder, rawMetadata);
 
-        if (ProcessorType.BLOCKING.equals(processorType)) {
+        if (ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
             // only an inherited lock ttl is dropped: one this call site named itself is left for validate() to refuse
             if (rawMetadata.getLockTtl() == null) {
                 configBuilder.lockTtl(null);
             }
 
-            configBuilder.conflict(ConflictConfig.disabled());
-            logDroppedConflictHandling(config.getConflictConfig());
+            // only inherited conflict handling is dropped: a strategy this call site named itself is left for validate() to refuse
+            if (ConflictHandleStrategyToggle.toConflictHandleStrategy(rawMetadata.getConflictHandleStrategy()) == null) {
+                configBuilder.conflict(ConflictConfig.disabled());
+                logDroppedConflictHandling(config.getConflictConfig());
+            }
         }
 
         IdempotencyConfig mergedConfig = configBuilder.build();
@@ -155,7 +159,7 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
     private void logDroppedConflictHandling(ConflictConfig conflictConfig) {
         if (conflictConfig != null && Boolean.TRUE.equals(conflictConfig.isEnabled())) {
             log.info("Conflict handling (strategy={}) is dropped: {} leaves a duplicate no conflict to arrive at",
-                    conflictConfig.getStrategy(), ProcessorType.BLOCKING);
+                    conflictConfig.getStrategy(), ProcessorType.TRANSACTIONAL_BLOCKING);
         }
     }
 
@@ -180,47 +184,56 @@ public class DefaultOperationMetadataManager implements OperationMetadataManager
                                RawOperationMetadata rawMetadata, ProcessorType processorType) {
 
         ResponseConfig.Builder responseConfigBuilder = ResponseConfig.builder(config.getResponseConfig());
+        ProcessorType effectiveProcessorType = processorType != null ? processorType : config.getProcessorType();
 
-        if (ProcessorType.BLOCKING.equals(processorType)) {
-            rejectReleasingChosenByCallSite(rawMetadata);
-            logDroppedReleaseFor(config.getResponseConfig());
-            builder.response(responseConfigBuilder.releaseFor(List.of(Throwable.class)).build());
+        if (ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
+            rejectRecordingChosenByCallSite(rawMetadata);
+            logDroppedRecordFor(config.getResponseConfig());
+            builder.response(responseConfigBuilder.recordFor(List.of()).build());
             return;
         }
 
-        Boolean useReleaseFor = Toggle.toBoolean(rawMetadata.getReleaseForToggle());
-        List<Class<? extends Throwable>> releaseFor = rawMetadata.getReleaseFor();
+        Boolean useRecordFor = Toggle.toBoolean(rawMetadata.getRecordForToggle());
+        List<Class<? extends Throwable>> recordFor = rawMetadata.getRecordFor();
 
-        if (Boolean.FALSE.equals(useReleaseFor)) {
-            responseConfigBuilder.releaseFor(List.of());
-        } else if (releaseFor != null) {
-            responseConfigBuilder.releaseFor(releaseFor);
-        } else if (Boolean.TRUE.equals(useReleaseFor) && ResponseConfig.releasesForNothing(config.getResponseConfig())) {
-            responseConfigBuilder.releaseFor(
-                    ResponseConfig.defaultReleaseFor(defaultConfig.getResponseConfig())
+        if (Boolean.FALSE.equals(useRecordFor)) {
+            responseConfigBuilder.recordFor(List.of());
+        } else if (recordFor != null) {
+            responseConfigBuilder.recordFor(recordFor);
+        } else if (Boolean.TRUE.equals(useRecordFor) && ResponseConfig.recordsNothing(config.getResponseConfig())) {
+            List<Class<? extends Throwable>> inherited = ResponseConfig.defaultRecordFor(defaultConfig.getResponseConfig());
+            responseConfigBuilder.recordFor(inherited.isEmpty()
+                    ? IdempifyDefaults.recordForOf(effectiveProcessorType)
+                    : inherited
             );
         }
 
-        builder.response(responseConfigBuilder.build());
+        ResponseConfig responseConfig = responseConfigBuilder.build();
+        if (responseConfig.getRecordFor() == null) {
+            responseConfig = ResponseConfig.builder(responseConfig)
+                    .recordFor(IdempifyDefaults.recordForOf(effectiveProcessorType))
+                    .build();
+        }
+        builder.response(responseConfig);
     }
 
-    private void rejectReleasingChosenByCallSite(RawOperationMetadata rawMetadata) {
-        if (!Toggle.UNSELECTED.equals(rawMetadata.getReleaseForToggle())) {
+    private void rejectRecordingChosenByCallSite(RawOperationMetadata rawMetadata) {
+        if (!Toggle.UNSELECTED.equals(rawMetadata.getRecordForToggle())) {
             throw new IllegalStateException(
-                    "useReleaseFor cannot be set when processorType is %s: a rollback frees the key on any failure"
-                            .formatted(ProcessorType.BLOCKING)
+                    "useRecordFor cannot be set when processorType is %s: a rollback frees the key on any failure"
+                            .formatted(ProcessorType.TRANSACTIONAL_BLOCKING)
             );
         }
     }
 
-    private void logDroppedReleaseFor(ResponseConfig responseConfig) {
-        if (responseConfig == null || responseConfig.getReleaseFor() == null) {
+    private void logDroppedRecordFor(ResponseConfig responseConfig) {
+        if (responseConfig == null || responseConfig.getRecordFor() == null) {
             return;
         }
 
-        if (!responseConfig.getReleaseFor().contains(Throwable.class)) {
-            log.info("Release-for list ({}) is dropped: {} frees the key on any failure",
-                    responseConfig.getReleaseFor(), ProcessorType.BLOCKING);
+        if (!responseConfig.getRecordFor().isEmpty()) {
+            log.info("Record-for list ({}) is dropped: {} frees the key on any failure",
+                    responseConfig.getRecordFor(), ProcessorType.TRANSACTIONAL_BLOCKING);
         }
     }
 

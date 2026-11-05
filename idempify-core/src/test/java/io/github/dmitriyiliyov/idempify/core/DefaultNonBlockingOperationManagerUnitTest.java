@@ -3,9 +3,9 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerResultException;
 import io.github.dmitriyiliyov.idempify.core.conflict.DefaultConflictContext;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.junit.jupiter.api.BeforeEach;
@@ -159,6 +159,19 @@ class DefaultNonBlockingOperationManagerUnitTest {
     }
 
     @Test
+    @DisplayName("UT tryLock() when the generator issues no token should refuse before touching the store")
+    void tryLock_whenGeneratorIssuesNoToken_shouldRefuseBeforeTouchingStore() {
+        // given
+        when(lockTokenGenerator.generate()).thenReturn(null);
+
+        // when / then
+        assertThatThrownBy(() -> tested.tryLock(context("fingerprint"), metadata()))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("generated lockToken cannot be null");
+        verifyNoInteractions(repository);
+    }
+
+    @Test
     @DisplayName("UT fetchAndValidate() when this call holds the claim on a key never completed should hand back an operation to run")
     void fetchAndValidate_whenThisCallHoldsClaimOnKeyNeverCompleted_shouldHandBackOperationToRun() {
         // given
@@ -185,9 +198,9 @@ class DefaultNonBlockingOperationManagerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.fetchAndValidate(context, metadata, acquired()))
-                .isInstanceOf(OperationDisappearedException.class)
-                .hasMessageContaining(KEY.toString());
-        verifyNoInteractions(conflictHandler);
+                .isExactlyInstanceOf(OperationDisappearedException.class)
+                .hasMessage("Operation (idempotencyKey=%s) was claimed, but its record is gone".formatted(KEY));
+        verifyNoInteractions(conflictHandler, eventListener);
     }
 
     @Test
@@ -255,8 +268,8 @@ class DefaultNonBlockingOperationManagerUnitTest {
     }
 
     @Test
-    @DisplayName("UT fetchAndValidate() when fingerprinting is on and the call carries none should throw InvalidFingerprintException")
-    void fetchAndValidate_whenFingerprintingIsOnAndCallCarriesNone_shouldThrowInvalidFingerprintException() {
+    @DisplayName("UT fetchAndValidate() when fingerprinting is on and the call carries none should throw EmptyFingerprintException")
+    void fetchAndValidate_whenFingerprintingIsOnAndCallCarriesNone_shouldThrowEmptyFingerprintException() {
         // given
         when(repository.find(KEY)).thenReturn(Optional.of(row(OperationStatus.PROCESSED, "result", 60_000L)));
         OperationContext context = context(null);
@@ -264,9 +277,10 @@ class DefaultNonBlockingOperationManagerUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.fetchAndValidate(context, metadata, acquired()))
-                .isInstanceOf(InvalidFingerprintException.class)
+                .isInstanceOf(EmptyFingerprintException.class)
                 .hasMessageContaining(KEY.toString());
         verifyNoInteractions(fingerprintMatcher);
+        verify(eventListener, never()).onFailure(any());
     }
 
     @Test
@@ -387,7 +401,8 @@ class DefaultNonBlockingOperationManagerUnitTest {
                 ResultType.ofClass(IllegalStateException.class),
                 OperationStatus.EXCEPTIONALLY_PROCESSED,
                 TTL.toMillis(),
-                LOCK_TOKEN
+                LOCK_TOKEN,
+                OperationStatus.IN_PROCESS
         );
     }
 
@@ -421,7 +436,7 @@ class DefaultNonBlockingOperationManagerUnitTest {
 
     private OperationMetadata metadata(FingerprintPolicy policy) {
         return TestOperationMetadata.builder()
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .lockTtl(LOCK_TTL)
                 .conflictHandler(conflictHandler)
                 .fingerprintPolicy(policy)
@@ -441,7 +456,7 @@ class DefaultNonBlockingOperationManagerUnitTest {
     }
 
     private static RawNonBlockingOperation row(OperationStatus status, String result, Long remainingMillis) {
-        return new RawNonBlockingOperation(KEY, status, false, result, null, "stored", remainingMillis, NOW,
+        return new RawNonBlockingOperation(KEY, status, false, result, null, null, "stored", remainingMillis, NOW,
                 LOCK_TOKEN, LOCK_TTL.toMillis());
     }
 
@@ -460,6 +475,7 @@ class DefaultNonBlockingOperationManagerUnitTest {
                     operation.getStatus(),
                     operation.isFirstAttempt(),
                     (String) operation.getResult(),
+                    null,
                     null,
                     operation.getFingerprint(),
                     operation.getRemainingMillis(),

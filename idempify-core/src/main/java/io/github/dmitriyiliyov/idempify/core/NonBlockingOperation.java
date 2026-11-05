@@ -13,7 +13,7 @@ public class NonBlockingOperation extends Operation {
 
     public NonBlockingOperation(UUID idempotencyKey,
                                 OperationStatus status,
-                                Boolean isFirstAttempt,
+                                boolean isFirstAttempt,
                                 Object result,
                                 ResultType resultType,
                                 Response response,

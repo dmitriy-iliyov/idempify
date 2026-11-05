@@ -34,7 +34,7 @@ class OnMissingProcessorTypeConditionUnitTest {
     void getMatchOutcome_whenNoBeanDeclaresThatProcessorType_shouldMatch() {
         // when
         ConditionOutcome outcome = tested.getMatchOutcome(
-                context(beanFactory()), metadata(ProcessorType.BLOCKING));
+                context(beanFactory()), metadata(ProcessorType.TRANSACTIONAL_BLOCKING));
 
         // then
         assertThat(outcome.isMatch()).isTrue();
@@ -46,7 +46,7 @@ class OnMissingProcessorTypeConditionUnitTest {
     void getMatchOutcome_whenBeanDeclaresThatProcessorType_shouldNotMatchAndNameIt() {
         // when
         ConditionOutcome outcome = tested.getMatchOutcome(
-                context(beanFactory(NonBlockingTestProcessor.class)), metadata(ProcessorType.NON_BLOCKING));
+                context(beanFactory(NonBlockingTestProcessor.class)), metadata(ProcessorType.TRANSACTIONAL_NON_BLOCKING));
 
         // then
         assertThat(outcome.isMatch()).isFalse();
@@ -58,7 +58,7 @@ class OnMissingProcessorTypeConditionUnitTest {
     void getMatchOutcome_whenBeanDeclaresAnotherProcessorType_shouldMatch() {
         // when
         ConditionOutcome outcome = tested.getMatchOutcome(
-                context(beanFactory(NonBlockingTestProcessor.class)), metadata(ProcessorType.BLOCKING));
+                context(beanFactory(NonBlockingTestProcessor.class)), metadata(ProcessorType.TRANSACTIONAL_BLOCKING));
 
         // then
         assertThat(outcome.isMatch()).isTrue();
@@ -69,7 +69,7 @@ class OnMissingProcessorTypeConditionUnitTest {
     void getMatchOutcome_whenProcessorBeanDeclaresNoType_shouldMatch() {
         // when
         ConditionOutcome outcome = tested.getMatchOutcome(
-                context(beanFactory(UndeclaredTestProcessor.class)), metadata(ProcessorType.NON_BLOCKING));
+                context(beanFactory(UndeclaredTestProcessor.class)), metadata(ProcessorType.TRANSACTIONAL_NON_BLOCKING));
 
         // then
         assertThat(outcome.isMatch()).isTrue();
@@ -80,7 +80,7 @@ class OnMissingProcessorTypeConditionUnitTest {
     void getMatchOutcome_whenDeclaringBeanCannotBeCreated_shouldAnswerWithoutCreatingIt() {
         // when
         ConditionOutcome outcome = tested.getMatchOutcome(
-                context(beanFactory(ExplodingTestProcessor.class)), metadata(ProcessorType.BLOCKING));
+                context(beanFactory(ExplodingTestProcessor.class)), metadata(ProcessorType.TRANSACTIONAL_BLOCKING));
 
         // then
         assertThat(outcome.isMatch()).isFalse();
@@ -94,7 +94,7 @@ class OnMissingProcessorTypeConditionUnitTest {
         ConditionContext context = context(null);
 
         // when / then
-        assertThatThrownBy(() -> tested.getMatchOutcome(context, metadata(ProcessorType.BLOCKING)))
+        assertThatThrownBy(() -> tested.getMatchOutcome(context, metadata(ProcessorType.TRANSACTIONAL_BLOCKING)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("bean factory");
     }
@@ -120,7 +120,7 @@ class OnMissingProcessorTypeConditionUnitTest {
         return metadata;
     }
 
-    @ProvidesProcessorType(type = ProcessorType.NON_BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.TRANSACTIONAL_NON_BLOCKING)
     private static class NonBlockingTestProcessor implements TypeAwareIdempotentProcessor {
 
         @Override
@@ -130,7 +130,7 @@ class OnMissingProcessorTypeConditionUnitTest {
 
         @Override
         public ProcessorType getType() {
-            return ProcessorType.NON_BLOCKING;
+            return ProcessorType.TRANSACTIONAL_NON_BLOCKING;
         }
     }
 
@@ -143,11 +143,11 @@ class OnMissingProcessorTypeConditionUnitTest {
 
         @Override
         public ProcessorType getType() {
-            return ProcessorType.NON_BLOCKING;
+            return ProcessorType.TRANSACTIONAL_NON_BLOCKING;
         }
     }
 
-    @ProvidesProcessorType(type = ProcessorType.BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.TRANSACTIONAL_BLOCKING)
     private static class ExplodingTestProcessor implements TypeAwareIdempotentProcessor {
 
         ExplodingTestProcessor() {
@@ -161,7 +161,7 @@ class OnMissingProcessorTypeConditionUnitTest {
 
         @Override
         public ProcessorType getType() {
-            return ProcessorType.BLOCKING;
+            return ProcessorType.TRANSACTIONAL_BLOCKING;
         }
     }
 }

@@ -39,7 +39,7 @@ class DefaultOperationMetadataUnitTest {
         // then
         assertThat(result.getHeaderName()).isEqualTo("Idempotency-Key");
         assertThat(result.getTtl()).isEqualTo(Duration.ofHours(24));
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.NON_BLOCKING);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_NON_BLOCKING);
         assertThat(result.getConflictHandler()).isSameAs(handler);
         assertThat(result.getFingerprintPolicy()).isSameAs(policy);
         assertThat(result.getResponseConfig()).isNotNull();
@@ -51,8 +51,8 @@ class DefaultOperationMetadataUnitTest {
         // when
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.NON_BLOCKING)
-                .responseConfig(ResponseConfig.disabled())
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+                .responseConfig(ResponseConfig.defaults())
                 .build();
 
         // then
@@ -67,8 +67,8 @@ class DefaultOperationMetadataUnitTest {
     void build_whenTtlWasNeverDecided_shouldRefuseToBuild() {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
-                .processorType(ProcessorType.NON_BLOCKING)
-                .responseConfig(ResponseConfig.disabled())
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+                .responseConfig(ResponseConfig.defaults())
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("ttl cannot be null");
@@ -80,7 +80,7 @@ class DefaultOperationMetadataUnitTest {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .responseConfig(ResponseConfig.disabled())
+                .responseConfig(ResponseConfig.defaults())
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("processorType cannot be null");
@@ -92,7 +92,7 @@ class DefaultOperationMetadataUnitTest {
         assertThatThrownBy(() -> DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("responseConfig cannot be null");
@@ -140,8 +140,8 @@ class DefaultOperationMetadataUnitTest {
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.BLOCKING)
-                .responseConfig(ResponseConfig.disabled())
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .responseConfig(ResponseConfig.defaults())
                 .build();
 
         // then
@@ -156,8 +156,8 @@ class DefaultOperationMetadataUnitTest {
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
                 .lockTtl(Duration.ofMinutes(5))
-                .processorType(ProcessorType.NON_BLOCKING)
-                .responseConfig(ResponseConfig.disabled())
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+                .responseConfig(ResponseConfig.defaults())
                 .build();
 
         // then
@@ -196,43 +196,27 @@ class DefaultOperationMetadataUnitTest {
     }
 
     @Test
-    @DisplayName("UT build() when the processor is BLOCKING and the key is released for nothing should accept the pair")
-    void build_whenProcessorIsBlockingAndKeyIsReleasedForNothing_shouldAcceptPair() {
+    @DisplayName("UT build() when the processor is BLOCKING and no failure is kept should accept the pair")
+    void build_whenProcessorIsBlockingAndNoFailureIsKept_shouldAcceptPair() {
         // when
         OperationMetadata result = DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.BLOCKING)
-                .responseConfig(ResponseConfig.all())
+                .processorType(ProcessorType.TRANSACTIONAL_BLOCKING)
+                .responseConfig(ResponseConfig.defaults())
                 .build();
 
         // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
-        assertThat(result.getResponseConfig().getReleaseFor()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("UT build() when the processor is BLOCKING and the key is released for any exception should accept the pair")
-    void build_whenProcessorIsBlockingAndKeyIsReleasedForAnyException_shouldAcceptPair() {
-        // when
-        OperationMetadata result = DefaultOperationMetadata.builder()
-                .headerName("Idempotency-Key")
-                .ttl(Duration.ofHours(1))
-                .processorType(ProcessorType.BLOCKING)
-                .responseConfig(ResponseConfig.disabled())
-                .build();
-
-        // then
-        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.BLOCKING);
-        assertThat(result.getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getProcessorType()).isEqualTo(ProcessorType.TRANSACTIONAL_BLOCKING);
+        assertThat(result.getResponseConfig().getRecordFor()).isEmpty();
     }
 
     private static DefaultOperationMetadata.Builder full() {
         return DefaultOperationMetadata.builder()
                 .headerName("Idempotency-Key")
                 .ttl(Duration.ofHours(24))
-                .processorType(ProcessorType.NON_BLOCKING)
-                .responseConfig(ResponseConfig.all());
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+                .responseConfig(ResponseConfig.defaults());
     }
 
     private static FingerprintPolicy policy() {
@@ -246,6 +230,6 @@ class DefaultOperationMetadataUnitTest {
         String result = full().build().toString();
 
         // then
-        assertThat(result).contains("headerName='Idempotency-Key'", "ttl=PT24H", "processorType=NON_BLOCKING");
+        assertThat(result).contains("headerName='Idempotency-Key'", "ttl=PT24H", "processorType=TRANSACTIONAL_NON_BLOCKING");
     }
 }

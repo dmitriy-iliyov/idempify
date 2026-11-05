@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core;
 
-public class IdempotentProcessingException extends RuntimeException {
+public class IdempotentProcessingException extends IdempifyException {
 
     public IdempotentProcessingException(String message) {
         super(message);

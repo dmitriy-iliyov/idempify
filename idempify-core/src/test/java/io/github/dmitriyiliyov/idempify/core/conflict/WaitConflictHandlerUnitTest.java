@@ -100,6 +100,21 @@ class WaitConflictHandlerUnitTest {
     }
 
     @Test
+    @DisplayName("UT handle() when the completed operation has already expired should abort the wait naming the key")
+    void handle_whenCompletedOperationHasAlreadyExpired_shouldAbortWaitNamingKey() {
+        // given
+        WaitConflictHandler tested = handler(TestClock.standingStill());
+
+        when(repository.find(KEY)).thenReturn(Optional.of(expired(operation(OperationStatus.PROCESSED))));
+
+        // when / then
+        assertThatThrownBy(() -> tested.handle(context()))
+                .isInstanceOf(WaitAbortedException.class)
+                .hasMessageContaining(KEY.toString());
+        verify(repository, times(1)).find(KEY);
+    }
+
+    @Test
     @DisplayName("UT handle() when the processed operation returned null should hand back an operation without a result")
     void handle_whenProcessedOperationReturnedNull_shouldHandBackOperationWithoutResult() {
         // given
@@ -214,7 +229,7 @@ class WaitConflictHandlerUnitTest {
 
             assertThatThrownBy(() -> tested.handle(context()))
                     .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Interrupted while waiting")
+                    .hasMessageContaining("was interrupted while waiting")
                     .hasCauseInstanceOf(InterruptedException.class);
 
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
@@ -261,6 +276,22 @@ class WaitConflictHandlerUnitTest {
         return operation(status, "raw");
     }
 
+    private static RawNonBlockingOperation expired(RawNonBlockingOperation operation) {
+        return new RawNonBlockingOperation(
+                operation.idempotencyKey(),
+                operation.status(),
+                operation.isFirstAttempt(),
+                operation.result(),
+                operation.exceptionClassName(),
+                operation.response(),
+                operation.fingerprint(),
+                0L,
+                operation.createdAt(),
+                operation.lockToken(),
+                operation.remainingLockMillis()
+        );
+    }
+
     private static RawNonBlockingOperation operation(OperationStatus status, String result) {
         return new RawNonBlockingOperation(
                 KEY,
@@ -268,8 +299,9 @@ class WaitConflictHandlerUnitTest {
                 false,
                 result,
                 null,
+                null,
                 "fingerprint",
-                OperationStatus.PROCESSED.equals(status) ? 60_000L : null,
+                OperationStatus.isProcessedStatus(status) ? 60_000L : null,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 null,
                 null

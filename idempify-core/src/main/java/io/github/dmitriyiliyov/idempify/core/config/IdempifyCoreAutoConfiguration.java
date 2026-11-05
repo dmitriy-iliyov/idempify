@@ -73,7 +73,8 @@ public class IdempifyCoreAutoConfiguration {
     }
 
     @Primary
-    @Bean
+    @Bean(IdempifyDefaults.DELEGATING_KEY_EXTRACTOR_BEAN_NAME)
+    @ConditionalOnMissingBean(name = IdempifyDefaults.DELEGATING_KEY_EXTRACTOR_BEAN_NAME)
     public KeyExtractor idempifyDelegatingKeyExtractor(List<KeyExtractor> extractors) {
         return new DelegatingKeyExtractor(extractors);
     }
@@ -193,15 +194,15 @@ public class IdempifyCoreAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingProcessorType(type = ProcessorType.BLOCKING)
-    @ProvidesProcessorType(type = ProcessorType.BLOCKING)
-    public TypeAwareIdempotentProcessor idempifyBlockingTypeAwareIdempotentProcessor(
+    @ConditionalOnMissingProcessorType(type = ProcessorType.TRANSACTIONAL_BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.TRANSACTIONAL_BLOCKING)
+    public TypeAwareIdempotentProcessor idempifyTransactionalBlockingTypeAwareIdempotentProcessor(
             TransactionTemplate transactionTemplate,
             BlockingOperationManager manager,
             OperationStateChannel channel,
             IdempotencyEventListener eventListener
     ) {
-        return new BlockingIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
+        return new TransactionalBlockingIdempotentProcessor(transactionTemplate, manager, channel, eventListener);
     }
 
     @Bean
@@ -251,20 +252,37 @@ public class IdempifyCoreAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingProcessorType(type = ProcessorType.NON_BLOCKING)
-    @ProvidesProcessorType(type = ProcessorType.NON_BLOCKING)
-    public TypeAwareIdempotentProcessor idempifyNonBlockingTypeAwareIdempotentProcessor(
+    @ConditionalOnMissingProcessorType(type = ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.TRANSACTIONAL_NON_BLOCKING)
+    public TypeAwareIdempotentProcessor idempifyTransactionalNonBlockingTypeAwareIdempotentProcessor(
+            NonBlockingOperationManager manager,
+            OperationStateChannel channel,
+            IdempotencyEventListener eventListener,
+            TransactionTemplate transactionTemplate
+    ) {
+        return new TransactionalNonBlockingIdempotentProcessor(manager, channel, eventListener, transactionTemplate);
+    }
+
+    @Bean
+    @ConditionalOnMissingProcessorType(type = ProcessorType.EXTERNAL_NON_BLOCKING)
+    @ProvidesProcessorType(type = ProcessorType.EXTERNAL_NON_BLOCKING)
+    public TypeAwareIdempotentProcessor idempifyExternalNonBlockingTypeAwareIdempotentProcessor(
             NonBlockingOperationManager manager,
             OperationStateChannel channel,
             IdempotencyEventListener eventListener
     ) {
-        return new NonBlockingIdempotentProcessor(manager, channel, eventListener);
+        return new ExternalNonBlockingIdempotentProcessor(manager, channel, eventListener);
     }
 
     @Primary
-    @Bean
-    public IdempotentProcessor idempifyDelegatingIdempotentProcessor(List<TypeAwareIdempotentProcessor> processors) {
-        return new DelegatingIdempotentProcessor(processors);
+    @Bean(IdempifyDefaults.DELEGATING_PROCESSOR_BEAN_NAME)
+    @ConditionalOnMissingBean(name = IdempifyDefaults.DELEGATING_PROCESSOR_BEAN_NAME)
+    public IdempotentProcessor idempifyDelegatingIdempotentProcessor(List<TypeAwareIdempotentProcessor> processors,
+                                                                     IdempotencyEventListener eventListener) {
+        return new FailureObservingIdempotentProcessorDecorator(
+                new DelegatingIdempotentProcessor(processors),
+                eventListener
+        );
     }
 
     public static final class IdempotentEntryPresenceCheck {

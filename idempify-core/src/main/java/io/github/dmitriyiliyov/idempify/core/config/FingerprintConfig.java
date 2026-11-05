@@ -86,7 +86,7 @@ public final class FingerprintConfig {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         FingerprintConfig that = (FingerprintConfig) o;
-        return enabled == that.enabled &&
+        return Objects.equals(enabled, that.enabled) &&
                 Objects.equals(fingerprintPolicy, that.fingerprintPolicy) &&
                 bodyHandleStrategy == that.bodyHandleStrategy &&
                 Objects.equals(emptyBodyFallback, that.emptyBodyFallback) &&

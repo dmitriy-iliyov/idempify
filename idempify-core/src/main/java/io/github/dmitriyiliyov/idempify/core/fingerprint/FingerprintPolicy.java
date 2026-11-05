@@ -32,6 +32,9 @@ public interface FingerprintPolicy {
     /**
      * Reacts to a mismatch that {@link #match} reported. Throwing is the normal implementation: the same key
      * carrying a different request is a client error, not something to answer with someone else's result.
+     *
+     * @throws FingerprintException to refuse the call - the type the library recognises as a refusal and passes
+     *         to the caller as it is.
      */
     void handle(FingerprintMismatchContext context);
 }

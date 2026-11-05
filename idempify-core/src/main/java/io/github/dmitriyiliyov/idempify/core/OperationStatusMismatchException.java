@@ -11,7 +11,7 @@ import java.util.UUID;
  * record was changed by something outside the flow - an external cleanup of expired rows, a manual edit, or a
  * duplicate that was let through and ran the business logic a second time.
  */
-public class OperationStatusMismatchException extends RuntimeException {
+public class OperationStatusMismatchException extends IdempifyException {
 
     public OperationStatusMismatchException(String message) {
         super(message);

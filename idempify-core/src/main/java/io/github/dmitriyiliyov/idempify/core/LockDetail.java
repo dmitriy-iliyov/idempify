@@ -10,6 +10,5 @@ import java.util.UUID;
  */
 public interface LockDetail {
     boolean isAcquired();
-
     UUID getLockToken();
 }

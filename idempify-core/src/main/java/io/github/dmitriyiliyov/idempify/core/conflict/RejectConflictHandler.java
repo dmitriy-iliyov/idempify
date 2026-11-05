@@ -6,7 +6,7 @@ public class RejectConflictHandler implements ConflictHandler {
 
     @Override
     public NonBlockingOperation handle(ConflictContext context) {
-        throw new IdempotencyConflictException(
+        throw new OperationInProgressException(
                 "Operation (idempotencyKey=%s) is already in progress for another request"
                         .formatted(context.getIdempotencyKey())
         );

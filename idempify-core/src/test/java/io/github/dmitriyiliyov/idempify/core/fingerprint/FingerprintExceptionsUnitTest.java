@@ -2,6 +2,8 @@ package io.github.dmitriyiliyov.idempify.core.fingerprint;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.UUID;
 
@@ -22,13 +24,24 @@ class FingerprintExceptionsUnitTest {
     }
 
     @Test
-    @DisplayName("UT InvalidFingerprintException should name the key in its message and hand it back")
-    void invalidFingerprintException_shouldNameKeyInItsMessageAndHandItBack() {
+    @DisplayName("UT EmptyFingerprintException should name the key in its message and hand it back")
+    void emptyFingerprintException_shouldNameKeyInItsMessageAndHandItBack() {
         // when
-        InvalidFingerprintException tested = new InvalidFingerprintException(KEY);
+        EmptyFingerprintException tested = new EmptyFingerprintException(KEY);
 
         // then
         assertThat(tested.getMessage()).contains("idempotencyKey=" + KEY);
         assertThat(tested.getIdempotencyKey()).isEqualTo(KEY);
+    }
+
+    @ParameterizedTest
+    @ValueSource(classes = {
+            EmptyRequestBodyException.class,
+            EmptyFingerprintException.class,
+            FingerprintMismatchException.class
+    })
+    @DisplayName("UT every exception of the fingerprint check should be a FingerprintException so a processor lets it through as one group")
+    void exceptionOfFingerprintCheck_shouldBeFingerprintExceptionSoProcessorLetsItThroughAsOneGroup(Class<?> type) {
+        assertThat(FingerprintException.class).isAssignableFrom(type);
     }
 }

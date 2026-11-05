@@ -56,12 +56,15 @@ class IdempifyCoreComponentTest {
                 new DefaultOperationDeserializer(resultSerializer, responseSerializer),
                 resultSerializer
         );
-        processor = new DelegatingIdempotentProcessor(List.of(new BlockingIdempotentProcessor(
-                new TransactionTemplate(transactionManager),
-                operationManager,
-                channel,
+        processor = new FailureObservingIdempotentProcessorDecorator(
+                new DelegatingIdempotentProcessor(List.of(new TransactionalBlockingIdempotentProcessor(
+                        new TransactionTemplate(transactionManager),
+                        operationManager,
+                        channel,
+                        eventListener
+                ))),
                 eventListener
-        )));
+        );
     }
 
     @Test
@@ -150,21 +153,22 @@ class IdempifyCoreComponentTest {
 
         // when / then
         assertThatThrownBy(() -> call(KEY, request("other body"), metadata(true), operation))
-                .isInstanceOf(FingerprintMismatchException.class);
+                .isExactlyInstanceOf(FingerprintMismatchException.class);
 
         assertThat(operation.calls).isEqualTo(1);
+        assertThat(eventListener.failures).isEmpty();
     }
 
     @Test
     @DisplayName("CT request when fingerprinting is on but the caller sends none should be rejected as an invalid fingerprint")
-    void request_whenFingerprintingIsOnButCallerSendsNone_shouldBeRejectedAsInvalidFingerprint() throws Throwable {
+    void request_whenFingerprintingIsOnButCallerSendsNone_shouldBeRejectedAsEmptyFingerprint() throws Throwable {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         call(KEY, request("body"), metadata(true), operation);
 
         // when / then
         assertThatThrownBy(() -> call(KEY, null, metadata(true), operation))
-                .isInstanceOf(InvalidFingerprintException.class);
+                .isInstanceOf(EmptyFingerprintException.class);
 
         assertThat(operation.calls).isEqualTo(1);
     }
@@ -235,7 +239,7 @@ class IdempifyCoreComponentTest {
     void request_whileOperationIsStillRunning_shouldHoldRowThatCarriesNoExpiry() throws Throwable {
         // given
         List<RawOperation> seenMidFlight = new ArrayList<>();
-        ExternalOperationCallback peeking = () -> {
+        BusinessOperationCallback peeking = () -> {
             seenMidFlight.add(repository.find(KEY).orElseThrow());
             return "charged";
         };
@@ -283,6 +287,8 @@ class IdempifyCoreComponentTest {
         assertThat(transactionManager.rollbacks).isEqualTo(1);
         assertThat(repository.find(KEY))
                 .hasValueSatisfying(stored -> assertThat(stored.status()).isEqualTo(OperationStatus.IN_PROCESS));
+        assertThat(eventListener.exceptions).isEqualTo(1);
+        assertThat(eventListener.failures).isEmpty();
     }
 
     @Test
@@ -320,7 +326,7 @@ class IdempifyCoreComponentTest {
         // given
         RecordingOperation operation = new RecordingOperation("charged");
         OperationMetadata metadata = TestOperationMetadata.builder()
-                .processorType(ProcessorType.NON_BLOCKING)
+                .processorType(ProcessorType.TRANSACTIONAL_NON_BLOCKING)
                 .build();
 
         // when / then
@@ -341,13 +347,53 @@ class IdempifyCoreComponentTest {
 
         // when / then
         assertThatThrownBy(() -> call(KEY, request("body"), metadata(false), operation))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ForeignTransactionException.class)
                 .hasMessageContaining("must own its transaction");
 
         assertThat(operation.calls).isZero();
         assertThat(repository.find(KEY)).isEmpty();
         assertThat(channel.consume()).isNull();
         assertThat(eventListener.successes).isZero();
+        assertThat(eventListener.failures).containsExactly(FailureType.MISPLACED);
+    }
+
+    @Test
+    @DisplayName("CT request when the store fails to claim the key should fail as before the operation ran and count it once")
+    void request_whenStoreFailsToClaimKey_shouldFailAsBeforeRunAndCountItOnce() {
+        // given
+        IllegalStateException storeDown = new IllegalStateException("store down");
+        repository.claimFailure = storeDown;
+        RecordingOperation operation = new RecordingOperation("charged");
+
+        // when / then
+        assertThatThrownBy(() -> call(KEY, request("body"), metadata(false), operation))
+                .isExactlyInstanceOf(EarlyFailureException.class)
+                .hasCause(storeDown);
+
+        assertThat(operation.calls).isZero();
+        assertThat(channel.consume()).isNull();
+        assertThat(eventListener.successes).isZero();
+        assertThat(eventListener.failures).containsExactly(FailureType.FAILED_BEFORE_RUN);
+    }
+
+    @Test
+    @DisplayName("CT request when the commit after the operation ran fails should say its outcome was not recorded and count it once")
+    void request_whenCommitAfterOperationRanFails_shouldSayItsOutcomeWasNotRecordedAndCountItOnce() {
+        // given
+        IllegalStateException commitFailure = new IllegalStateException("connection lost on commit");
+        transactionManager.commitFailure = commitFailure;
+        RecordingOperation operation = new RecordingOperation("charged");
+
+        // when / then
+        assertThatThrownBy(() -> call(KEY, request("body"), metadata(false), operation))
+                .isExactlyInstanceOf(ResultNotRecordedException.class)
+                .hasCause(commitFailure);
+
+        assertThat(operation.calls).isEqualTo(1);
+        assertThat(channel.consume()).isNull();
+        assertThat(eventListener.successes).isZero();
+        assertThat(eventListener.exceptions).isZero();
+        assertThat(eventListener.failures).containsExactly(FailureType.OUTCOME_NOT_RECORDED);
     }
 
     /**
@@ -357,7 +403,7 @@ class IdempifyCoreComponentTest {
     private Object call(UUID idempotencyKey,
                         RequestContext request,
                         OperationMetadata metadata,
-                        ExternalOperationCallback operation) throws Throwable {
+                        BusinessOperationCallback operation) throws Throwable {
         String fingerprint = request == null ? null : fingerprintPolicy.generate(request);
         return processor.process(
                 new DefaultOperationContext(ResultType.ofClass(String.class), operation, idempotencyKey, fingerprint),
@@ -385,6 +431,7 @@ class IdempifyCoreComponentTest {
         private final TestClock clock;
         private final Map<UUID, RawOperation> rows = new HashMap<>();
         private final Map<UUID, Instant> expiries = new HashMap<>();
+        private RuntimeException claimFailure;
 
         private InMemoryOperationRepository(TestClock clock) {
             this.clock = clock;
@@ -392,6 +439,9 @@ class IdempifyCoreComponentTest {
 
         @Override
         public RawOperation saveIfAbsent(RawOperation operation) {
+            if (claimFailure != null) {
+                throw claimFailure;
+            }
             RawOperation stored = rows.get(operation.idempotencyKey());
             if (stored == null) {
                 rows.put(operation.idempotencyKey(), operation);
@@ -529,6 +579,7 @@ class IdempifyCoreComponentTest {
         private int commits;
         private int rollbacks;
         private boolean joinsExistingTransaction;
+        private RuntimeException commitFailure;
 
         @Override
         public TransactionStatus getTransaction(TransactionDefinition definition) {
@@ -537,6 +588,9 @@ class IdempifyCoreComponentTest {
 
         @Override
         public void commit(TransactionStatus status) {
+            if (commitFailure != null) {
+                throw commitFailure;
+            }
             commits++;
         }
 
@@ -551,6 +605,7 @@ class IdempifyCoreComponentTest {
         private int successes;
         private int duplicates;
         private int exceptions;
+        private final List<FailureType> failures = new ArrayList<>();
 
         @Override
         public void onDuplicate() {
@@ -564,8 +619,13 @@ class IdempifyCoreComponentTest {
         public void onFingerprintMismatch() {}
 
         @Override
-        public void onException() {
+        public void onBusinessFailure() {
             exceptions++;
+        }
+
+        @Override
+        public void onFailure(FailureType type) {
+            failures.add(type);
         }
 
         @Override
@@ -577,7 +637,7 @@ class IdempifyCoreComponentTest {
         public void onExceptionallySuccess() {}
     }
 
-    private static final class RecordingOperation implements ExternalOperationCallback {
+    private static final class RecordingOperation implements BusinessOperationCallback {
 
         private final String result;
         private int calls;
@@ -597,7 +657,7 @@ class IdempifyCoreComponentTest {
      * An operation that takes time: it moves the clock forward before returning, which is how the expiry
      * being counted from completion rather than from the claim becomes observable at all.
      */
-    private static final class SlowOperation implements ExternalOperationCallback {
+    private static final class SlowOperation implements BusinessOperationCallback {
 
         private final String result;
         private final TestClock clock;
@@ -618,7 +678,7 @@ class IdempifyCoreComponentTest {
         }
     }
 
-    private record FailingOperation(Throwable thrown) implements ExternalOperationCallback {
+    private record FailingOperation(Throwable thrown) implements BusinessOperationCallback {
 
         @Override
         public String call() throws Throwable {

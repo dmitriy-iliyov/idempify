@@ -13,7 +13,7 @@ class DefaultOperationContextUnitTest {
 
     private static final UUID KEY = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
-    private final ExternalOperationCallback callback = () -> "result";
+    private final BusinessOperationCallback callback = () -> "result";
 
     @Test
     @DisplayName("UT constructor when operationResultType is null should throw NullPointerException")
@@ -121,7 +121,7 @@ class DefaultOperationContextUnitTest {
     @Test
     @DisplayName("UT equals() when the keys differ should tell the contexts apart")
     void equals_whenKeysDiffer_shouldTellContextsApart() {
-        io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback callback = () -> "x";
+        io.github.dmitriyiliyov.idempify.core.BusinessOperationCallback callback = () -> "x";
         DefaultOperationContext one = new DefaultOperationContext(
                 ResultType.ofClass(String.class), callback, java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), "fp");
         DefaultOperationContext other = new DefaultOperationContext(
@@ -133,7 +133,7 @@ class DefaultOperationContextUnitTest {
     @Test
     @DisplayName("UT equals() when the fingerprints differ should tell the contexts apart")
     void equals_whenFingerprintsDiffer_shouldTellContextsApart() {
-        io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback callback = () -> "x";
+        io.github.dmitriyiliyov.idempify.core.BusinessOperationCallback callback = () -> "x";
         java.util.UUID key = java.util.UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         DefaultOperationContext one = new DefaultOperationContext(ResultType.ofClass(String.class), callback, key, "one");
         DefaultOperationContext other = new DefaultOperationContext(ResultType.ofClass(String.class), callback, key, "other");
@@ -163,7 +163,7 @@ class DefaultOperationContextUnitTest {
     @DisplayName("UT equals() when the callbacks differ should tell the contexts apart")
     void equals_whenCallbacksDiffer_shouldTellContextsApart() {
         // given
-        ExternalOperationCallback otherCallback = () -> "other";
+        BusinessOperationCallback otherCallback = () -> "other";
         DefaultOperationContext one = new DefaultOperationContext(ResultType.ofClass(String.class), callback, KEY, "fp");
         DefaultOperationContext other = new DefaultOperationContext(ResultType.ofClass(String.class), otherCallback, KEY, "fp");
 

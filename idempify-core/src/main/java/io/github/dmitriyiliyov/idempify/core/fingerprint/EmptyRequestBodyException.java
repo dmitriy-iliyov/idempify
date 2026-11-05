@@ -2,7 +2,7 @@ package io.github.dmitriyiliyov.idempify.core.fingerprint;
 
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 
-public class EmptyRequestBodyException extends RuntimeException {
+public class EmptyRequestBodyException extends FingerprintException {
 
     public EmptyRequestBodyException(String message) {
         super(message);

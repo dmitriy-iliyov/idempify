@@ -78,7 +78,7 @@ public final class TestOperationMetadata implements OperationMetadata {
         private ConflictHandler conflictHandler;
         private FingerprintPolicy fingerprintPolicy;
         private ResponseConfig responseConfig = ResponseConfig.defaults();
-        private ProcessorType processorType = ProcessorType.BLOCKING;
+        private ProcessorType processorType = ProcessorType.TRANSACTIONAL_BLOCKING;
 
         private Builder() {}
 

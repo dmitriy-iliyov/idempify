@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.core.fingerprint;
 
-public class FingerprintMismatchException extends RuntimeException {
+public class FingerprintMismatchException extends FingerprintException {
 
     private final FingerprintMismatchContext context;
 

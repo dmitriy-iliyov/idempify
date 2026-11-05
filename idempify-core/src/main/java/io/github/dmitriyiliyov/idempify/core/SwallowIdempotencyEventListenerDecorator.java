@@ -30,8 +30,13 @@ public class SwallowIdempotencyEventListenerDecorator implements IdempotencyEven
     }
 
     @Override
-    public void onException() {
-        wrap(delegate::onException);
+    public void onBusinessFailure() {
+        wrap(delegate::onBusinessFailure);
+    }
+
+    @Override
+    public void onFailure(FailureType type) {
+        wrap(() -> delegate.onFailure(type));
     }
 
     @Override

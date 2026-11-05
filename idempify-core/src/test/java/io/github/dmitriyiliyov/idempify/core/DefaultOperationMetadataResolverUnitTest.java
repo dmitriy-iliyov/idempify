@@ -163,7 +163,7 @@ class DefaultOperationMetadataResolverUnitTest {
                 .timeUnit(TimeUnit.HOURS)
                 .conflictHandleStrategy(ConflictHandleStrategyToggle.WAIT)
                 .fingerprintToggle(Toggle.ENABLE)
-                .releaseFor(List.of(IllegalStateException.class, IllegalArgumentException.class))
+                .recordFor(List.of(IllegalStateException.class, IllegalArgumentException.class))
                 .build();
         ArgumentCaptor<RawOperationMetadata> captor = ArgumentCaptor.forClass(RawOperationMetadata.class);
 
@@ -259,7 +259,7 @@ class DefaultOperationMetadataResolverUnitTest {
         assertThat(raw.getTtl()).isNull();
         assertThat(raw.getConflictHandleStrategy()).isEqualTo(ConflictHandleStrategyToggle.UNSELECTED);
         assertThat(raw.getFingerprintToggle()).isEqualTo(Toggle.UNSELECTED);
-        assertThat(raw.getReleaseFor()).isNull();
+        assertThat(raw.getRecordFor()).isNull();
     }
 
     @Test
@@ -371,7 +371,7 @@ class DefaultOperationMetadataResolverUnitTest {
                 timeUnit = TimeUnit.HOURS,
                 onConflict = ConflictHandleStrategyToggle.WAIT,
                 useFingerprint = Toggle.ENABLE,
-                releaseFor = {IllegalStateException.class, IllegalArgumentException.class}
+                recordFor = {IllegalStateException.class, IllegalArgumentException.class}
         )
         public String fullyConfiguredAction() {
             return "fullyConfiguredAction";

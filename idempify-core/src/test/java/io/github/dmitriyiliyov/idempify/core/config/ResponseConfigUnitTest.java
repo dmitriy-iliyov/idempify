@@ -16,33 +16,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ResponseConfigUnitTest {
 
     @Test
-    @DisplayName("UT defaults() should carry the built-in decision about failures")
-    void defaults_shouldCarryBuiltInDecisionAboutFailures() {
+    @DisplayName("UT defaults() should keep no failure of the application")
+    void defaults_shouldKeepNoFailureOfApplication() {
         // when
         ResponseConfig result = ResponseConfig.defaults();
 
         // then
-        assertThat(result.getReleaseFor()).isEqualTo(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
-    }
-
-    @Test
-    @DisplayName("UT all() should release the key for no exception, so every outcome is kept")
-    void all_shouldReleaseKeyForNoException() {
-        // when
-        ResponseConfig result = ResponseConfig.all();
-
-        // then
-        assertThat(result.getReleaseFor()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("UT disabled() should release the key for any exception, so no failure is kept")
-    void disabled_shouldReleaseKeyForAnyException() {
-        // when
-        ResponseConfig result = ResponseConfig.disabled();
-
-        // then
-        assertThat(result.getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getRecordFor()).isEmpty();
     }
 
     @Test
@@ -52,25 +32,25 @@ class ResponseConfigUnitTest {
         ResponseConfig result = ResponseConfig.builder().build();
 
         // then
-        assertThat(result.getReleaseFor()).isNull();
+        assertThat(result.getRecordFor()).isNull();
         assertThat(result.getIncludedHeaders()).isNull();
         assertThat(result.getExcludedHeaders()).isNull();
     }
 
     @Test
-    @DisplayName("UT releaseFor() when the list is null should throw NullPointerException")
-    void releaseFor_whenListIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT recordFor() when the list is null should throw NullPointerException")
+    void recordFor_whenListIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> ResponseConfig.builder().releaseFor(null))
+        assertThatThrownBy(() -> ResponseConfig.builder().recordFor(null))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessage("releaseFor cannot be null");
+                .hasMessage("recordFor cannot be null");
     }
 
     @Test
     @DisplayName("UT merge() when the target decides nothing should keep the reference untouched")
     void merge_whenTargetDecidesNothing_shouldKeepReferenceUntouched() {
         // given
-        ResponseConfig reference = ResponseConfig.all();
+        ResponseConfig reference = ResponseConfig.defaults();
 
         // when
         ResponseConfig result = ResponseConfig.merge(reference, ResponseConfig.builder().build());
@@ -80,42 +60,42 @@ class ResponseConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT merge() when the target names releaseFor should take it over the reference")
-    void merge_whenTargetNamesReleaseFor_shouldTakeItOverReference() {
+    @DisplayName("UT merge() when the target names recordFor should take it over the reference")
+    void merge_whenTargetNamesRecordFor_shouldTakeItOverReference() {
         // given
-        ResponseConfig reference = ResponseConfig.disabled();
+        ResponseConfig reference = ResponseConfig.defaults();
 
         // when
         ResponseConfig result = ResponseConfig.merge(
                 reference,
-                ResponseConfig.builder().releaseFor(List.of(IllegalStateException.class)).build()
+                ResponseConfig.builder().recordFor(List.of(IllegalStateException.class)).build()
         );
 
         // then
-        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getRecordFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
-    @DisplayName("UT merge() when the target releases for nothing with an empty list should take it over the reference")
-    void merge_whenTargetReleasesForNothingWithEmptyList_shouldTakeItOverReference() {
+    @DisplayName("UT merge() when the target keeps nothing with an empty list should take it over the reference")
+    void merge_whenTargetKeepsNothingWithEmptyList_shouldTakeItOverReference() {
         // given
-        ResponseConfig reference = ResponseConfig.disabled();
+        ResponseConfig reference = ResponseConfig.builder().recordFor(List.of(Throwable.class)).build();
 
         // when
         ResponseConfig result = ResponseConfig.merge(
                 reference,
-                ResponseConfig.builder().releaseFor(List.of()).build()
+                ResponseConfig.builder().recordFor(List.of()).build()
         );
 
         // then
-        assertThat(result.getReleaseFor()).isEmpty();
+        assertThat(result.getRecordFor()).isEmpty();
     }
 
     @Test
-    @DisplayName("UT merge() when the target leaves releaseFor undecided should keep the one of the reference")
-    void merge_whenTargetLeavesReleaseForUndecided_shouldKeepOneOfReference() {
+    @DisplayName("UT merge() when the target leaves recordFor undecided should keep the one of the reference")
+    void merge_whenTargetLeavesRecordForUndecided_shouldKeepOneOfReference() {
         // given
-        ResponseConfig reference = ResponseConfig.disabled();
+        ResponseConfig reference = ResponseConfig.builder().recordFor(List.of(Throwable.class)).build();
 
         // when
         ResponseConfig result = ResponseConfig.merge(
@@ -124,7 +104,7 @@ class ResponseConfigUnitTest {
         );
 
         // then
-        assertThat(result.getReleaseFor()).containsExactly(Throwable.class);
+        assertThat(result.getRecordFor()).containsExactly(Throwable.class);
     }
 
     @Test
@@ -202,7 +182,7 @@ class ResponseConfigUnitTest {
     @DisplayName("UT merge() when reference is null should throw NullPointerException")
     void merge_whenReferenceIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> ResponseConfig.merge(null, ResponseConfig.all()))
+        assertThatThrownBy(() -> ResponseConfig.merge(null, ResponseConfig.defaults()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("reference cannot be null");
     }
@@ -211,7 +191,7 @@ class ResponseConfigUnitTest {
     @DisplayName("UT merge() when target is null should throw NullPointerException")
     void merge_whenTargetIsNull_shouldThrowNullPointerException() {
         // when / then
-        assertThatThrownBy(() -> ResponseConfig.merge(ResponseConfig.all(), null))
+        assertThatThrownBy(() -> ResponseConfig.merge(ResponseConfig.defaults(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("target cannot be null");
     }
@@ -220,26 +200,26 @@ class ResponseConfigUnitTest {
     @DisplayName("UT builder(config) when the copy is tuned should leave the config it was taken from alone")
     void builderFromConfig_whenCopyIsTuned_shouldLeaveConfigItWasTakenFromAlone() {
         // given
-        ResponseConfig original = ResponseConfig.all();
+        ResponseConfig original = ResponseConfig.defaults();
 
         // when
         ResponseConfig copy = ResponseConfig.builder(original)
-                .releaseFor(List.of(IllegalStateException.class))
+                .recordFor(List.of(IllegalStateException.class))
                 .build();
 
         // then
-        assertThat(original.getReleaseFor()).isEmpty();
-        assertThat(copy.getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(original.getRecordFor()).isEmpty();
+        assertThat(copy.getRecordFor()).containsExactly(IllegalStateException.class);
     }
 
     @Test
-    @DisplayName("UT builder(config) when nothing is tuned should carry releaseFor over")
-    void builderFromConfig_whenNothingIsTuned_shouldCarryReleaseForOver() {
+    @DisplayName("UT builder(config) when nothing is tuned should carry recordFor over")
+    void builderFromConfig_whenNothingIsTuned_shouldCarryRecordForOver() {
         // when
-        ResponseConfig copy = ResponseConfig.builder(ResponseConfig.disabled()).build();
+        ResponseConfig copy = ResponseConfig.builder(ResponseConfig.defaults()).build();
 
         // then
-        assertThat(copy).isEqualTo(ResponseConfig.disabled());
+        assertThat(copy).isEqualTo(ResponseConfig.defaults());
     }
 
     @Test
@@ -260,8 +240,8 @@ class ResponseConfigUnitTest {
     @DisplayName("UT equals() when every setting matches should be equal and share a hash code")
     void equals_whenEverySettingMatches_shouldBeEqualAndShareHashCode() {
         // when
-        ResponseConfig first = ResponseConfig.all();
-        ResponseConfig second = ResponseConfig.all();
+        ResponseConfig first = ResponseConfig.defaults();
+        ResponseConfig second = ResponseConfig.defaults();
 
         // then
         assertThat(first).isEqualTo(second);
@@ -269,10 +249,11 @@ class ResponseConfigUnitTest {
     }
 
     @Test
-    @DisplayName("UT equals() when only releaseFor differs should not be equal")
-    void equals_whenOnlyReleaseForDiffers_shouldNotBeEqual() {
+    @DisplayName("UT equals() when only recordFor differs should not be equal")
+    void equals_whenOnlyRecordForDiffers_shouldNotBeEqual() {
         // when / then
-        assertThat(ResponseConfig.all()).isNotEqualTo(ResponseConfig.disabled());
+        assertThat(ResponseConfig.defaults())
+                .isNotEqualTo(ResponseConfig.builder().recordFor(List.of(Throwable.class)).build());
     }
 
     @Test
@@ -303,8 +284,8 @@ class ResponseConfigUnitTest {
     @DisplayName("UT toString() should name every setting it carries")
     void toString_shouldNameEverySettingItCarries() {
         // when / then
-        assertThat(ResponseConfig.disabled().toString())
-                .contains("releaseFor=[class java.lang.Throwable]");
+        assertThat(ResponseConfig.builder().recordFor(List.of(Throwable.class)).build().toString())
+                .contains("recordFor=[class java.lang.Throwable]");
     }
 
     @Test
@@ -316,8 +297,8 @@ class ResponseConfigUnitTest {
     @Test
     @DisplayName("UT equals() when only the included headers differ should not be equal")
     void equals_whenOnlyIncludedHeadersDiffer_shouldNotBeEqual() {
-        assertThat(ResponseConfig.builder().releaseFor(List.of()).includedHeaders(Set.of("ETag")).build())
-                .isNotEqualTo(ResponseConfig.builder().releaseFor(List.of()).includedHeaders(Set.of("Location")).build());
+        assertThat(ResponseConfig.builder().recordFor(List.of(Throwable.class)).includedHeaders(Set.of("ETag")).build())
+                .isNotEqualTo(ResponseConfig.builder().recordFor(List.of(Throwable.class)).includedHeaders(Set.of("Location")).build());
     }
 
     @Test

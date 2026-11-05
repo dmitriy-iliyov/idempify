@@ -16,8 +16,8 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     private final ProcessorTypeToggle processorType;
     private final ConflictHandleStrategyToggle conflictHandleStrategy;
     private final Toggle fingerprintToggle;
-    private final Toggle releaseForToggle;
-    private final List<Class<? extends Throwable>> releaseFor;
+    private final Toggle recordForToggle;
+    private final List<Class<? extends Throwable>> recordFor;
 
     private DefaultRawOperationMetadata(Builder builder) {
         this.useHeaderName = builder.useHeaderName;
@@ -27,19 +27,19 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         this.processorType = builder.processorType;
         this.conflictHandleStrategy = builder.conflictHandleStrategy;
         this.fingerprintToggle = builder.fingerprintToggle;
-        this.releaseForToggle = resolveReleaseForToggle(builder);
-        this.releaseFor = builder.releaseFor;
+        this.recordForToggle = resolveRecordForToggle(builder);
+        this.recordFor = builder.recordFor;
     }
 
-    private static Toggle resolveReleaseForToggle(Builder builder) {
-        if (builder.releaseFor == null) {
-            return builder.releaseForToggle;
+    private static Toggle resolveRecordForToggle(Builder builder) {
+        if (builder.recordFor == null) {
+            return builder.recordForToggle;
         }
 
-        if (Toggle.DISABLE.equals(builder.releaseForToggle)) {
+        if (Toggle.DISABLE.equals(builder.recordForToggle)) {
             throw new IllegalStateException(
-                    "releaseFor (%s) names the exceptions to release the key for, so releaseForToggle cannot be %s"
-                            .formatted(builder.releaseFor, builder.releaseForToggle)
+                    "recordFor (%s) names the exceptions to keep on the record, so recordForToggle cannot be %s"
+                            .formatted(builder.recordFor, builder.recordForToggle)
             );
         }
 
@@ -82,13 +82,13 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
     }
 
     @Override
-    public Toggle getReleaseForToggle() {
-        return releaseForToggle;
+    public Toggle getRecordForToggle() {
+        return recordForToggle;
     }
 
     @Override
-    public List<Class<? extends Throwable>> getReleaseFor() {
-        return releaseFor;
+    public List<Class<? extends Throwable>> getRecordFor() {
+        return recordFor;
     }
 
     @Override
@@ -102,14 +102,14 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
                 && processorType == that.processorType
                 && conflictHandleStrategy == that.conflictHandleStrategy
                 && fingerprintToggle == that.fingerprintToggle
-                && releaseForToggle == that.releaseForToggle
-                && Objects.equals(releaseFor, that.releaseFor);
+                && recordForToggle == that.recordForToggle
+                && Objects.equals(recordFor, that.recordFor);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(useHeaderName, headerName, ttl, lockTtl, processorType, conflictHandleStrategy,
-                fingerprintToggle, releaseFor, releaseForToggle);
+                fingerprintToggle, recordFor, recordForToggle);
     }
 
     @Override
@@ -122,8 +122,8 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
                 ", processorType=" + processorType +
                 ", conflictHandleStrategy=" + conflictHandleStrategy +
                 ", fingerprintToggle=" + fingerprintToggle +
-                ", releaseFor=" + releaseFor +
-                ", releaseForToggle=" + releaseForToggle +
+                ", recordFor=" + recordFor +
+                ", recordForToggle=" + recordForToggle +
                 '}';
     }
 
@@ -141,8 +141,8 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
         private TimeUnit timeUnit = TimeUnit.HOURS;
         private ConflictHandleStrategyToggle conflictHandleStrategy = ConflictHandleStrategyToggle.UNSELECTED;
         private Toggle fingerprintToggle = Toggle.UNSELECTED;
-        private Toggle releaseForToggle = Toggle.UNSELECTED;
-        private List<Class<? extends Throwable>> releaseFor;
+        private Toggle recordForToggle = Toggle.UNSELECTED;
+        private List<Class<? extends Throwable>> recordFor;
 
         private Builder() {}
 
@@ -188,13 +188,13 @@ public final class DefaultRawOperationMetadata implements RawOperationMetadata {
             return this;
         }
 
-        public Builder releaseForToggle(Toggle releaseForToggle) {
-            this.releaseForToggle = toggleOrDefault(releaseForToggle);
+        public Builder recordForToggle(Toggle recordForToggle) {
+            this.recordForToggle = toggleOrDefault(recordForToggle);
             return this;
         }
 
-        public Builder releaseFor(List<Class<? extends Throwable>> releaseFor) {
-            this.releaseFor = releaseFor == null || releaseFor.isEmpty() ? null : List.copyOf(releaseFor);
+        public Builder recordFor(List<Class<? extends Throwable>> recordFor) {
+            this.recordFor = recordFor == null || recordFor.isEmpty() ? null : List.copyOf(recordFor);
             return this;
         }
 

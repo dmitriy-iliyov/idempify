@@ -3,8 +3,8 @@ package io.github.dmitriyiliyov.idempify.core;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandler;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandlerResultException;
 import io.github.dmitriyiliyov.idempify.core.conflict.DefaultConflictContext;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.slf4j.Logger;
@@ -47,8 +47,12 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
     public LockDetail tryLock(OperationContext context, OperationMetadata metadata) {
         NonBlockingOperation operation = NonBlockingOperation.ofContext(
                 context,
-                lockTokenGenerator.generate()
+                Objects.requireNonNull(lockTokenGenerator.generate(), "generated lockToken cannot be null")
         );
+
+        if (metadata.useFingerprint() && context.getFingerprint().isEmpty()) {
+            logAndThrowEmptyFingerprint(context.getIdempotencyKey());
+        }
 
         boolean isAcquired = repository.lockOrSaveAndLock(
                 serializer.serialize(operation),
@@ -58,13 +62,20 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
         return new DefaultLockDetail(isAcquired, operation.getLockToken());
     }
 
+    private void logAndThrowEmptyFingerprint(UUID idempotencyKey) {
+        log.warn("Operation (idempotencyKey={}) fingerprint is null, empty or blank", idempotencyKey);
+        throw new EmptyFingerprintException(idempotencyKey);
+    }
+
     @Override
     public NonBlockingOperationDetail fetchAndValidate(OperationContext context,
                                                        OperationMetadata metadata,
                                                        LockDetail lockDetail) {
         NonBlockingOperation operation = fetch(context, lockDetail);
+        if (operation.hasConflict()) {
+            operation = handleConflict(context, metadata);
+        }
         matchFingerprint(context, metadata, operation);
-        operation = handleConflict(context, metadata, operation);
         return new DefaultNonBlockingOperationDetail(
                 lockDetail,
                 operation,
@@ -72,31 +83,33 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
         );
     }
 
+    /**
+     * Reads the record this call claimed, or builds a conflict for one that met another call's claim. A record
+     * gone from under the claim is an {@link OperationDisappearedException}.
+     */
     private NonBlockingOperation fetch(OperationContext context, LockDetail lockDetail) {
-        NonBlockingOperation operation;
-        if (lockDetail.isAcquired()) {
-            RawNonBlockingOperation rawOperation = repository.find(context.getIdempotencyKey())
-                    .orElseThrow(() -> new OperationDisappearedException(
-                            "Operation (idempotencyKey=%s) was claimed, but its record is gone".formatted(context.getIdempotencyKey())
-                    ));
-            operation = deserializer.deserialize(rawOperation, context.getResultType());
+        if (!lockDetail.isAcquired()) {
+            return NonBlockingOperation.ofConflict(context);
+        }
 
-            if (operation.isExpired()) {
-                NonBlockingOperation newOperation = NonBlockingOperation.ofContext(
-                        context,
-                        lockDetail.getLockToken()
-                );
-                operation = deserializer.deserialize(
-                        repository.updateByLockToken(
-                                serializer.serialize(newOperation),
-                                OperationStatus.PROCESSED_STATUSES
-                        ),
-                        operation.getResultType()
-                );
-            }
+        RawNonBlockingOperation rawOperation = repository.find(context.getIdempotencyKey())
+                .orElseThrow(() -> new OperationDisappearedException(
+                        "Operation (idempotencyKey=%s) was claimed, but its record is gone".formatted(context.getIdempotencyKey())
+                ));
+        NonBlockingOperation operation = deserializer.deserialize(rawOperation, context.getResultType());
 
-        } else {
-            operation = NonBlockingOperation.ofConflict(context);
+        if (operation.isExpired()) {
+            NonBlockingOperation newOperation = NonBlockingOperation.ofContext(
+                    context,
+                    lockDetail.getLockToken()
+            );
+            operation = deserializer.deserialize(
+                    repository.updateByLockToken(
+                            serializer.serialize(newOperation),
+                            OperationStatus.PROCESSED_STATUSES
+                    ),
+                    operation.getResultType()
+            );
         }
 
         return operation;
@@ -106,9 +119,8 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
                                   OperationMetadata metadata,
                                   NonBlockingOperation operation) {
         if (metadata.useFingerprint()) {
-            if (context.getFingerprint().isEmpty()) {
-                log.error("Operation (idempotencyKey={}) fingerprint is null or blank", operation.getIdempotencyKey());
-                throw new InvalidFingerprintException(operation.getIdempotencyKey());
+            if (context.getFingerprint().isEmpty() || StringUtils.isBlank(context.getFingerprint().get())) {
+                logAndThrowEmptyFingerprint(context.getIdempotencyKey());
             } else {
                 fingerprintMatcher.match(
                         context.getFingerprint().get(),
@@ -121,32 +133,28 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
     }
 
     private NonBlockingOperation handleConflict(OperationContext context,
-                                                OperationMetadata metadata,
-                                                NonBlockingOperation operation) {
-        if (operation.hasConflict()) {
-            log.debug("Detected concurrent operation (idempotencyKey={}) execution", context.getIdempotencyKey());
-            eventListener.onConflict();
-            ConflictHandler conflictHandler = metadata.getConflictHandler();
-            operation = conflictHandler
-                    .handle(new DefaultConflictContext(context.getIdempotencyKey(), context.getResultType()));
-            if (operation == null) {
-                throw new ConflictHandlerResultException("""
+                                                OperationMetadata metadata) {
+        log.debug("Detected concurrent operation (idempotencyKey={}) execution", context.getIdempotencyKey());
+        eventListener.onConflict();
+        ConflictHandler conflictHandler = metadata.getConflictHandler();
+        NonBlockingOperation operation = conflictHandler
+                .handle(new DefaultConflictContext(context.getIdempotencyKey(), context.getResultType()));
+        if (operation == null) {
+            throw new ConflictHandlerResultException("""
                         ConflictHandler %s returned null (idempotencyKey=%s), \
                         but must return a completed operation or throw"""
-                        .formatted(conflictHandler.getClass().getName(), context.getIdempotencyKey())
-                );
-            } else if (!OperationStatus.isProcessedStatus(operation.getStatus())) {
-                throw new ConflictHandlerResultException("""
+                    .formatted(conflictHandler.getClass().getName(), context.getIdempotencyKey())
+            );
+        } else if (!OperationStatus.isProcessedStatus(operation.getStatus())) {
+            throw new ConflictHandlerResultException("""
                         ConflictHandler %s returned operation (idempotencyKey=%s) with %s status, \
                         but must return a completed operation (with one of %s status) or throw"""
-                        .formatted(conflictHandler.getClass().getName(),
-                                context.getIdempotencyKey(),
-                                operation.getStatus(),
-                                OperationStatus.PROCESSED_STATUSES)
-                );
-            }
+                    .formatted(conflictHandler.getClass().getName(),
+                            context.getIdempotencyKey(),
+                            operation.getStatus(),
+                            OperationStatus.PROCESSED_STATUSES)
+            );
         }
-
         return operation;
     }
 
@@ -179,14 +187,18 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
     }
 
     @Override
-    public void completeExceptionally(OperationContext context, Throwable t, Duration ttl, UUID lockToken) {
+    public void completeExceptionally(OperationContext context,
+                                      Throwable t,
+                                      Duration ttl,
+                                      UUID lockToken) {
         repository.saveExceptionAndUpdateStatusByLockToken(
                 context.getIdempotencyKey(),
                 resultSerializer.serialize(t),
                 ResultType.ofClass(t.getClass()),
                 OperationStatus.EXCEPTIONALLY_PROCESSED,
                 ttl.toMillis(),
-                lockToken
+                lockToken,
+                OperationStatus.IN_PROCESS
         );
     }
 
@@ -194,8 +206,6 @@ public class DefaultNonBlockingOperationManager implements NonBlockingOperationM
     public void unlock(UUID idempotencyKey, UUID lockToken) {
         repository.unlock(idempotencyKey, lockToken);
     }
-
-
 
     public static class DefaultLockDetail implements LockDetail {
 

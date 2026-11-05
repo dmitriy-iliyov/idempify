@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * reached through the Spring proxy - a call from inside the same bean bypasses the aspect entirely.
  * <p>
  * Every attribute here is optional, and each setting has a value meaning "not specified at this call site": an
- * empty string, a negative {@link #ttl()} or {@link #lockTtl()}, an empty {@link #releaseFor()},
+ * empty string, a negative {@link #ttl()} or {@link #lockTtl()}, an empty {@link #recordFor()},
  * {@link ConflictHandleStrategyToggle#UNSELECTED}, {@link ProcessorTypeToggle#UNSELECTED} and
  * {@link Toggle#UNSELECTED}; {@link #timeUnit()} only qualifies the two durations. What a call site leaves
  * unspecified is decided by the config it names in {@link #config()}, and failing that by the global
@@ -45,7 +45,7 @@ public @interface Idempotent {
 
     Toggle useFingerprint() default Toggle.UNSELECTED;
 
-    Toggle useReleaseFor() default Toggle.UNSELECTED;
+    Toggle useRecordFor() default Toggle.UNSELECTED;
 
-    Class<? extends Throwable> [] releaseFor() default {};
+    Class<? extends Throwable> [] recordFor() default {};
 }

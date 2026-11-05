@@ -1,7 +1,7 @@
 package io.github.dmitriyiliyov.idempify.core;
 
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintMatcher;
-import io.github.dmitriyiliyov.idempify.core.fingerprint.InvalidFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.result.ResultSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +14,9 @@ import java.util.UUID;
  * Owns the conversion between the domain and the store: the repository below deals in rows, and this is the
  * one place that knows what those rows decode into. The declared type of a result comes from the call site
  * rather than the row.
+ * <p>
+ * A failure of the store or of (de)serializing a row is thrown as it is: whether it came before or after the
+ * business method is for the processor to say, since only the processor knows which of the two it was in.
  */
 public class DefaultBlockingOperationManager implements BlockingOperationManager {
 
@@ -43,7 +46,7 @@ public class DefaultBlockingOperationManager implements BlockingOperationManager
         if (metadata.useFingerprint() && !operation.isFirstAttempt()) {
             if (context.getFingerprint().isEmpty()) {
                 log.error("Operation (idempotencyKey={}) fingerprint is null or blank", operation.getIdempotencyKey());
-                throw new InvalidFingerprintException(operation.getIdempotencyKey());
+                throw new EmptyFingerprintException(operation.getIdempotencyKey());
             } else {
                 fingerprintMatcher.match(
                         context.getFingerprint().get(),
