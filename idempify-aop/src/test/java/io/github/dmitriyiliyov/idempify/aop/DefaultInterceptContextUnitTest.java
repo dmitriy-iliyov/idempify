@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.BusinessOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class DefaultInterceptContextUnitTest {
 
     @Mock
-    ExternalOperationCallback operationCallback;
+    BusinessOperationCallback operationCallback;
 
     @Mock
     RequestContext requestContext;
@@ -97,7 +97,7 @@ class DefaultInterceptContextUnitTest {
                 operationResultType, operationCallback, null, requestContext, operationMetadata);
 
         // when
-        ExternalOperationCallback result = tested.getOperationCallback();
+        BusinessOperationCallback result = tested.getOperationCallback();
 
         // then
         assertThat(result).isSameAs(operationCallback);

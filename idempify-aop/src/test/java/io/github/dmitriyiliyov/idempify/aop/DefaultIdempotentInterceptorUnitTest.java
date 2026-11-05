@@ -1,9 +1,7 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
-import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
-import io.github.dmitriyiliyov.idempify.core.OperationContext;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
+import io.github.dmitriyiliyov.idempify.core.*;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.FingerprintPolicy;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
@@ -40,7 +38,7 @@ class DefaultIdempotentInterceptorUnitTest {
     RequestContext requestContext;
 
     @Mock
-    ExternalOperationCallback operationCallback;
+    BusinessOperationCallback operationCallback;
 
     @InjectMocks
     DefaultIdempotentInterceptor tested;
@@ -126,7 +124,7 @@ class DefaultIdempotentInterceptorUnitTest {
 
         // when / then
         assertThatThrownBy(() -> tested.intercept(context))
-                .isInstanceOf(IllegalStateException.class)
+                .isExactlyInstanceOf(IdempotencyKeyException.class)
                 .hasMessageContaining("Operation has no idempotency key");
         verifyNoInteractions(keyExtractor, processor);
     }
@@ -182,17 +180,19 @@ class DefaultIdempotentInterceptorUnitTest {
     }
 
     @Test
-    @DisplayName("UT intercept() when the fingerprint policy returns a blank value should throw IllegalArgumentException")
-    void intercept_whenFingerprintPolicyReturnsBlankValue_shouldThrowIllegalArgumentException() {
+    @DisplayName("UT intercept() when the fingerprint policy returns a blank value should throw EmptyFingerprintException naming the key")
+    void intercept_whenFingerprintPolicyReturnsBlankValue_shouldThrowEmptyFingerprintExceptionNamingKey() {
         // given
-        InterceptContext context = interceptContext(UUID.randomUUID(), fingerprintingMetadata());
+        UUID idempotencyKey = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        InterceptContext context = interceptContext(idempotencyKey, fingerprintingMetadata());
 
         when(fingerprintPolicy.generate(requestContext)).thenReturn("   ");
 
-        // when // then
+        // when / then
         assertThatThrownBy(() -> tested.intercept(context))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("fingerprint cannot be empty or blank");
+                .isExactlyInstanceOf(EmptyFingerprintException.class)
+                .satisfies(thrown -> assertThat(((EmptyFingerprintException) thrown).getIdempotencyKey())
+                        .isEqualTo(idempotencyKey));
         verifyNoInteractions(processor);
     }
 

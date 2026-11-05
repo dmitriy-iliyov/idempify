@@ -1,8 +1,10 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
 import io.github.dmitriyiliyov.idempify.core.DefaultOperationContext;
+import io.github.dmitriyiliyov.idempify.core.IdempotencyKeyException;
 import io.github.dmitriyiliyov.idempify.core.IdempotentProcessor;
 import io.github.dmitriyiliyov.idempify.core.OperationContext;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.EmptyFingerprintException;
 import io.github.dmitriyiliyov.idempify.core.request.KeyExtractor;
 
 import java.util.Objects;
@@ -25,7 +27,7 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
 
         if (idempotencyKey == null) {
             if (!context.getOperationMetadata().useHeaderName()) {
-                throw new IllegalStateException("""
+                throw new IdempotencyKeyException("""
                         Operation has no idempotency key: the call site takes it from an expression rather than \
                         from a request attribute, nothing else can supply it""");
             }
@@ -42,7 +44,7 @@ public class DefaultIdempotentInterceptor implements IdempotentInterceptor {
                     .generate(context.getRequestContext());
             Objects.requireNonNull(fingerprint, "fingerprint cannot be null");
             if (fingerprint.isBlank()) {
-                throw new IllegalArgumentException("fingerprint cannot be empty or blank");
+                throw new EmptyFingerprintException(idempotencyKey);
             }
         }
 

@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.BusinessOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
@@ -11,13 +11,13 @@ import java.util.UUID;
 public class DefaultInterceptContext implements InterceptContext {
 
     private final ResultType operationResultType;
-    private final ExternalOperationCallback operationCallback;
+    private final BusinessOperationCallback operationCallback;
     private final OperationMetadata operationMetadata;
     private final UUID idempotencyKey;
     private final RequestContext requestContext;
 
     public DefaultInterceptContext(ResultType operationResultType,
-                                   ExternalOperationCallback operationCallback,
+                                   BusinessOperationCallback operationCallback,
                                    UUID idempotencyKey,
                                    RequestContext requestContext,
                                    OperationMetadata operationMetadata) {
@@ -34,7 +34,7 @@ public class DefaultInterceptContext implements InterceptContext {
     }
 
     @Override
-    public ExternalOperationCallback getOperationCallback() {
+    public BusinessOperationCallback getOperationCallback() {
         return operationCallback;
     }
 

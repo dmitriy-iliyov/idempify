@@ -1,8 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.Idempotent;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
@@ -47,25 +45,35 @@ public class IdempotentAdvisor {
             argNames = "jp,annotation"
     )
     public Object advice(ProceedingJoinPoint jp, Idempotent annotation) throws Throwable {
-        UUID idempotencyKey = parseIdempotencyKey(jp, annotation);
+        if (IdempotencyScope.isActive()) {
+            log.warn("@Idempotent method {} was called inside another idempotent operation",
+                    ((MethodSignature) jp.getSignature()).getMethod());
+            throw new NestedIdempotencyException();
+        }
+        try {
+            IdempotencyScope.activate();
+            UUID idempotencyKey = parseIdempotencyKey(jp, annotation);
 
-        MethodSignature signature = (MethodSignature) jp.getSignature();
-        Object target = jp.getTarget();
-        OperationMetadata operationMetadata = metadataResolver.resolve(
-                signature.getMethod(),
-                target == null ? null : target.getClass()
-        );
+            MethodSignature signature = (MethodSignature) jp.getSignature();
+            Object target = jp.getTarget();
+            OperationMetadata operationMetadata = metadataResolver.resolve(
+                    signature.getMethod(),
+                    target == null ? null : target.getClass()
+            );
 
-        RequestContext requestContext = requestContextProvider.getContext();
-        return interceptor.intercept(
-                buildContext(
-                        ResultType.ofMethod(signature.getMethod()),
-                        jp,
-                        idempotencyKey,
-                        requestContext,
-                        operationMetadata
-                )
-        );
+            RequestContext requestContext = requestContextProvider.getContext();
+            return interceptor.intercept(
+                    buildContext(
+                            ResultType.ofMethod(signature.getMethod()),
+                            jp,
+                            idempotencyKey,
+                            requestContext,
+                            operationMetadata
+                    )
+            );
+        } finally {
+            IdempotencyScope.deactivate();
+        }
     }
 
     private UUID parseIdempotencyKey(JoinPoint jp, Idempotent annotation) {

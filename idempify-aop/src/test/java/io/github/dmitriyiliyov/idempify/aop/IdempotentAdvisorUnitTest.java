@@ -1,13 +1,12 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.Idempotent;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
-import io.github.dmitriyiliyov.idempify.core.OperationMetadataResolver;
+import io.github.dmitriyiliyov.idempify.core.*;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContextProvider;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +20,8 @@ import org.springframework.expression.spel.SpelMessage;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -55,6 +56,11 @@ class IdempotentAdvisorUnitTest {
     IdempotentAdvisor tested;
 
     OperationMetadata operationMetadata = TestOperationMetadata.builder().build();
+
+    @AfterEach
+    void tearDown() {
+        IdempotencyScope.deactivate();
+    }
 
     @Test
     @DisplayName("UT constructor when expressionEvaluator is null should throw NullPointerException")
@@ -343,6 +349,95 @@ class IdempotentAdvisorUnitTest {
         assertThatThrownBy(() -> tested.advice(jp, annotation))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("boom");
+    }
+
+    @Test
+    @DisplayName("UT advice() when called inside a running operation should refuse before touching anything")
+    void advice_whenCalledInsideRunningOperation_shouldRefuseBeforeTouchingAnything() throws Throwable {
+        // given
+        IdempotencyScope.activate();
+        when(jp.getSignature()).thenReturn(signature);
+        when(signature.getMethod()).thenReturn(method("actionWithKey"));
+
+        // when / then
+        assertThatThrownBy(() -> tested.advice(jp, annotation("actionWithKey")))
+                .isInstanceOf(NestedIdempotencyException.class);
+        verifyNoInteractions(expressionEvaluator, requestContextProvider, metadataResolver, interceptor);
+        verify(jp, never()).proceed();
+        assertThat(IdempotencyScope.isActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("UT advice() when the operation runs should hold the scope for the whole call")
+    void advice_whenOperationRuns_shouldHoldScopeForWholeCall() throws Throwable {
+        // given
+        AtomicBoolean activeDuringCall = new AtomicBoolean();
+        stubAdvice(method("action"), new TestTarget());
+        when(interceptor.intercept(any())).thenAnswer(invocation -> {
+            activeDuringCall.set(IdempotencyScope.isActive());
+            return "intercept-result";
+        });
+
+        // when
+        tested.advice(jp, annotation("action"));
+
+        // then
+        assertThat(activeDuringCall).isTrue();
+        assertThat(IdempotencyScope.isActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT advice() when the operation fails should still leave the scope")
+    void advice_whenOperationFails_shouldStillLeaveScope() throws Throwable {
+        // given
+        stubAdvice(method("action"), new TestTarget());
+        when(interceptor.intercept(any())).thenThrow(new IllegalStateException("boom"));
+
+        // when / then
+        assertThatThrownBy(() -> tested.advice(jp, annotation("action"))).isInstanceOf(IllegalStateException.class);
+        assertThat(IdempotencyScope.isActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT advice() when the evaluator fails on the key should still leave the scope")
+    void advice_whenEvaluatorFailsOnKey_shouldStillLeaveScope() throws NoSuchMethodException {
+        // given
+        stubKeyEvaluation(method("actionWithKey"), new TestTarget(), new Object[]{"value"});
+        when(expressionEvaluator.evaluateIdempotencyKey(any(), any(), any(), any(), any())).thenReturn(null);
+
+        // when / then
+        assertThatThrownBy(() -> tested.advice(jp, annotation("actionWithKey")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(IdempotencyScope.isActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UT advice() when the operation calls another idempotent method should refuse it and keep its own scope")
+    void advice_whenOperationCallsAnotherIdempotentMethod_shouldRefuseItAndKeepOwnScope() throws Throwable {
+        // given
+        Idempotent annotation = annotation("action");
+        AtomicReference<Throwable> innerFailure = new AtomicReference<>();
+        AtomicBoolean activeAfterRefusal = new AtomicBoolean();
+        stubAdvice(method("action"), new TestTarget());
+        when(interceptor.intercept(any())).thenAnswer(invocation -> {
+            try {
+                tested.advice(jp, annotation);
+            } catch (Throwable t) {
+                innerFailure.set(t);
+            }
+            activeAfterRefusal.set(IdempotencyScope.isActive());
+            return "intercept-result";
+        });
+
+        // when
+        Object result = tested.advice(jp, annotation);
+
+        // then
+        assertThat(result).isEqualTo("intercept-result");
+        assertThat(innerFailure.get()).isInstanceOf(NestedIdempotencyException.class);
+        assertThat(activeAfterRefusal).isTrue();
+        verify(interceptor, times(1)).intercept(any());
+        assertThat(IdempotencyScope.isActive()).isFalse();
     }
 
     private void stubAdvice(Method method, Object target) {

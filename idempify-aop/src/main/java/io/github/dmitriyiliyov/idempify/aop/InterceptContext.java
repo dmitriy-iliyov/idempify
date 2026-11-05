@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.aop;
 
-import io.github.dmitriyiliyov.idempify.core.ExternalOperationCallback;
+import io.github.dmitriyiliyov.idempify.core.BusinessOperationCallback;
 import io.github.dmitriyiliyov.idempify.core.OperationMetadata;
 import io.github.dmitriyiliyov.idempify.core.request.RequestContext;
 import io.github.dmitriyiliyov.idempify.core.result.ResultType;
@@ -26,12 +26,11 @@ public interface InterceptContext {
     /**
      * Returns the caller's business operation to run when this is the first attempt.
      */
-    ExternalOperationCallback getOperationCallback();
+    BusinessOperationCallback getOperationCallback();
 
     /**
      * Returns the key named by {@code @Idempotent(idempotencyKey = ...)}, or {@code null} when the annotation
-     * did not name one or its expression could not be resolved - in which case the key is to be extracted
-     * from the request instead.
+     * did not name one - in which case the key is to be extracted from the request instead.
      */
     UUID getIdempotencyKey();
 
