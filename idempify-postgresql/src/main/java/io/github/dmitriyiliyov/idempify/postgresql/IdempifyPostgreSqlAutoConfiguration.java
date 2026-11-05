@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
@@ -30,5 +31,11 @@ public class IdempifyPostgreSqlAutoConfiguration {
     @ConditionalOnMissingBean
     public BlockingOperationRepository idempifyBlockingOperationRepository(JdbcClient jdbcClient) {
         return new PostgreSqlBlockingOperationRepository(jdbcClient);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public NonBlockingOperationRepository idempifyNonBlockingOperationRepository(JdbcClient jdbcClient) {
+        return new PostgreSqlNonBlockingOperationRepository(jdbcClient);
     }
 }

@@ -10,9 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -24,18 +22,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The guarantees this store owes the core are the ones a mock cannot have: the claim is atomic,
- * first-writer-wins and held until the caller's transaction ends, both updates are conditional on the row's
- * current status, and the expiry exists on a completed operation and nowhere else - counted by the database's
- * own clock and read back as the time a row has left. All of it is judged against a real Postgres.
+ * The guarantees this store owes the core are the ones a mock cannot have: the claim is atomic and
+ * first-writer-wins, both updates are conditional on the row's current status, and the expiry exists on a
+ * completed operation and nowhere else - counted by the database's own clock and read back as the time a row
+ * has left. All of it is judged against a real Postgres; that the claim is held until the caller's transaction
+ * ends shows only under concurrency, and lives in {@link PostgreSqlBlockingOperationRepositoryMultiThreadTest}.
  * <p>
  * The repository deals in rows only - no serializer takes part here, so what is written is what comes back.
  * Where a statement is meant to carry the whole record, that is asserted on the record and not field by
@@ -173,40 +169,6 @@ class PostgreSqlBlockingOperationRepositoryIntegrationTest {
         // then
         assertThat(result.remainingMillis()).isNull();
         assertThat(result.response()).isNull();
-    }
-
-    @Test
-    @DisplayName("IT saveIfAbsent() when a second caller claims the same key should wait until the first transaction commits")
-    void saveIfAbsent_whenSecondCallerClaimsSameKey_shouldWaitUntilFirstTransactionCommits() throws Exception {
-        // given
-        UUID key = UUID.randomUUID();
-        TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        CountDownLatch claimed = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        CompletableFuture<Void> first = CompletableFuture.runAsync(() -> transactions.executeWithoutResult(status -> {
-            tested.saveIfAbsent(claim(key));
-            claimed.countDown();
-            await(release);
-            tested.saveResultAndUpdateStatus(key, "first-result", OperationStatus.PROCESSED, AN_HOUR,
-                    OperationStatus.IN_PROCESS);
-        }));
-        await(claimed);
-
-        // when
-        CompletableFuture<RawOperation> second = CompletableFuture.supplyAsync(
-                () -> transactions.execute(status -> tested.saveIfAbsent(claim(key)))
-        );
-        awaitBlockedOnLock();
-        boolean doneWhileFirstHeldClaim = second.isDone();
-        release.countDown();
-        first.get(30, TimeUnit.SECONDS);
-        RawOperation result = second.get(30, TimeUnit.SECONDS);
-
-        // then
-        assertThat(doneWhileFirstHeldClaim).isFalse();
-        assertThat(result.isFirstAttempt()).isFalse();
-        assertThat(result.status()).isEqualTo(OperationStatus.PROCESSED);
-        assertThat(result.result()).isEqualTo("first-result");
     }
 
     @Test
@@ -472,39 +434,6 @@ class PostgreSqlBlockingOperationRepositoryIntegrationTest {
 
     private static Instant databaseNow() {
         return jdbcClient.sql("SELECT clock_timestamp()").query(Timestamp.class).single().toInstant();
-    }
-
-    /**
-     * Waits for the second connection to be parked on a row lock, which is what "the claim is held" looks like
-     * from inside the database - rather than for a guessed amount of time.
-     */
-    private static void awaitBlockedOnLock() {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (System.nanoTime() < deadline) {
-            Integer waiting = jdbcClient.sql("""
-                    SELECT count(*)::int
-                    FROM pg_stat_activity
-                    WHERE wait_event_type = 'Lock' AND datname = current_database()
-                    """)
-                    .query(Integer.class)
-                    .single();
-            if (waiting > 0) {
-                return;
-            }
-            Thread.onSpinWait();
-        }
-        throw new IllegalStateException("no connection ended up waiting on the claim");
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            if (!latch.await(30, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("latch was never released");
-            }
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(ie);
-        }
     }
 
     private static RawOperation claim(UUID idempotencyKey) {

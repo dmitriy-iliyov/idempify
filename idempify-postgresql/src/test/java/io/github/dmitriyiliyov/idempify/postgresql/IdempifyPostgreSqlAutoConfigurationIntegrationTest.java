@@ -1,6 +1,7 @@
 package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.NonBlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
@@ -108,7 +109,7 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(BlockingOperationRepository.class);
                     assertThat(context).doesNotHaveBean(PostgreSqlBlockingOperationRepository.class);
-                    assertThat(context).doesNotHaveBean(OperationRepository.class);
+                    assertThat(context).doesNotHaveBean(NonBlockingOperationRepository.class);
                     assertThat(context).doesNotHaveBean(ResponseRepository.class);
                 });
     }
