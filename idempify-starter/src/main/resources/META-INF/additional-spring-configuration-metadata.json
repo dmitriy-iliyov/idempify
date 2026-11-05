@@ -1,0 +1,30 @@
+{
+  "properties": [
+    {"name": "idempify.enabled", "description": "Switches the whole library on or off. Switched off, no module contributes a bean and no other property is checked."},
+    {"name": "idempify.header-name", "description": "Name of the request header that carries the idempotency key (a UUID)."},
+    {"name": "idempify.ttl", "description": "How long a completed operation, and the response recorded on it, is replayed. Counted from the moment the operation completes."},
+    {"name": "idempify.lock-ttl", "description": "How long a claim on a key is held before another caller may take it over. Refused when the processor type is TRANSACTIONAL_BLOCKING; defaults to PT5M for the non-blocking processors."},
+    {"name": "idempify.processor-type", "description": "Which processor executes the business method: TRANSACTIONAL_BLOCKING, TRANSACTIONAL_NON_BLOCKING or EXTERNAL_NON_BLOCKING."},
+    {"name": "idempify.conflict.enabled", "description": "Whether a duplicate that meets an unfinished operation is handled. Must be false for TRANSACTIONAL_BLOCKING and true for the non-blocking processors."},
+    {"name": "idempify.conflict.strategy", "description": "How a conflicting duplicate is answered: REJECT immediately, or WAIT for the first call to finish."},
+    {"name": "idempify.conflict.wait.delay", "description": "Pause before the first poll of the WAIT strategy."},
+    {"name": "idempify.conflict.wait.multiplier", "description": "Factor the pause grows by after each poll of the WAIT strategy."},
+    {"name": "idempify.conflict.wait.max-attempts", "description": "Number of polls after which the WAIT strategy gives up."},
+    {"name": "idempify.conflict.wait.max-duration", "description": "Total time after which the WAIT strategy gives up."},
+    {"name": "idempify.fingerprint.enabled", "description": "Whether a repeat under a key is checked against the request that first used it."},
+    {"name": "idempify.fingerprint.strategy", "description": "How a request body is reduced to what gets hashed."},
+    {"name": "idempify.fingerprint.empty-body-fallback", "description": "What to do with a request that has no body: THROWING refuses it, NOOP fingerprints the path and method only."},
+    {"name": "idempify.fingerprint.canonicalizer.format", "description": "Format the body is read as. Only valid with the CANONICALIZED_BODY_HASH strategy."},
+    {"name": "idempify.fingerprint.canonicalizer.strategy", "description": "How a body of that format is normalized before it is hashed."},
+    {"name": "idempify.fingerprint.canonicalizer.included-fields", "description": "Fields that alone take part in the fingerprint. Cannot be combined with excluded-fields."},
+    {"name": "idempify.fingerprint.canonicalizer.excluded-fields", "description": "Fields left out of the fingerprint. Cannot be combined with included-fields."},
+    {"name": "idempify.response.record-for", "description": "Exception types whose failure is kept on the record and replayed to every repeat. Left out, it keeps every failure for EXTERNAL_NON_BLOCKING and none for the transactional processors; written empty, it keeps none. Refused when the processor type is TRANSACTIONAL_BLOCKING, where a rollback releases the key whatever was thrown."},
+    {"name": "idempify.response.included-headers", "description": "Response headers that are recorded and replayed. Empty records every header."},
+    {"name": "idempify.response.excluded-headers", "description": "Response headers that are not recorded."},
+    {"name": "idempify.cache.enabled", "description": "Whether a cache stands in front of the response store. Off until asked for."},
+    {"name": "idempify.cache.type", "description": "Which cache is installed: IN_MEMORY, DISTRIBUTED (from a backend module) or CUSTOM."},
+    {"name": "idempify.cache.name", "description": "Name that keeps one application's cache entries apart from another's in a shared store. Required for DISTRIBUTED."},
+    {"name": "idempify.cache.capacity", "description": "Maximum number of entries of the IN_MEMORY cache. Must be positive."},
+    {"name": "idempify.metrics.enabled", "description": "Whether the metrics module registers its counters. Requires idempify-metrics and micrometer-core on the classpath."}
+  ]
+}

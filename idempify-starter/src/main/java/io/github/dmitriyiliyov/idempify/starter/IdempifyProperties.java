@@ -8,7 +8,6 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -19,9 +18,9 @@ import java.util.Objects;
  * block is dropped rather than kept for a call site that will never run - and nothing below is checked
  * either, since an application that turned idempotency off owes no answer for a ttl nobody reads.
  * <p>
- * Conflict handling and a lock ttl are refused outright when {@code idempify.processor-type} is
+ * Conflict handling, a lock ttl and a non-empty {@code idempify.response.record-for} are refused outright when {@code idempify.processor-type} is
  * {@link ProcessorType#TRANSACTIONAL_BLOCKING}: that processor never reaches a conflict and claims the key inside the
- * business transaction, so either setting on its own is enough to fail startup. Under
+ * business transaction, so any one of them on its own is enough to fail startup. Under
  * {@link ProcessorType#TRANSACTIONAL_NON_BLOCKING} it is the other way round for conflict handling: a duplicate meets the
  * unfinished operation there, so switching the handling off fails startup too.
  */
@@ -97,10 +96,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
      * Left unsaid anywhere else, it gets the built-in answer.
      */
     private static Duration resolveLockTtl(Duration lockTtl, ProcessorType processorType) {
-        if (ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
+        if (IdempotencyConfig.isBlocking(processorType)) {
             if (lockTtl != null) {
                 throw new IllegalStateException("""
-                        'idempify.lock-ttl' cannot be set when 'idempify.processor-type' is BLOCKING: \
+                        'idempify.lock-ttl' cannot be set when 'idempify.processor-type' is TRANSACTIONAL_BLOCKING: \
                         that processor claims the key inside the business transaction, so there is no \
                         separate claim to hold for a while""");
             }
@@ -114,28 +113,36 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
         return resolved;
     }
 
-    private void rejectSectionsTheNonBlockingProcessorCannotLack() {
-        if (!ProcessorType.TRANSACTIONAL_NON_BLOCKING.equals(processorType)) {
-            return;
-        }
-
-        if (Boolean.FALSE.equals(conflict.isEnabled())) {
-            throw new IllegalStateException("""
-                    'idempify.conflict.enabled' must be true when 'idempify.processor-type' is NON_BLOCKING: \
-                    a duplicate meets the unfinished operation there, and only a conflict handler can answer it""");
-        }
-    }
-
     private void rejectSectionsTheBlockingProcessorCannotUse() {
-        if (!ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)) {
+        if (IdempotencyConfig.isNonBlocking(processorType)) {
             return;
         }
 
         if (Boolean.TRUE.equals(conflict.isEnabled())) {
             throw new IllegalStateException("""
-                    'idempify.conflict.enabled' must be false when 'idempify.processor-type' is BLOCKING: \
-                    the blocking processor settles a duplicate on the store's own insert, so there is no \
-                    conflict left for a handler to see""");
+                    'idempify.conflict.enabled' must be false when 'idempify.processor-type' is \
+                    TRANSACTIONAL_BLOCKING: the blocking processor settles a duplicate on the store's own insert, \
+                    so there is no conflict left for a handler to see""");
+        }
+
+        if (response.getRecordFor() != null && !response.getRecordFor().isEmpty()) {
+            throw new IllegalStateException("""
+                    'idempify.response.record-for' cannot be set when 'idempify.processor-type' is \
+                    TRANSACTIONAL_BLOCKING: a rollback takes the record away with the failure, so there is \
+                    nothing for a failure to be kept on""");
+        }
+    }
+
+    private void rejectSectionsTheNonBlockingProcessorCannotLack() {
+        if (IdempotencyConfig.isBlocking(processorType)) {
+            return;
+        }
+
+        if (Boolean.FALSE.equals(conflict.isEnabled())) {
+            throw new IllegalStateException("""
+                    'idempify.conflict.enabled' must be true when 'idempify.processor-type' is \
+                    %s: a duplicate meets the unfinished operation there, and only a \
+                    conflict handler can answer it""".formatted(processorType));
         }
     }
 
@@ -169,10 +176,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                 : FingerprintConfig.disabled()
         );
 
-        builder.response(ProcessorType.TRANSACTIONAL_BLOCKING.equals(processorType)
-                ? ResponseConfig.builder(response.toResponseConfig()).releaseFor(List.of(Throwable.class)).build()
-                : response.toResponseConfig()
-        );
+        builder.response(response.toResponseConfig());
 
         IdempotencyConfig config = builder.build();
         config.validate();

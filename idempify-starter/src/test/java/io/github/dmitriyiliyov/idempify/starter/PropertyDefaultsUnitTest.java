@@ -125,15 +125,14 @@ class PropertyDefaultsUnitTest {
     }
 
     @Test
-    @DisplayName("UT constructor defaults of the response block should repeat the answers core holds")
-    void constructorDefaults_ofResponseBlock_shouldRepeatAnswersCoreHolds() {
+    @DisplayName("UT constructor defaults of the response block should leave recordFor undecided")
+    void constructorDefaults_ofResponseBlock_shouldLeaveRecordForUndecided() {
         // given
-        // releaseFor has no @DefaultValue: a list of types cannot be spelled in one, so the constructor answers it
+        // recordFor has no @DefaultValue: its answer depends on the processor finally chosen, so it stays undecided
         ResponseProperties properties = new ResponseProperties(null, Set.of(), Set.of());
 
         // when / then
-        assertThat(properties.toResponseConfig().getReleaseFor())
-                .isEqualTo(ResponseConfig.defaults().getReleaseFor());
+        assertThat(properties.toResponseConfig().getRecordFor()).isNull();
     }
 
     @Test

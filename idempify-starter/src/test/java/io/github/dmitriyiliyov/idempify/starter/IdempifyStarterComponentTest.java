@@ -2,7 +2,10 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.config.*;
+import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
+import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
+import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
+import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyHandleStrategy;
@@ -59,7 +62,7 @@ class IdempifyStarterComponentTest {
                 .withPropertyValues(
                         "idempify.header-name=X-Request-Id",
                         "idempify.ttl=30m",
-                        "idempify.processor-type=NON_BLOCKING",
+                        "idempify.processor-type=TRANSACTIONAL_NON_BLOCKING",
                         "idempify.conflict.enabled=true",
                         "idempify.conflict.strategy=WAIT",
                         "idempify.conflict.wait.delay=250ms",
@@ -74,7 +77,7 @@ class IdempifyStarterComponentTest {
                         "idempify.fingerprint.canonicalizer.excluded-fields=timestamp,traceId",
                         "idempify.cache.enabled=true",
                         "idempify.cache.name=orders",
-                        "idempify.response.release-for=java.lang.IllegalStateException,java.lang.IllegalArgumentException"
+                        "idempify.response.record-for=java.lang.IllegalStateException,java.lang.IllegalArgumentException"
                 )
                 .run(context -> {
                     IdempotencyConfig config = configOf(context);
@@ -99,7 +102,7 @@ class IdempifyStarterComponentTest {
                             .describedAs("NOOP leaves a body-less request to path and method alone")
                             .isEmpty();
 
-                    assertThat(config.getResponseConfig().getReleaseFor())
+                    assertThat(config.getResponseConfig().getRecordFor())
                      .containsExactly(IllegalStateException.class, IllegalArgumentException.class);
                     assertThat(context.getBean(CachePropertiesHolder.class).getName()).isEqualTo("orders");
 
@@ -164,7 +167,7 @@ class IdempifyStarterComponentTest {
     @DisplayName("CT application when a blocking one switches conflict handling off should hand the core a settled answer")
     void application_whenBlockingOneSwitchesConflictHandlingOff_shouldHandCoreSettledAnswer() {
         contextRunner
-                .withPropertyValues("idempify.processor-type=BLOCKING", "idempify.conflict.enabled=false")
+                .withPropertyValues("idempify.processor-type=TRANSACTIONAL_BLOCKING", "idempify.conflict.enabled=false")
                 .run(context -> {
                     assertThat(configOf(context).getConflictConfig().isEnabled()).isFalse();
                     assertThat(configOf(context).notEmpty()).isTrue();
@@ -175,7 +178,7 @@ class IdempifyStarterComponentTest {
     @DisplayName("CT application when a non-blocking one switches conflict handling off should refuse to start naming the property")
     void application_whenNonBlockingOneSwitchesConflictHandlingOff_shouldRefuseToStartNamingProperty() {
         contextRunner
-                .withPropertyValues("idempify.processor-type=NON_BLOCKING", "idempify.conflict.enabled=false")
+                .withPropertyValues("idempify.processor-type=TRANSACTIONAL_NON_BLOCKING", "idempify.conflict.enabled=false")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
@@ -246,7 +249,7 @@ class IdempifyStarterComponentTest {
     @DisplayName("CT application when the blocking processor is chosen alone should refuse to start naming the conflict property")
     void application_whenBlockingProcessorIsChosenAlone_shouldRefuseToStartNamingConflictProperty() {
         contextRunner
-                .withPropertyValues("idempify.processor-type=BLOCKING")
+                .withPropertyValues("idempify.processor-type=TRANSACTIONAL_BLOCKING")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
@@ -256,26 +259,42 @@ class IdempifyStarterComponentTest {
     }
 
     @Test
-    @DisplayName("CT application when the blocking processor releases the key for nothing should start")
-    void application_whenBlockingProcessorReleasesKeyForNothing_shouldStart() {
+    @DisplayName("CT application when the blocking processor names no record-for should start")
+    void application_whenBlockingProcessorNamesNoRecordFor_shouldStart() {
         contextRunner
                 .withPropertyValues(
-                        "idempify.processor-type=BLOCKING",
+                        "idempify.processor-type=TRANSACTIONAL_BLOCKING",
                         "idempify.conflict.enabled=false",
-                        "idempify.response.release-for="
+                        "idempify.response.record-for="
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(configOf(context).getResponseConfig().getReleaseFor()).containsExactly(Throwable.class);
+                    assertThat(configOf(context).getResponseConfig().getRecordFor()).isEmpty();
                 });
     }
 
     @Test
-    @DisplayName("CT application when release-for is not written should reach core with the default list")
-    void application_whenReleaseForIsNotWritten_shouldReachCoreWithDefaultList() {
+    @DisplayName("CT application when the blocking processor is given record-for should fail naming the property")
+    void application_whenBlockingProcessorIsGivenRecordFor_shouldFailNamingProperty() {
         contextRunner
-                .run(context -> assertThat(configOf(context).getResponseConfig().getReleaseFor())
-                        .isEqualTo(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST));
+                .withPropertyValues(
+                        "idempify.processor-type=TRANSACTIONAL_BLOCKING",
+                        "idempify.conflict.enabled=false",
+                        "idempify.response.record-for=java.lang.IllegalStateException"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .hasMessageContaining("'idempify.response.record-for' cannot be set");
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when record-for is not written should reach core undecided")
+    void application_whenRecordForIsNotWritten_shouldReachCoreUndecided() {
+        contextRunner
+                .run(context -> assertThat(configOf(context).getResponseConfig().getRecordFor()).isNull());
     }
 
     @Test
@@ -283,7 +302,7 @@ class IdempifyStarterComponentTest {
     void application_whenBlockingProcessorSwitchesConflictsOff_shouldStart() {
         contextRunner
                 .withPropertyValues(
-                        "idempify.processor-type=BLOCKING",
+                        "idempify.processor-type=TRANSACTIONAL_BLOCKING",
                         "idempify.conflict.enabled=false"
                 )
                 .run(context -> {

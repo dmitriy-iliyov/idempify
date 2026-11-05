@@ -9,6 +9,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+import java.time.Clock;
+
 @AutoConfiguration
 @ConditionalOnIdempifyEnabled
 @EnableConfigurationProperties(IdempifyProperties.class)
@@ -18,6 +20,12 @@ public class IdempifyAutoConfiguration {
     @ConditionalOnMissingBean(name = IdempifyDefaults.DEFAULT_CONFIG_BEAN_NAME)
     public IdempotencyConfig idempifyDefaultIdempotencyConfig(IdempifyProperties properties) {
         return properties.provide();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public Clock idempifyClock() {
+        return Clock.systemUTC();
     }
 
     @Bean

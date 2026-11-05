@@ -1,6 +1,6 @@
 package io.github.dmitriyiliyov.idempify.starter;
 
-import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
+import io.github.dmitriyiliyov.idempify.core.Toggle;
 import io.github.dmitriyiliyov.idempify.core.config.ResponseConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,42 +12,62 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The block hands the core a fully decided response policy, so what is judged here is that every setting
- * survives the trip and that a block nobody wrote still answers.
+ * What is judged here is that every setting survives the trip, that a block nobody wrote still answers, and that
+ * a {@code record-for} nobody wrote stays undecided for the core to answer.
  */
 class ResponsePropertiesUnitTest {
 
     @Test
-    @DisplayName("UT constructor() when releaseFor is not configured should fall back to the core default list")
-    void constructor_whenReleaseForIsNotConfigured_shouldFallBackToCoreDefaultList() {
+    @DisplayName("UT constructor() when recordFor is not configured should leave it undecided")
+    void constructor_whenRecordForIsNotConfigured_shouldLeaveItUndecided() {
         // when
         ResponseProperties result = new ResponseProperties(null, Set.of(), Set.of());
 
         // then
-        assertThat(result.getReleaseFor()).isEqualTo(IdempifyDefaults.DEFAULT_RELEASE_FOR_LIST);
+        assertThat(result.getRecordFor()).isNull();
     }
 
     @Test
-    @DisplayName("UT constructor() when releaseFor is configured empty should release the key for nothing")
-    void constructor_whenReleaseForIsConfiguredEmpty_shouldReleaseKeyForNothing() {
+    @DisplayName("UT constructor() when recordFor is not configured should leave the choice open")
+    void constructor_whenRecordForIsNotConfigured_shouldLeaveChoiceOpen() {
+        // when
+        ResponseProperties result = new ResponseProperties(null, Set.of(), Set.of());
+
+        // then
+        assertThat(result.getRecordForToggle()).isEqualTo(Toggle.UNSELECTED);
+    }
+
+    @Test
+    @DisplayName("UT constructor() when recordFor is configured empty should count as a choice")
+    void constructor_whenRecordForIsConfiguredEmpty_shouldCountAsChoice() {
         // when
         ResponseProperties result = new ResponseProperties(List.of(), Set.of(), Set.of());
 
         // then
-        assertThat(result.getReleaseFor()).isEmpty();
+        assertThat(result.getRecordForToggle()).isEqualTo(Toggle.ENABLE);
     }
 
     @Test
-    @DisplayName("UT constructor() when releaseFor names a class that is not an exception should throw IllegalArgumentException")
+    @DisplayName("UT constructor() when recordFor is configured empty should keep no failure")
+    void constructor_whenRecordForIsConfiguredEmpty_shouldKeepNoFailure() {
+        // when
+        ResponseProperties result = new ResponseProperties(List.of(), Set.of(), Set.of());
+
+        // then
+        assertThat(result.getRecordFor()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("UT constructor() when recordFor names a class that is not an exception should throw IllegalArgumentException")
     @SuppressWarnings({"unchecked", "rawtypes"})
-    void constructor_whenReleaseForNamesNonThrowable_shouldThrowIllegalArgumentException() {
+    void constructor_whenRecordForNamesNonThrowable_shouldThrowIllegalArgumentException() {
         // given
-        List releaseFor = List.of(String.class);
+        List recordFor = List.of(String.class);
 
         // when / then
-        assertThatThrownBy(() -> new ResponseProperties(releaseFor, Set.of(), Set.of()))
+        assertThatThrownBy(() -> new ResponseProperties(recordFor, Set.of(), Set.of()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("'idempify.response.release-for'")
+                .hasMessageContaining("'idempify.response.record-for'")
                 .hasMessageContaining(String.class.getName());
     }
 
@@ -70,8 +90,8 @@ class ResponsePropertiesUnitTest {
     }
 
     @Test
-    @DisplayName("UT toResponseConfig() should carry the exceptions the application releases the key for")
-    void toResponseConfig_shouldCarryExceptionsApplicationReleasesKeyFor() {
+    @DisplayName("UT toResponseConfig() should carry the exceptions the application keeps on the record")
+    void toResponseConfig_shouldCarryExceptionsApplicationKeepsOnRecord() {
         // given
         ResponseProperties tested = new ResponseProperties(
                 List.of(IllegalStateException.class), Set.of(), Set.of());
@@ -80,7 +100,20 @@ class ResponsePropertiesUnitTest {
         ResponseConfig result = tested.toResponseConfig();
 
         // then
-        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getRecordFor()).containsExactly(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("UT toResponseConfig() when recordFor is not configured should leave it undecided")
+    void toResponseConfig_whenRecordForIsNotConfigured_shouldLeaveItUndecided() {
+        // given
+        ResponseProperties tested = new ResponseProperties(null, Set.of(), Set.of());
+
+        // when
+        ResponseConfig result = tested.toResponseConfig();
+
+        // then
+        assertThat(result.getRecordFor()).isNull();
     }
 
     @Test
@@ -120,7 +153,7 @@ class ResponsePropertiesUnitTest {
                 List.of(IllegalStateException.class), Set.of("Location"), Set.of("Set-Cookie"));
 
         // then
-        assertThat(result.getReleaseFor()).containsExactly(IllegalStateException.class);
+        assertThat(result.getRecordFor()).containsExactly(IllegalStateException.class);
         assertThat(result.getIncludedHeaders()).containsExactly("Location");
         assertThat(result.getExcludedHeaders()).containsExactly("Set-Cookie");
     }
@@ -134,7 +167,7 @@ class ResponsePropertiesUnitTest {
 
         // then
         assertThat(result).contains(
-                "releaseFor=[class java.lang.IllegalStateException]",
+                "recordFor=[class java.lang.IllegalStateException]",
                 "includedHeaders=[Location]",
                 "excludedHeaders=[Set-Cookie]"
         );
