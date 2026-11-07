@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in idempify does not behave as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security vulnerabilities must not be reported here - see SECURITY.md.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: What you observed and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: |
+        Steps, a failing test or a minimal Spring Boot application. Include the `@Idempotent` attributes and the
+        `idempify.*` properties involved.
+    validations:
+      required: true
+  - type: dropdown
+    id: modules
+    attributes:
+      label: Modules involved
+      multiple: true
+      options:
+        - idempify-core
+        - idempify-aop
+        - idempify-http
+        - idempify-jackson
+        - idempify-postgresql
+        - idempify-cache-redis
+        - idempify-metrics
+        - idempify-starter
+  - type: dropdown
+    id: processor
+    attributes:
+      label: Processor type
+      options:
+        - TRANSACTIONAL_BLOCKING
+        - TRANSACTIONAL_NON_BLOCKING
+        - EXTERNAL_NON_BLOCKING
+        - not sure
+  - type: input
+    id: version
+    attributes:
+      label: idempify version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Java version, Spring Boot version, PostgreSQL / Redis versions.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and stack traces
+      render: text
