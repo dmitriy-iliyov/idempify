@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS idempotent_operations(
     idempotency_key UUID PRIMARY KEY,
-    status VARCHAR(20) NOT NULL,
+    status VARCHAR(25) NOT NULL,
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
     exception_class_name TEXT,

@@ -36,6 +36,12 @@ public class IdempifyCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public IdempifySchemaMigrator idempifySchemaMigrator() {
+        return new NoopIdempifySchemaMigrator();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public IdempotencyConfigRegistry idempifyIdempotencyConfigRegistry() {
         return new DefaultIdempotencyConfigRegistry();
     }

@@ -2,10 +2,7 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
-import io.github.dmitriyiliyov.idempify.core.config.FingerprintConfig;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
-import io.github.dmitriyiliyov.idempify.core.config.WaitConflictHandlerConfig;
+import io.github.dmitriyiliyov.idempify.core.config.*;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyHandleStrategy;
@@ -27,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IdempifyStarterComponentTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(IdempifyAutoConfiguration.class));
+            .withConfiguration(AutoConfigurations.of(IdempifyAutoConfiguration.class))
+            .withBean(IdempifySchemaMigrator.class, NoopIdempifySchemaMigrator::new);
 
     @Test
     @DisplayName("CT application when it says nothing about idempotency should start on the library's own answers")
@@ -109,6 +107,22 @@ class IdempifyStarterComponentTest {
                     assertThat(config.notEmpty())
                             .describedAs("the global layer answers everything a narrower one may fall back on")
                             .isTrue();
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when the canonicalizer strategy is NONE should carry it to the core")
+    void application_whenCanonicalizerStrategyIsNone_shouldCarryItToCore() {
+        contextRunner
+                .withPropertyValues("idempify.fingerprint.canonicalizer.strategy=NONE")
+                .run(context -> {
+                    BodyCanonicalizerConfig canonicalizer =
+                            configOf(context).getFingerprintConfig().getBodyCanonicalizerConfig();
+
+                    assertThat(canonicalizer.getCanonicalizeStrategy()).isEqualTo(CanonicalizeStrategy.NONE);
+                    assertThat(canonicalizer.getFormat())
+                            .describedAs("the rest of the section keeps its defaults")
+                            .isEqualTo(BodyFormat.JSON);
                 });
     }
 
@@ -338,6 +352,50 @@ class IdempifyStarterComponentTest {
                     assertThat(context.getStartupFailure())
                             .rootCause()
                             .hasMessageContaining("ttl must be positive");
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when the blocking processor is given a lock ttl should refuse to start naming the property")
+    void application_whenBlockingProcessorIsGivenLockTtl_shouldRefuseToStartNamingProperty() {
+        contextRunner
+                .withPropertyValues(
+                        "idempify.processor-type=TRANSACTIONAL_BLOCKING",
+                        "idempify.conflict.enabled=false",
+                        "idempify.lock-ttl=1m"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .hasMessageContaining("'idempify.lock-ttl' cannot be set");
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when the lock ttl is not positive should refuse to start")
+    void application_whenLockTtlIsNotPositive_shouldRefuseToStart() {
+        contextRunner
+                .withPropertyValues("idempify.lock-ttl=0s")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .hasMessageContaining("lockTtl must be positive");
+                });
+    }
+
+    @Test
+    @DisplayName("CT application when record-for names a class that is not an exception should refuse to start naming it")
+    void application_whenRecordForNamesClassThatIsNotException_shouldRefuseToStartNamingIt() {
+        contextRunner
+                .withPropertyValues("idempify.response.record-for=java.lang.String")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .hasMessageContaining("'idempify.response.record-for' must name exception types only")
+                            .hasMessageContaining(String.class.getName());
                 });
     }
 

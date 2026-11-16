@@ -53,7 +53,7 @@ class PostgreSqlNonBlockingOperationRepositoryMultiThreadTest {
         dataSource.setConnectionProperties(connectionProperties);
         jdbcClient = JdbcClient.create(dataSource);
         try {
-            jdbcClient.sql(new ClassPathResource("idempotent_operations_table.sql")
+            jdbcClient.sql(new ClassPathResource("db/idempify/postgresql/V1__create_operation_table.sql")
                     .getContentAsString(StandardCharsets.UTF_8)).update();
         } catch (IOException e) {
             throw new RuntimeException(e);

@@ -42,6 +42,8 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
     private final CacheProperties cache;
     @NestedConfigurationProperty
     private final MetricsProperties metrics;
+    @NestedConfigurationProperty
+    private final SchemaProperties schema;
 
     public IdempifyProperties(@DefaultValue(IdempifyDefaults.ENABLED_VALUE) Boolean enabled,
                               @DefaultValue(IdempifyDefaults.HEADER_NAME) String headerName,
@@ -52,7 +54,8 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                               @DefaultValue FingerprintProperties fingerprint,
                               @DefaultValue ResponseProperties response,
                               @DefaultValue CacheProperties cache,
-                              @DefaultValue MetricsProperties metrics) {
+                              @DefaultValue MetricsProperties metrics,
+                              @DefaultValue SchemaProperties schema) {
         this.enabled = Objects.requireNonNull(enabled, "enabled cannot be null");
 
         if (enabled) {
@@ -74,6 +77,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
             this.response = Objects.requireNonNull(response, "response cannot be null");
             this.cache = Objects.requireNonNull(cache, "cache cannot be null");
             this.metrics = Objects.requireNonNull(metrics, "metrics cannot be null");
+            this.schema = Objects.requireNonNull(schema, "schema cannot be null");
             rejectSectionsTheBlockingProcessorCannotUse();
             rejectSectionsTheNonBlockingProcessorCannotLack();
         } else {
@@ -86,6 +90,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
             this.response = null;
             this.cache = null;
             this.metrics = null;
+            this.schema = null;
         }
     }
 
@@ -223,6 +228,10 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
         return metrics;
     }
 
+    public SchemaProperties getSchema() {
+        return schema;
+    }
+
     @Override
     public String toString() {
         return "IdempifyProperties{" +
@@ -236,6 +245,7 @@ public final class IdempifyProperties implements IdempotencyConfigProvider {
                 ", response=" + response +
                 ", cache=" + cache +
                 ", metrics=" + metrics +
+                ", schema=" + schema +
                 '}';
     }
 }

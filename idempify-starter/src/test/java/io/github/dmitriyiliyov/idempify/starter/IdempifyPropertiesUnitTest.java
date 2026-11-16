@@ -4,6 +4,7 @@ import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CacheType;
 import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
 import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
+import io.github.dmitriyiliyov.idempify.core.config.SchemaMode;
 import io.github.dmitriyiliyov.idempify.core.conflict.ConflictHandleStrategy;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyFormat;
 import io.github.dmitriyiliyov.idempify.core.fingerprint.BodyHandleStrategy;
@@ -46,6 +47,7 @@ class IdempifyPropertiesUnitTest {
         assertThat(tested.getFingerprint()).isNull();
         assertThat(tested.getCache()).isNull();
         assertThat(tested.getMetrics()).isNull();
+        assertThat(tested.getSchema()).isNull();
     }
 
     @Test
@@ -154,6 +156,15 @@ class IdempifyPropertiesUnitTest {
         assertThatThrownBy(() -> properties().conflict(null).build())
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("conflict cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor() when the schema block is null should throw NullPointerException")
+    void constructor_whenSchemaBlockIsNull_shouldThrowNullPointerException() {
+        // when / then
+        assertThatThrownBy(() -> properties().schema(null).build())
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("schema cannot be null");
     }
 
     @Test
@@ -564,6 +575,7 @@ class IdempifyPropertiesUnitTest {
         private ResponseProperties response = new ResponseProperties(null, Set.of(), Set.of());
         private CacheProperties cache = new CacheProperties(false, CacheType.IN_MEMORY, null, 100);
         private MetricsProperties metrics = new MetricsProperties(true);
+        private SchemaProperties schema = new SchemaProperties(SchemaMode.NONE);
 
         private PropertiesBuilder response(ResponseProperties response) {
             this.response = response;
@@ -615,6 +627,11 @@ class IdempifyPropertiesUnitTest {
             return this;
         }
 
+        private PropertiesBuilder schema(SchemaProperties schema) {
+            this.schema = schema;
+            return this;
+        }
+
         private IdempifyProperties build() {
             return new IdempifyProperties(
                     enabled,
@@ -626,7 +643,8 @@ class IdempifyPropertiesUnitTest {
                     fingerprint,
                     response,
                     cache,
-                    metrics
+                    metrics,
+                    schema
             );
         }
     }

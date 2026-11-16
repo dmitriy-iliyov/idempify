@@ -25,6 +25,7 @@
     {"name": "idempify.cache.type", "description": "Which cache is installed: IN_MEMORY, DISTRIBUTED (from a backend module) or CUSTOM."},
     {"name": "idempify.cache.name", "description": "Name that keeps one application's cache entries apart from another's in a shared store. Required for DISTRIBUTED."},
     {"name": "idempify.cache.capacity", "description": "Maximum number of entries of the IN_MEMORY cache. Must be positive."},
-    {"name": "idempify.metrics.enabled", "description": "Whether the metrics module registers its counters. Requires idempify-metrics and micrometer-core on the classpath."}
+    {"name": "idempify.metrics.enabled", "description": "Whether the metrics module registers its counters. Requires idempify-metrics and micrometer-core on the classpath."},
+    {"name": "idempify.schema.mode", "description": "Who creates the storage schema: NONE leaves it to the application, FLYWAY applies the scripts of the storage module on startup and requires idempify-flyway on the classpath."}
   ]
 }

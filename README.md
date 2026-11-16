@@ -45,6 +45,7 @@ under the same key is rejected rather than silently answered from the store.
 ## Supported Infrastructure
 
 - **Databases:** PostgreSQL.
+- **Schema migration:** Flyway.
 - **Transport:** HTTP, WebFlux(**Coming soon**), gRPC(**Coming soon**).
 - **Serialization:** Jackson.
 - **Cache in front of the store:** in-memory (built into core), Redis.
@@ -61,7 +62,6 @@ under the same key is rejected rather than silently answered from the store.
   returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
   the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
   Jackson cannot rebuild its status and headers - so it is not replayable either.
-- **No automatic table creation** - the DDL is applied by hand.
 
 ## Quick Start
 
@@ -106,10 +106,28 @@ under the same key is rejected rather than silently answered from the store.
 </dependency>
 ```
 
-2. Create the operations table (run once against your database - see [Storage](#storage) for the full DDL):
+2. Create the operations table. Either apply the script yourself, once against your database (see
+   [Storage](#storage) for the full DDL):
 
 ```bash
-psql -f idempify-postgresql/src/main/resources/idempotent_operations_table.sql "$DATABASE_URL"
+psql -f idempify-postgresql/src/main/resources/db/idempify/postgresql/V1__create_operation_table.sql "$DATABASE_URL"
+```
+
+   or let the library apply it on start-up with `idempify-flyway` and `flyway-core` on the classpath (see
+   [Schema Migration](#schema-migration)):
+
+```xml
+<dependency>
+    <groupId>io.github.dmitriy-iliyov.idempify</groupId>
+    <artifactId>idempify-flyway</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+```yaml
+idempify:
+  schema:
+    mode: FLYWAY
 ```
 
 3. Select the processor. The global default is `TRANSACTIONAL_NON_BLOCKING`; the setup below asks for
@@ -224,7 +242,7 @@ Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-
 
 ### Start-up Checks
 
-A library that protects against duplicates is worse off silent than loud, so the two ways of ending up with
+A library that protects against duplicates is worse off silent than loud, so the ways of ending up with
 `@Idempotent` that does nothing are refused while the context is being built, not discovered in production.
 
 - **No entry at all.** The core refuses when no `IdempotentEntry` bean exists, naming what to add:
@@ -235,6 +253,9 @@ A library that protects against duplicates is worse off silent than loud, so the
   refuses by name when the answer is no. The answer is read off the bean rather than off the configuration, so
   it covers a handler method that is not public, one that is `final` under a class proxy, and an application
   started with `spring.aop.auto=false`, where the advisor bean exists and weaves nothing.
+- **A schema mode nothing carries out.** `idempify.schema.mode` other than `NONE` with no module that migrates
+  the schema in that mode - `FLYWAY` without `idempify-flyway`, or without `flyway-core` - is refused, naming
+  both ways out: add the module, or set `idempify.schema.mode=NONE` and create the table yourself.
 
 An endpoint carrying `@Idempotent` on an HTTP method outside `POST`, `PUT`, `PATCH` and `DELETE` is refused by
 name as well: the filter would never match it, and idempotency on a read is not something to arrange silently.
@@ -493,7 +514,7 @@ by its own clock - so no instance ever compares a stored moment against a clock 
 ```sql
 CREATE TABLE IF NOT EXISTS idempotent_operations(
     idempotency_key UUID PRIMARY KEY,
-    status VARCHAR(20) NOT NULL,
+    status VARCHAR(25) NOT NULL,
     is_first_attempt BOOLEAN NOT NULL,
     result TEXT,
     exception_class_name TEXT,
@@ -505,6 +526,25 @@ CREATE TABLE IF NOT EXISTS idempotent_operations(
     lock_until TIMESTAMPTZ
 );
 ```
+
+#### Schema Migration
+
+`idempify.schema.mode` decides who creates that table. `NONE`, the default, leaves it to the application: the
+script ships with the storage module under `db/idempify/postgresql`, ready for `psql` or for a Flyway of your
+own. `FLYWAY` hands it to `idempify-flyway`, which applies the scripts of the storage module on start-up, before
+any bean that reads the database is created.
+
+It does so with a Flyway of its own, apart from the one the application may run:
+
+- the history is kept in `idempify_schema_history`, so neither Flyway sees the other's versions and the two
+  never compete over a version number;
+- it runs after the application's own Flyway, so the application migrates the schema it owns first, and the
+  library adds its table beside it. A schema that is not empty by then is baselined at version `0`, and every
+  script of the library still applies;
+- a table created earlier by hand is taken over rather than refused: the script is `CREATE TABLE IF NOT EXISTS`;
+- a script that fails stops the start-up with `IdempifyMigrationException`, naming the database.
+
+The module stays inert until it is chosen: on the classpath with `mode: NONE` it migrates nothing.
 
 ### Expiry & Cleanup
 
@@ -651,6 +691,8 @@ idempify:
     capacity: 100
   metrics:
     enabled: false
+  schema:
+    mode: NONE
 ```
 
 | Property                                    | Description                                                                                | Default                   |
@@ -681,6 +723,7 @@ idempify:
 | `cache.name`                                | Name the entries are kept under; required for `DISTRIBUTED`, unused by `IN_MEMORY`         | none                      |
 | `cache.capacity`                            | Entries `IN_MEMORY` holds before evicting the oldest; must be positive                     | `100`                     |
 | `metrics.enabled`                           | Whether `idempify-metrics` registers its meters; ignored when the module is absent         | `false`                   |
+| `schema.mode`                               | Who creates the table: `NONE` leaves it to you, `FLYWAY` hands it to `idempify-flyway`     | `NONE`                    |
 
 > [!IMPORTANT]
 > Recording the response is not the same setting as caching it. `response.*` decides what stays **on the
@@ -835,7 +878,6 @@ response does not apply here - a repeat is answered from the result instead, see
 - A store for the non-blocking branches (`TRANSACTIONAL_NON_BLOCKING`, `EXTERNAL_NON_BLOCKING`), and with it conflict
   handling and a record that survives a failed operation
 - Named configuration profiles declared in YAML
-- Automatic table creation
 - A working `idempify-example` demo application
 - Maven Central publishing
 - gRPC transport support (`RequestType.GRPC` is reserved but unimplemented) and WebFlux support

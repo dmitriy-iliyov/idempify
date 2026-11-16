@@ -3,6 +3,7 @@ package io.github.dmitriyiliyov.idempify.postgresql;
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.NonBlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.config.ConditionalOnIdempifyEnabled;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifySchemaLocation;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapperUtils;
@@ -16,6 +17,12 @@ import java.util.Set;
 @AutoConfiguration
 @ConditionalOnIdempifyEnabled
 public class IdempifyPostgreSqlAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IdempifySchemaLocation idempifySchemaLocation() {
+        return new IdempifySchemaLocation("postgresql", "classpath:db/idempify/postgresql");
+    }
 
     @Bean
     @ConditionalOnMissingBean

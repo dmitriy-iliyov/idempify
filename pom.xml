@@ -45,6 +45,7 @@
         <module>idempify-jackson</module>
         <module>idempify-cache-redis</module>
         <module>idempify-starter</module>
+        <module>idempify-flyway</module>
     </modules>
 
     <properties>

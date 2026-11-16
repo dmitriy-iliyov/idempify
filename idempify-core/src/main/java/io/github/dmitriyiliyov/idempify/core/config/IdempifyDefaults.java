@@ -21,6 +21,8 @@ public final class IdempifyDefaults {
 
     public static final String ENABLED_VALUE = "true";
 
+    public static final String SCHEMA_MODE_VALUE = "NONE";
+
     public static final String DEFAULT_CONFIG_BEAN_NAME = "idempifyDefaultIdempotencyConfig";
 
     /**

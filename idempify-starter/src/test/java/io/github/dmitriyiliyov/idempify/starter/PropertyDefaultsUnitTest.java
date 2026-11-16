@@ -173,6 +173,17 @@ class PropertyDefaultsUnitTest {
         assertThat(new MetricsProperties(Boolean.valueOf(enabled)).isEnabled()).isFalse();
     }
 
+    @Test
+    @DisplayName("UT constructor defaults of the schema block should leave the schema to the application")
+    void constructorDefaults_ofSchemaBlock_shouldLeaveSchemaToApplication() {
+        // when
+        String mode = defaultValueOf(SchemaProperties.class, "mode");
+
+        // then
+        assertThat(mode).isEqualTo(IdempifyDefaults.SCHEMA_MODE_VALUE);
+        assertThat(SchemaMode.valueOf(mode)).isEqualTo(SchemaMode.NONE);
+    }
+
     private Object fingerprintPropertiesFallingBackTo(String emptyBodyFallback) {
         FingerprintProperties properties = new FingerprintProperties(
                 true,

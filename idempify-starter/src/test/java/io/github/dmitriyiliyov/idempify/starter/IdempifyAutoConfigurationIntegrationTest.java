@@ -2,11 +2,12 @@ package io.github.dmitriyiliyov.idempify.starter;
 
 import io.github.dmitriyiliyov.idempify.core.ProcessorType;
 import io.github.dmitriyiliyov.idempify.core.cache.CachePropertiesHolder;
-import io.github.dmitriyiliyov.idempify.core.config.IdempifyDefaults;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfig;
-import io.github.dmitriyiliyov.idempify.core.config.IdempotencyConfigProvider;
+import io.github.dmitriyiliyov.idempify.core.config.*;
+import io.github.dmitriyiliyov.idempify.starter.IdempifyAutoConfiguration.SchemaMigratorPresenceCheck;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.annotation.ImportCandidates;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -19,8 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class IdempifyAutoConfigurationIntegrationTest {
 
+    // the core is not in the runner, so the no-op migrator it would fall back to is declared here
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(IdempifyAutoConfiguration.class));
+            .withConfiguration(AutoConfigurations.of(IdempifyAutoConfiguration.class))
+            .withBean(IdempifySchemaMigrator.class, NoopIdempifySchemaMigrator::new);
 
     @Test
     @DisplayName("IT autoConfiguration should be registered so that an application only adds the dependency")
@@ -214,6 +217,103 @@ class IdempifyAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(IdempotencyConfig.class);
             assertThat(context).hasSingleBean(CachePropertiesHolder.class);
         });
+    }
+
+    @Test
+    @DisplayName("IT context when the schema is left to the application should start on the no-op migrator")
+    void context_whenSchemaIsLeftToApplication_shouldStartOnNoopMigrator() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(SchemaMigratorPresenceCheck.class);
+        });
+    }
+
+    @Test
+    @DisplayName("IT context when a mode asks for migration and no module migrates it should fail naming the mode")
+    void context_whenModeAsksForMigrationAndNoModuleMigratesIt_shouldFailNamingMode() {
+        contextRunner
+                .withPropertyValues("idempify.schema.mode=FLYWAY")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .isInstanceOf(IllegalStateException.class)
+                            .hasMessageContaining("idempify.schema.mode is FLYWAY");
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when nothing is said about the schema should leave it to the application")
+    void context_whenNothingIsSaidAboutSchema_shouldLeaveItToApplication() {
+        contextRunner.run(context -> assertThat(context.getBean(IdempifyProperties.class).getSchema().getMode())
+                .isEqualTo(SchemaMode.NONE));
+    }
+
+    @Test
+    @DisplayName("IT context when the schema mode is written in lower case should bind it all the same")
+    void context_whenSchemaModeIsWrittenInLowerCase_shouldBindItAllTheSame() {
+        contextRunnerWithWorkingMigrator()
+                .withPropertyValues("idempify.schema.mode=flyway")
+                .run(context -> assertThat(context.getBean(IdempifyProperties.class).getSchema().getMode())
+                        .isEqualTo(SchemaMode.FLYWAY));
+    }
+
+    @Test
+    @DisplayName("IT context when the schema mode names no known mode should fail naming the property at fault")
+    void context_whenSchemaModeNamesNoKnownMode_shouldFailNamingPropertyAtFault() {
+        contextRunner
+                .withPropertyValues("idempify.schema.mode=liquibase")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("idempify.schema.mode");
+                });
+    }
+
+    @Test
+    @DisplayName("IT context when a migrator is registered for the mode should start")
+    void context_whenMigratorIsRegisteredForMode_shouldStart() {
+        contextRunnerWithWorkingMigrator()
+                .withPropertyValues("idempify.schema.mode=FLYWAY")
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
+    @Disabled("M9")
+    @DisplayName("IT context when beans are lazy and no module migrates the mode should still fail on start")
+    void context_whenBeansAreLazyAndNoModuleMigratesMode_shouldStillFailOnStart() {
+        // what spring.main.lazy-initialization=true installs in a Boot application
+        contextRunner
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(
+                        new LazyInitializationBeanFactoryPostProcessor()
+                ))
+                .withPropertyValues("idempify.schema.mode=FLYWAY")
+                .run(context -> assertThat(context)
+                        .describedAs("M9: nothing depends on the check, so a lazy context never builds it")
+                        .hasFailed());
+    }
+
+    @Test
+    @DisplayName("IT context when an existing SchemaMigratorPresenceCheck bean should not register the starter's one")
+    void context_whenExistingSchemaMigratorPresenceCheckBean_shouldNotRegisterStartersOne() {
+        SchemaMigratorPresenceCheck own = new SchemaMigratorPresenceCheck(
+                SchemaMode.NONE,
+                new NoopIdempifySchemaMigrator()
+        );
+
+        contextRunner
+                .withPropertyValues("idempify.schema.mode=FLYWAY")
+                .withBean("userSchemaMigratorPresenceCheck", SchemaMigratorPresenceCheck.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(SchemaMigratorPresenceCheck.class);
+                    assertThat(context).doesNotHaveBean("idempifySchemaMigratorPresenceCheck");
+                });
+    }
+
+    private static ApplicationContextRunner contextRunnerWithWorkingMigrator() {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(IdempifyAutoConfiguration.class))
+                .withBean(IdempifySchemaMigrator.class, () -> () -> { });
     }
 
     private static IdempotencyConfig handWrittenConfig() {

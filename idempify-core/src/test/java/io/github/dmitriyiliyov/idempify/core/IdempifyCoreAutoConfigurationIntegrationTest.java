@@ -258,6 +258,29 @@ class IdempifyCoreAutoConfigurationIntegrationTest {
     }
 
     @Test
+    @DisplayName("IT context when no migration module is present should fall back to the migrator that does nothing")
+    void context_whenNoMigrationModuleIsPresent_shouldFallBackToMigratorThatDoesNothing() {
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(IdempifySchemaMigrator.class);
+            assertThat(context).hasSingleBean(NoopIdempifySchemaMigrator.class);
+        });
+    }
+
+    @Test
+    @DisplayName("IT context when existing IdempifySchemaMigrator bean should not register the no-op one")
+    void context_whenExistingIdempifySchemaMigratorBean_shouldNotRegisterNoopOne() {
+        IdempifySchemaMigrator own = () -> { };
+
+        contextRunner
+                .withBean(IdempifySchemaMigrator.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempifySchemaMigrator.class);
+                    assertThat(context).doesNotHaveBean(NoopIdempifySchemaMigrator.class);
+                    assertThat(context.getBean(IdempifySchemaMigrator.class)).isSameAs(own);
+                });
+    }
+
+    @Test
     @DisplayName("IT context when existing IdempotencyConfigRegistry bean should not register the default one")
     void context_whenExistingIdempotencyConfigRegistryBean_shouldNotRegisterDefaultOne() {
         contextRunner

@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.postgresql;
 
 import io.github.dmitriyiliyov.idempify.core.BlockingOperationRepository;
 import io.github.dmitriyiliyov.idempify.core.NonBlockingOperationRepository;
+import io.github.dmitriyiliyov.idempify.core.config.IdempifySchemaLocation;
 import io.github.dmitriyiliyov.idempify.core.response.RawResponseContainer;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepository;
 import io.github.dmitriyiliyov.idempify.core.response.ResponseRepositoryWrapper;
@@ -11,6 +12,8 @@ import org.postgresql.Driver;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.Optional;
@@ -35,6 +38,32 @@ class IdempifyPostgreSqlAutoConfigurationIntegrationTest {
             assertThat(context).hasSingleBean(PostgreSqlResponseRepository.class);
             assertThat(context).hasSingleBean(ResponseRepository.class);
         });
+    }
+
+    @Test
+    @DisplayName("IT context should point a migrator at the scripts this module ships")
+    void context_shouldPointMigratorAtScriptsThisModuleShips() {
+        contextRunner.run(context -> {
+            IdempifySchemaLocation location = context.getBean(IdempifySchemaLocation.class);
+
+            assertThat(location.vendor()).isEqualTo("postgresql");
+            assertThat(new PathMatchingResourcePatternResolver().getResources(location.location() + "/V*__*.sql"))
+                    .extracting(Resource::getFilename)
+                    .contains("V1__create_operation_table.sql");
+        });
+    }
+
+    @Test
+    @DisplayName("IT context when existing IdempifySchemaLocation bean should not register the module's one")
+    void context_whenExistingIdempifySchemaLocationBean_shouldNotRegisterModulesOne() {
+        IdempifySchemaLocation own = new IdempifySchemaLocation("postgresql", "classpath:db/own");
+
+        contextRunner
+                .withBean("applicationSchemaLocation", IdempifySchemaLocation.class, () -> own)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(IdempifySchemaLocation.class);
+                    assertThat(context.getBean(IdempifySchemaLocation.class)).isSameAs(own);
+                });
     }
 
     @Test
