@@ -11,6 +11,7 @@
 
     <artifactId>idempify-jackson</artifactId>
     <name>idempify-jackson</name>
+    <description>Jackson serialization for idempify: results and responses as JSON and canonicalization of JSON request bodies</description>
     <packaging>jar</packaging>
 
     <dependencies>

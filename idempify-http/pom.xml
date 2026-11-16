@@ -11,6 +11,7 @@
 
     <artifactId>idempify-http</artifactId>
     <name>idempify-http</name>
+    <description>Spring MVC transport for idempify: reads the Idempotency-Key header, records and replays the HTTP response, answers refusals as RFC 7807 problems</description>
     <packaging>jar</packaging>
 
     <dependencies>

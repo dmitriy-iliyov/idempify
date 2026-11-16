@@ -11,6 +11,7 @@
 
     <artifactId>idempify-cache-redis</artifactId>
     <name>idempify-cache-redis</name>
+    <description>Redis cache for idempify in front of the recorded response</description>
     <packaging>jar</packaging>
 
     <dependencies>

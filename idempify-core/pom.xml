@@ -12,6 +12,7 @@
 
     <artifactId>idempify-core</artifactId>
     <name>idempify-core</name>
+    <description>Core of idempify: the idempotency processors, configuration layers, fingerprints and the contracts of the store, serialization and transport</description>
     <packaging>jar</packaging>
 
     <dependencies>

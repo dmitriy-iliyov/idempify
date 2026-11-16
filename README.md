@@ -3,6 +3,7 @@
 [![CI](https://github.com/dmitriy-iliyov/idempify/actions/workflows/ci.yml/badge.svg)](https://github.com/dmitriy-iliyov/idempify/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 ![GitHub Release](https://img.shields.io/github/v/release/dmitriy-iliyov/idempify?include_prereleases)
+![Maven Central](https://img.shields.io/maven-central/v/io.github.dmitriy-iliyov.idempify/idempify-starter)
 ![GitHub last commit](https://img.shields.io/github/last-commit/dmitriy-iliyov/idempify)
 
 ## Overview
@@ -437,7 +438,7 @@ by `BodyHandleStrategy`, in growing order of tolerance and cost:
 |-----------------------------------|-------------------------------------------------------------------------------------------------------|
 | `RAW_BYTES_HASH`                  | the bytes as they arrived - any reordering or reformatting reads as a different request.               |
 | `NORMALIZED_BYTES_HASH`           | the bytes with insignificant whitespace removed.                                                       |
-| `CANONICALIZED_BODY_HASH` (default) | the body reduced by a `BodyCanonicalizer` - JSON keys sorted, selected fields included or excluded. The JSON implementation comes from `idempify-jackson`. |
+| `CANONICALIZED_BODY_HASH` (default) | the body reduced by a `BodyCanonicalizer` - JSON keys sorted or kept in document order, selected fields included or excluded. The JSON implementation comes from `idempify-jackson`. |
 
 An empty body is not a special case inside a policy but a separate `EmptyBodyFallback`: by default it throws,
 so a fingerprinted call site cannot quietly fingerprint nothing at all.
@@ -707,7 +708,7 @@ idempify:
 | `fingerprint.strategy`                      | How the body is read: `RAW_BYTES_HASH`, `NORMALIZED_BYTES_HASH`, `CANONICALIZED_BODY_HASH` | `CANONICALIZED_BODY_HASH` |
 | `fingerprint.empty-body-fallback`           | What an empty body means: `THROWING` refuses it, `NOOP` fingerprints without it            | `THROWING`                |
 | `fingerprint.canonicalizer.format`          | Body format the canonicalizer parses                                                       | `JSON`                    |
-| `fingerprint.canonicalizer.strategy`        | Order keys are put in before hashing                                                       | `LEXICOGRAPHICAL`         |
+| `fingerprint.canonicalizer.strategy`        | Order of keys before hashing: `LEXICOGRAPHICAL` sorts them, `NONE` keeps the document's    | `LEXICOGRAPHICAL`         |
 | `fingerprint.canonicalizer.included-fields` | Only these fields take part in the fingerprint; mutually exclusive with the excluded list  | empty                     |
 | `fingerprint.canonicalizer.excluded-fields` | These fields are left out of the fingerprint; mutually exclusive with the included list    | empty                     |
 | `response.record-for`                       | Exceptions kept on the record and thrown to repeats; any other one releases the key        | by processor, see below   |
@@ -870,10 +871,7 @@ response does not apply here - a repeat is answered from the result instead, see
 ```
 
 ## Roadmap
-- A store for the non-blocking branches (`TRANSACTIONAL_NON_BLOCKING`, `EXTERNAL_NON_BLOCKING`), and with it conflict
-  handling and a record that survives a failed operation
 - Named configuration profiles declared in YAML
 - A working `idempify-example` demo application
-- Maven Central publishing
 - gRPC transport support (`RequestType.GRPC` is reserved but unimplemented) and WebFlux support
 - MySQL and Oracle store implementations

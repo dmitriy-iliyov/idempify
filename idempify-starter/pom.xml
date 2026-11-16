@@ -11,6 +11,7 @@
 
     <artifactId>idempify-starter</artifactId>
     <name>idempify-starter</name>
+    <description>Spring Boot starter for idempify: the core, the @Idempotent aspect and binding of the idempify.* properties</description>
     <packaging>jar</packaging>
 
     <dependencies>

@@ -11,6 +11,7 @@
 
     <artifactId>idempify-flyway</artifactId>
     <name>idempify-flyway</name>
+    <description>Flyway schema migration for idempify: applies the scripts of the storage module on start-up</description>
     <packaging>jar</packaging>
 
     <dependencies>

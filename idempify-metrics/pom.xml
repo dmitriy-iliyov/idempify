@@ -11,6 +11,7 @@
 
     <artifactId>idempify-metrics</artifactId>
     <name>idempify-metrics</name>
+    <description>Micrometer metrics for idempify: operations by outcome and cache lookups by result</description>
     <packaging>jar</packaging>
 
     <dependencies>

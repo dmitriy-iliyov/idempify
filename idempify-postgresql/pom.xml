@@ -11,6 +11,7 @@
 
     <artifactId>idempify-postgresql</artifactId>
     <name>idempify-postgresql</name>
+    <description>PostgreSQL store for idempify: the operation record, the recorded response and the schema scripts</description>
     <packaging>jar</packaging>
 
     <dependencies>

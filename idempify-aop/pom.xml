@@ -12,6 +12,7 @@
 
     <artifactId>idempify-aop</artifactId>
     <name>idempify-aop</name>
+    <description>The @Idempotent aspect of idempify: turns an annotated method call into an idempotent operation</description>
     <packaging>jar</packaging>
 
     <dependencies>
