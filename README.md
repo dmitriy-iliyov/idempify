@@ -5,11 +5,6 @@
 ![GitHub Release](https://img.shields.io/github/v/release/dmitriy-iliyov/idempify?include_prereleases)
 ![GitHub last commit](https://img.shields.io/github/last-commit/dmitriy-iliyov/idempify)
 
-> [!WARNING]
-> `idempify` is pre-release (`0.1.0`), not yet published to Maven Central, and several
-> pieces described below are explicitly marked **Coming soon**. Treat this README as a snapshot of
-> an actively evolving library, not a finished product - see [Limitations](#limitations).
-
 ## Overview
 
 `idempify` is a modern Java/Spring Boot library that adds idempotency to write operations. 
