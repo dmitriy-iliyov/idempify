@@ -29,43 +29,47 @@ import static io.github.dmitriyiliyov.idempify.http.HttpConstants.SUPPORTED_METH
  */
 public class DefaultIdempotentHandlerRegistry implements IdempotentHandlerRegistry, SmartInitializingSingleton {
 
-    private final RequestMappingHandlerMapping handlerMapping;
+    private final List<RequestMappingHandlerMapping> handlerMappings;
     private final List<IdempotentEntry> entries;
     private volatile Map<MethodKey, HandlerMethod> patternToMethodBinding = Collections.emptyMap();
 
-    public DefaultIdempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping,
+    public DefaultIdempotentHandlerRegistry(List<RequestMappingHandlerMapping> handlerMappings,
                                             List<IdempotentEntry> entries) {
-        this.handlerMapping = Objects.requireNonNull(handlerMapping, "handlerMapping cannot be null");
+        this.handlerMappings = Objects.requireNonNull(handlerMappings, "handlerMappings cannot be null");
+        if (handlerMappings.isEmpty()) {
+            throw new IllegalArgumentException("handlerMappings cannot be empty");
+        }
         this.entries = Objects.requireNonNull(entries, "entries cannot be null");
     }
 
     @Override
     public void afterSingletonsInstantiated() {
-        PathPatternParser parser = patternParser();
         Map<MethodKey, HandlerMethod> binding = new HashMap<>();
-
-        handlerMapping.getHandlerMethods().forEach((info, handlerMethod) -> {
-            if (!handlerMethod.hasMethodAnnotation(Idempotent.class)) {
-                return;
-            }
-            verifyIntercepted(info, handlerMethod);
-            Set<RequestMethod> methods = info.getMethodsCondition().getMethods();
-            if (methods.isEmpty()) {
-                methods = SUPPORTED_METHODS;
-            }
-
-            for (String rawPattern : info.getPatternValues()) {
-                PathPattern pattern = parser.parse(rawPattern.isBlank() ? "/" : rawPattern);
-                for (RequestMethod method : methods) {
-                    verifyRequestMethod(info, method);
-                    binding.put(new MethodKey(method.name(), pattern), handlerMethod);
+        for (RequestMappingHandlerMapping handlerMapping : handlerMappings) {
+            PathPatternParser parser = patternParser(handlerMapping);
+            handlerMapping.getHandlerMethods().forEach((info, handlerMethod) -> {
+                if (!handlerMethod.hasMethodAnnotation(Idempotent.class)) {
+                    return;
                 }
-            }
-        });
+                verifyIntercepted(info, handlerMethod);
+                Set<RequestMethod> methods = info.getMethodsCondition().getMethods();
+                if (methods.isEmpty()) {
+                    methods = SUPPORTED_METHODS;
+                }
+
+                for (String rawPattern : info.getPatternValues()) {
+                    PathPattern pattern = parser.parse(rawPattern.isBlank() ? "/" : rawPattern);
+                    for (RequestMethod method : methods) {
+                        verifyRequestMethod(info, method);
+                        binding.putIfAbsent(new MethodKey(method.name(), pattern), handlerMethod);
+                    }
+                }
+            });
+        }
         this.patternToMethodBinding = Map.copyOf(binding);
     }
 
-    private PathPatternParser patternParser() {
+    private PathPatternParser patternParser(RequestMappingHandlerMapping handlerMapping) {
         PathPatternParser parser = handlerMapping.getPatternParser();
         return parser != null ? parser : PathPatternParser.defaultInstance;
     }

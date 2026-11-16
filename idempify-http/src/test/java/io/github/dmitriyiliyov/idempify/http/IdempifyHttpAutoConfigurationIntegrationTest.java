@@ -203,13 +203,40 @@ class IdempifyHttpAutoConfigurationIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT context when existing KeyExtractor bean should not register HttpKeyExtractor")
-    void context_whenExistingKeyExtractorBean_shouldNotRegisterHttpKeyExtractor() {
+    @DisplayName("IT context when existing HttpKeyExtractor bean should not register the default one")
+    void context_whenExistingHttpKeyExtractorBean_shouldNotRegisterDefaultOne() {
+        HttpKeyExtractor existing = new HttpKeyExtractor();
+        contextRunner
+                .withBean(HttpKeyExtractor.class, () -> existing)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(KeyExtractor.class);
+                    assertThat(context.getBean(KeyExtractor.class)).isSameAs(existing);
+                });
+    }
+
+    // the core declares its delegating extractor under the same type, so a KeyExtractor of another transport
+    // must not switch the http one off (S33 in the http plan)
+    @Test
+    @DisplayName("IT context when a KeyExtractor of another kind exists should still register HttpKeyExtractor next to it")
+    void context_whenKeyExtractorOfAnotherKindExists_shouldStillRegisterHttpKeyExtractor() {
         contextRunner
                 .withBean(KeyExtractor.class, () -> mock(KeyExtractor.class))
                 .run(context -> {
-                    assertThat(context).hasSingleBean(KeyExtractor.class);
-                    assertThat(context).doesNotHaveBean(HttpKeyExtractor.class);
+                    assertThat(context).getBeans(KeyExtractor.class).hasSize(2);
+                    assertThat(context).hasSingleBean(HttpKeyExtractor.class);
+                });
+    }
+
+    // actuator registers a second RequestMappingHandlerMapping (S32 in the http plan)
+    @Test
+    @DisplayName("IT context when several RequestMappingHandlerMapping beans exist should start and register the registry")
+    void context_whenSeveralRequestMappingHandlerMappingBeansExist_shouldStartAndRegisterRegistry() {
+        contextRunner
+                .withBean("secondHandlerMapping", RequestMappingHandlerMapping.class,
+                        () -> mock(RequestMappingHandlerMapping.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DefaultIdempotentHandlerRegistry.class);
                 });
     }
 

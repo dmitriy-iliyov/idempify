@@ -33,17 +33,25 @@ class DefaultIdempotentHandlerRegistryUnitTest {
     RequestMappingHandlerMapping handlerMapping;
 
     @Test
-    @DisplayName("UT constructor when handlerMapping is null should throw NullPointerException")
-    void constructor_whenHandlerMappingIsNull_shouldThrowNullPointerException() {
+    @DisplayName("UT constructor when handlerMappings is null should throw NullPointerException")
+    void constructor_whenHandlerMappingsIsNull_shouldThrowNullPointerException() {
         assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(null, List.of()))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("handlerMapping cannot be null");
+                .hasMessageContaining("handlerMappings cannot be null");
+    }
+
+    @Test
+    @DisplayName("UT constructor when handlerMappings is empty should throw IllegalArgumentException")
+    void constructor_whenHandlerMappingsIsEmpty_shouldThrowIllegalArgumentException() {
+        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(List.of(), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("handlerMappings cannot be empty");
     }
 
     @Test
     @DisplayName("UT constructor when entries is null should throw NullPointerException")
     void constructor_whenEntriesIsNull_shouldThrowNullPointerException() {
-        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(handlerMapping, null))
+        assertThatThrownBy(() -> new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("entries cannot be null");
     }
@@ -52,7 +60,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
     @DisplayName("UT getHandlerMethod() before afterSingletonsInstantiated() should return null")
     void getHandlerMethod_beforeAfterSingletonsInstantiated_shouldReturnNull() {
         // given
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), List.of());
 
         // when
         HandlerMethod result = tested.getHandlerMethod(POST, requestPath("/payments"));
@@ -192,7 +200,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         // given
         Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.GET, "/payments"), handlerMethod(true));
         when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), List.of());
 
         // when / then
         assertThatThrownBy(tested::afterSingletonsInstantiated)
@@ -392,7 +400,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         Map<RequestMappingInfo, HandlerMethod> second = Map.of(mappingInfo(RequestMethod.POST, "/orders"), orders);
 
         when(handlerMapping.getHandlerMethods()).thenReturn(first, second);
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), List.of());
 
         // when
         tested.afterSingletonsInstantiated();
@@ -411,7 +419,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.POST, "/payments"), endpoint);
         when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
         DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(
-                handlerMapping,
+                List.of(handlerMapping),
                 List.of(new TestIdempotentEntry(true))
         );
 
@@ -429,7 +437,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         when(handlerMapping.getHandlerMethods())
                 .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), payEndpoint()));
         DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(
-                handlerMapping,
+                List.of(handlerMapping),
                 List.of(new TestIdempotentEntry(false))
         );
 
@@ -447,7 +455,7 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         HandlerMethod endpoint = payEndpoint();
         Map<RequestMappingInfo, HandlerMethod> endpoints = Map.of(mappingInfo(RequestMethod.POST, "/payments"), endpoint);
         when(handlerMapping.getHandlerMethods()).thenReturn(endpoints);
-        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), List.of());
 
         // when
         tested.afterSingletonsInstantiated();
@@ -456,9 +464,96 @@ class DefaultIdempotentHandlerRegistryUnitTest {
         assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(endpoint);
     }
 
+    // an application keeps more than one mapping as soon as actuator is on the classpath (S32 in the http plan)
+    @Test
+    @DisplayName("UT getHandlerMethod() when idempotent endpoints come from several mappings should answer for all of them")
+    void getHandlerMethod_whenIdempotentEndpointsComeFromSeveralMappings_shouldAnswerForAllOfThem() {
+        // given
+        HandlerMethod payments = handlerMethod(true);
+        HandlerMethod orders = handlerMethod(true);
+        RequestMappingHandlerMapping secondMapping = mock(RequestMappingHandlerMapping.class);
+        when(handlerMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), payments));
+        when(secondMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/orders"), orders));
+        DefaultIdempotentHandlerRegistry tested =
+                new DefaultIdempotentHandlerRegistry(List.of(handlerMapping, secondMapping), List.of());
+
+        // when
+        tested.afterSingletonsInstantiated();
+
+        // then
+        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(payments);
+        assertThat(tested.getHandlerMethod(POST, requestPath("/orders"))).isSameAs(orders);
+    }
+
+    @Test
+    @DisplayName("UT getHandlerMethod() when two mappings declare the same endpoint should answer by the earlier one, as the dispatcher")
+    void getHandlerMethod_whenTwoMappingsDeclareSameEndpoint_shouldAnswerByEarlierOneAsDispatcher() {
+        // given
+        HandlerMethod first = handlerMethod(true);
+        HandlerMethod second = handlerMethod(true);
+        RequestMappingHandlerMapping laterMapping = mock(RequestMappingHandlerMapping.class);
+        when(handlerMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), first));
+        when(laterMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), second));
+        // the list arrives sorted by Ordered, the order DispatcherServlet asks the mappings in
+        DefaultIdempotentHandlerRegistry tested =
+                new DefaultIdempotentHandlerRegistry(List.of(handlerMapping, laterMapping), List.of());
+
+        // when
+        tested.afterSingletonsInstantiated();
+
+        // then
+        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(first);
+    }
+
+    @Test
+    @DisplayName("UT getHandlerMethod() when a mapping after the one holding the endpoint has none should still answer for it")
+    void getHandlerMethod_whenLaterMappingHasNoIdempotentEndpoint_shouldStillAnswerForIt() {
+        // given
+        HandlerMethod payments = handlerMethod(true);
+        HandlerMethod refresh = handlerMethod(false);
+        RequestMappingHandlerMapping actuatorLikeMapping = mock(RequestMappingHandlerMapping.class);
+        when(handlerMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), payments));
+        when(actuatorLikeMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/actuator/refresh"), refresh));
+        DefaultIdempotentHandlerRegistry tested =
+                new DefaultIdempotentHandlerRegistry(List.of(handlerMapping, actuatorLikeMapping), List.of());
+
+        // when
+        tested.afterSingletonsInstantiated();
+
+        // then
+        assertThat(tested.getHandlerMethod(POST, requestPath("/payments"))).isSameAs(payments);
+        assertThat(tested.getHandlerMethod(POST, requestPath("/actuator/refresh"))).isNull();
+    }
+
+    @Test
+    @DisplayName("UT afterSingletonsInstantiated() when an endpoint of a later mapping is not intercepted should name it and fail")
+    void afterSingletonsInstantiated_whenEndpointOfLaterMappingIsNotIntercepted_shouldNameItAndFail() throws Exception {
+        // given
+        RequestMappingHandlerMapping secondMapping = mock(RequestMappingHandlerMapping.class);
+        when(handlerMapping.getHandlerMethods()).thenReturn(Map.of());
+        when(secondMapping.getHandlerMethods())
+                .thenReturn(Map.of(mappingInfo(RequestMethod.POST, "/payments"), payEndpoint()));
+        DefaultIdempotentHandlerRegistry tested = new DefaultIdempotentHandlerRegistry(
+                List.of(handlerMapping, secondMapping),
+                List.of(new TestIdempotentEntry(false))
+        );
+
+        // when / then
+        assertThatThrownBy(tested::afterSingletonsInstantiated)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("/payments")
+                .hasMessageContaining("pay");
+    }
+
     private DefaultIdempotentHandlerRegistry initializedRegistry(Map<RequestMappingInfo, HandlerMethod> handlerMethods) {
         when(handlerMapping.getHandlerMethods()).thenReturn(handlerMethods);
-        DefaultIdempotentHandlerRegistry registry = new DefaultIdempotentHandlerRegistry(handlerMapping, List.of());
+        DefaultIdempotentHandlerRegistry registry = new DefaultIdempotentHandlerRegistry(List.of(handlerMapping), List.of());
         registry.afterSingletonsInstantiated();
         return registry;
     }

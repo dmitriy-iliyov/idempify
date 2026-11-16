@@ -23,6 +23,7 @@ import org.springframework.web.servlet.handler.MappedInterceptor;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.time.Clock;
+import java.util.List;
 
 @AutoConfiguration
 @ConditionalOnIdempifyEnabled
@@ -30,7 +31,7 @@ import java.time.Clock;
 public class IdempifyHttpAutoConfiguration {
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean(HttpKeyExtractor.class)
     public KeyExtractor idempifyHttpKeyExtractor() {
         return new HttpKeyExtractor();
     }
@@ -56,9 +57,9 @@ public class IdempifyHttpAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentHandlerRegistry idempifyIdempotentHandlerRegistry(RequestMappingHandlerMapping handlerMapping,
-                                                                      ObjectProvider<IdempotentEntry> entries) {
-        return new DefaultIdempotentHandlerRegistry(handlerMapping, entries.orderedStream().toList());
+    public IdempotentHandlerRegistry idempifyIdempotentHandlerRegistry(List<RequestMappingHandlerMapping> handlerMappings,
+                                                                       ObjectProvider<IdempotentEntry> entries) {
+        return new DefaultIdempotentHandlerRegistry(handlerMappings, entries.orderedStream().toList());
     }
 
     @Bean
