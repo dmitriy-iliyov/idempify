@@ -9,6 +9,12 @@ package io.github.dmitriyiliyov.idempify.core.fingerprint;
 public enum CanonicalizeStrategy {
 
     /**
+     * Keep members in the order the document carries them, so two bodies that differ only in the order of
+     * their members fingerprint differently.
+     */
+    NONE,
+
+    /**
      * Sort members by name, comparing by code unit rather than by locale so that the result is the same on
      * every machine - the ordering RFC 8785 (JSON Canonicalization Scheme) prescribes.
      */

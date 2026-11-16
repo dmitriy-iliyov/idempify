@@ -2,6 +2,7 @@ package io.github.dmitriyiliyov.idempify.jackson;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dmitriyiliyov.idempify.core.config.BodyCanonicalizerConfig;
+import io.github.dmitriyiliyov.idempify.core.fingerprint.CanonicalizeStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -160,6 +161,72 @@ public class JsonBodyCanonicalizerUnitTest {
             // then
             assertThat(firstResult).isEqualTo("{\"Z\":3,\"a\":2,\"я\":1}");
             assertThat(firstResult).isEqualTo(secondResult);
+        }
+    }
+
+    @Nested
+    @DisplayName("document order")
+    class DocumentOrder {
+
+        private BodyCanonicalizerConfig.Builder documentOrderConfig() {
+            return completeConfig().canonicalizeStrategy(CanonicalizeStrategy.NONE);
+        }
+
+        @Test
+        @DisplayName("UT canonicalize() when the strategy is NONE and keys are in a different order should return a different form")
+        void canonicalize_whenStrategyIsNoneAndKeysInDifferentOrder_shouldReturnDifferentForm() {
+            // given
+            BodyCanonicalizerConfig config = documentOrderConfig().build();
+
+            // when
+            String first = canonicalize(config, "{\"b\":2,\"a\":1}");
+            String second = canonicalize(config, "{\"a\":1,\"b\":2}");
+
+            // then
+            assertThat(first).isEqualTo("{\"b\":2,\"a\":1}");
+            assertThat(second).isEqualTo("{\"a\":1,\"b\":2}");
+        }
+
+        @Test
+        @DisplayName("UT canonicalize() when the strategy is NONE should keep the order of nested keys")
+        void canonicalize_whenStrategyIsNone_shouldKeepOrderOfNestedKeys() {
+            // given
+            BodyCanonicalizerConfig config = documentOrderConfig().build();
+
+            // when
+            String result = canonicalize(config, "{\"outer\":{\"z\":1,\"a\":[{\"y\":2,\"b\":3}]},\"first\":0}");
+
+            // then
+            assertThat(result).isEqualTo("{\"outer\":{\"z\":1,\"a\":[{\"y\":2,\"b\":3}]},\"first\":0}");
+        }
+
+        @Test
+        @DisplayName("UT canonicalize() when the strategy is NONE and whitespace differs should return the same form")
+        void canonicalize_whenStrategyIsNoneAndWhitespaceDiffers_shouldReturnSameForm() {
+            // given
+            BodyCanonicalizerConfig config = documentOrderConfig().build();
+
+            // when
+            String compact = canonicalize(config, "{\"b\":2,\"a\":1}");
+            String spaced = canonicalize(config, "{ \"b\" : 2,\n  \"a\" : 1 }");
+
+            // then
+            assertThat(spaced).isEqualTo(compact);
+        }
+
+        @Test
+        @DisplayName("UT canonicalize() when the strategy is NONE and a field is excluded should prune it and keep the order")
+        void canonicalize_whenStrategyIsNoneAndFieldIsExcluded_shouldPruneItAndKeepOrder() {
+            // given
+            BodyCanonicalizerConfig config = documentOrderConfig()
+                    .excludedFields("meta.traceId")
+                    .build();
+
+            // when
+            String result = canonicalize(config, "{\"z\":1,\"meta\":{\"traceId\":\"one\",\"b\":2},\"a\":3}");
+
+            // then
+            assertThat(result).isEqualTo("{\"z\":1,\"meta\":{\"b\":2},\"a\":3}");
         }
     }
 
