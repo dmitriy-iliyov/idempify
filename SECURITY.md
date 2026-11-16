@@ -6,7 +6,7 @@
 
 | Version | Supported |
 |---|---|
-| `main` (`0.0.1-SNAPSHOT`) | yes |
+| `main` (`0.1.0`) | yes |
 
 ## Reporting a vulnerability
 

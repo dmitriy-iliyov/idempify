@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.dmitriy-iliyov.idempify</groupId>
         <artifactId>idempify-parent</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>idempify-http</artifactId>
@@ -18,7 +18,7 @@
         <dependency>
             <groupId>io.github.dmitriy-iliyov.idempify</groupId>
             <artifactId>idempify-core</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <version>0.1.0</version>
         </dependency>
 
         <dependency>
@@ -49,7 +49,7 @@
         <dependency>
             <groupId>io.github.dmitriy-iliyov.idempify</groupId>
             <artifactId>idempify-aop</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <version>0.1.0</version>
             <scope>test</scope>
         </dependency>
 

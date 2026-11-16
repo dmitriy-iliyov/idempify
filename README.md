@@ -6,7 +6,7 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/dmitriy-iliyov/idempify)
 
 > [!WARNING]
-> `idempify` is pre-release (`0.0.1-SNAPSHOT`), not yet published to Maven Central, and several
+> `idempify` is pre-release (`0.1.0`), not yet published to Maven Central, and several
 > pieces described below are explicitly marked **Coming soon**. Treat this README as a snapshot of
 > an actively evolving library, not a finished product - see [Limitations](#limitations).
 
@@ -84,25 +84,25 @@ under the same key is rejected rather than silently answered from the store.
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-starter</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-jackson</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-http</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-postgresql</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -120,7 +120,7 @@ psql -f idempify-postgresql/src/main/resources/db/idempify/postgresql/V1__create
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-flyway</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -585,7 +585,7 @@ picks for how long a claim may plausibly stay open.
 <dependency>
     <groupId>io.github.dmitriy-iliyov.idempify</groupId>
     <artifactId>idempify-metrics</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
