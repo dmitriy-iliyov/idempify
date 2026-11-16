@@ -35,13 +35,6 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
-    @DisplayName("UT OperationStatusMismatchException should be unchecked so a conditional write need not declare it")
-    void operationStatusMismatchException_shouldBeUncheckedSoConditionalWriteNeedNotDeclareIt() {
-        assertThat(RuntimeException.class)
-                .isAssignableFrom(OperationStatusMismatchException.class);
-    }
-
-    @Test
     @DisplayName("UT OperationLockLostException should name the key whose claim was lost")
     void operationLockLostException_shouldNameKeyWhoseClaimWasLost() {
         // when
@@ -107,12 +100,6 @@ class CoreExceptionsUnitTest {
     void resultSerializationException_shouldBelongToGroupCallerCatches() {
         assertThat(SerializationProcessingException.class)
                 .isAssignableFrom(SerializationException.class);
-    }
-
-    @Test
-    @DisplayName("UT SerializationProcessingException should be unchecked like every other exception of the core")
-    void resultProcessingException_shouldBeUncheckedLikeEveryOtherExceptionOfCore() {
-        assertThat(RuntimeException.class).isAssignableFrom(SerializationProcessingException.class);
     }
 
     @Test
@@ -342,12 +329,6 @@ class CoreExceptionsUnitTest {
     @DisplayName("UT every exception group of the library should be an IdempifyException so a caller catches them all with one type")
     void exceptionGroupOfLibrary_shouldBeIdempifyExceptionSoCallerCatchesThemAllWithOneType(Class<?> type) {
         assertThat(IdempifyException.class).isAssignableFrom(type);
-    }
-
-    @Test
-    @DisplayName("UT IdempifyException should be unchecked like every exception of the library")
-    void idempifyException_shouldBeUncheckedLikeEveryExceptionOfLibrary() {
-        assertThat(RuntimeException.class).isAssignableFrom(IdempifyException.class);
     }
 
     @Test

@@ -262,6 +262,7 @@ class IdempifyMetricsAutoConfigurationIntegrationTest {
         return IdempotencyConfig.builder()
                 .headerName(IdempifyDefaults.HEADER_NAME)
                 .ttl(Duration.parse(IdempifyDefaults.TTL_VALUE))
+                .lockTtl(Duration.parse(IdempifyDefaults.LOCK_TTL_VALUE))
                 .processorType(ProcessorType.valueOf(IdempifyDefaults.PROCESSOR_TYPE_NAME))
                 .conflict(ConflictConfig.reject())
                 .fingerprint(FingerprintConfig.defaults())
