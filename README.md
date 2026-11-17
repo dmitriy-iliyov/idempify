@@ -1,36 +1,34 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/dmitriy-iliyov/idempify/badge)](https://www.codefactor.io/repository/github/dmitriy-iliyov/idempify)
 [![codecov](https://codecov.io/github/dmitriy-iliyov/idempify/branch/main/graph/badge.svg)](https://codecov.io/github/dmitriy-iliyov/idempify)
 [![CI](https://github.com/dmitriy-iliyov/idempify/actions/workflows/ci.yml/badge.svg)](https://github.com/dmitriy-iliyov/idempify/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-![GitHub Release](https://img.shields.io/github/v/release/dmitriy-iliyov/idempify?include_prereleases)
 ![Maven Central](https://img.shields.io/maven-central/v/io.github.dmitriy-iliyov.idempify/idempify-starter)
+[![javadoc](https://javadoc.io/badge2/io.github.dmitriy-iliyov.idempify/idempify-starter/javadoc.svg)](https://javadoc.io/doc/io.github.dmitriy-iliyov.idempify/idempify-starter)
+![GitHub Release](https://img.shields.io/github/v/release/dmitriy-iliyov/idempify?include_prereleases)
+[![GitHub Release Date](https://img.shields.io/github/release-date/dmitriy-iliyov/idempify)](https://github.com/dmitriy-iliyov/idempify/releases/latest)
 ![GitHub last commit](https://img.shields.io/github/last-commit/dmitriy-iliyov/idempify)
 
 ## Overview
 
-`idempify` is a modern Java/Spring Boot library that adds idempotency to write operations. 
-A client supplies an `Idempotency-Key` (UUID) and the library guarantees the underlying business
-operation runs at most once for that key: the first request executes it, the result is stored, and every retry
-with the same key replays the stored result instead of re-running it. The one exception is a business method
-run outside the library's transaction (`EXTERNAL_NON_BLOCKING`), which is at-least-once - see
-[Processing Branches](#processing-branches). A retry carrying a *different* request
+This library adds idempotency to write operations. A client supplies an `Idempotency-Key` (UUID) and the library 
+guarantees the underlying business operation runs at most once for that key: the first request executes it, the result is stored, 
+and every retry with the same key replays the stored result instead of re-running it. A retry carrying a *different* request
 under the same key is rejected rather than silently answered from the store.
 
 ## Key Features
 
 - **Atomic claim** - the first-writer-wins guarantee is a single atomic statement in the storage backend, 
   not application-level locking. A duplicate arriving mid-flight waits on it and is answered with the result.
-- **Result and response replay** - a completed operation keeps both the serialized result and the answer it                                                                                                                                                                                                                                         
+- **Result and response replay** - a completed operation keeps both the serialized result and the answer it
   was given, on one record. A retry with the same key is answered from that record - on HTTP, with the original 
   status, body and headers reproduced as they were. An optional cache in front of that record answers it sooner and 
   never differently.
 - **Conflict handling** - a request racing another under the same key is routed to a handler the config picks:
   `REJECT`, `WAIT`, or your own.
-- **Fingerprint validation** - the request's fingerprint is compared against the one stored with the original                                                                                                                                                                                                                                       
+- **Fingerprint validation** - the request's fingerprint is compared against the one stored with the original
   request, so replaying a key with a different payload is treated as an error rather than silently served.
-- **Bounded lifetime** - a result stays replayable for a configurable ttl counted from completion; past it the                                                                                                                                                                                                                                      
+- **Bounded lifetime** - a result stays replayable for a configurable ttl counted from completion; past it the
   key is free again and the next request runs as a first attempt.
-- **Machine-readable failures** - every refusal the library makes is answered as an RFC 7807 problem with a                                                                                                                                                                                                                                         
+- **Machine-readable failures** - every refusal the library makes is answered as an RFC 7807 problem with a
   stable `type` URI, in the same shape whether it comes from the filter or from the exception handler.
 - **Pluggable by design** - storage, serialization, transport and cache arrive as separate modules, and every                                                                                                                                                                                                                                       
   bean the library registers steps aside for one of your own.
