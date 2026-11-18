@@ -31,4 +31,10 @@ class IdempifyMigrationExceptionUnitTest {
         assertThat(tested.getVendor()).isEqualTo("postgresql");
         assertThat(tested.getCause()).isSameAs(cause);
     }
+
+    @Test
+    @DisplayName("UT IdempifyMigrationException should be unchecked so a migrator need not declare it")
+    void idempifyMigrationException_shouldBeUncheckedSoMigratorNeedNotDeclareIt() {
+        assertThat(RuntimeException.class).isAssignableFrom(IdempifyMigrationException.class);
+    }
 }
