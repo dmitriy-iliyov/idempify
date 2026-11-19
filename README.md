@@ -44,19 +44,6 @@ under the same key is rejected rather than silently answered from the store.
 - **Serialization:** Jackson.
 - **Cache in front of the store:** in-memory (built into core), Redis.
 
-## Limitations
-
-- **A replay is only as literal as the cache allows.** The response lives on the operation's own row, so there
-  is nothing for it to go stale against - but the cache in front of that row is asked first and does not fall
-  through to the row when its backend is down. A repeat arriving while Redis is unavailable is answered by the
-  core from the stored *method result* instead, so its status code and headers are the ones the handler chain
-  produces now rather than the ones recorded then.
-- **`void` and primitive return types.** The result type travels as a `ResultType`, which keeps type
-  arguments, so `List<Order>` and `Map<String, Order>` replay correctly. What it does not settle is a method
-  returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
-  the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
-  Jackson cannot rebuild its status and headers - so it is not replayable either.
-
 ## Quick Start
 
 1. Add dependencies.
@@ -180,12 +167,15 @@ same header and a **different** body throws `FingerprintMismatchException` by de
 
 Read more about `@Idempotent`'s attributes in [Configuration → Annotation](#3-annotation).
 
----
-
 ## Example & Test Environment
 
-> [!WARNING]
-> **Coming soon.**
+[spring-idempotency](https://github.com/dmitriy-iliyov/spring-idempotency) is a production-ready ride-booking
+service built on idempify: every ride is charged through Stripe once per `Idempotency-Key`, however often the
+client retries. It runs `@Idempotent` on an `EXTERNAL_NON_BLOCKING` endpoint with the key forwarded to Stripe,
+replays recorded responses, refuses a key reused with another body, and answers every refusal as a problem detail -
+with tests from unit to end to end on PostgreSQL and stripe-mock in Testcontainers.
+
+---
 
 ## Design
 
@@ -867,6 +857,19 @@ response does not apply here - a repeat is answered from the result instead, see
     @Idempotent(idempotencyKey = "#request.paymentId")
     public PaymentResponse pay(@RequestBody PaymentRequest request) { ... }
 ```
+
+## Limitations
+
+- **A replay is only as literal as the cache allows.** The response lives on the operation's own row, so there
+  is nothing for it to go stale against - but the cache in front of that row is asked first and does not fall
+  through to the row when its backend is down. A repeat arriving while Redis is unavailable is answered by the
+  core from the stored *method result* instead, so its status code and headers are the ones the handler chain
+  produces now rather than the ones recorded then.
+- **`void` and primitive return types.** The result type travels as a `ResultType`, which keeps type
+  arguments, so `List<Order>` and `Map<String, Order>` replay correctly. What it does not settle is a method
+  returning `void` or a primitive: the descriptor then carries `void.class` or `int.class` and is handed to
+  the deserializer as if it were a value type. `ResponseEntity<Order>` has a second problem of its own -
+  Jackson cannot rebuild its status and headers - so it is not replayable either.
 
 ## Roadmap
 - Named configuration profiles declared in YAML
