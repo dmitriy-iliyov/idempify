@@ -87,6 +87,12 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
+    @DisplayName("UT SerializationProcessingException should be unchecked like every other exception of the core")
+    void resultProcessingException_shouldBeUncheckedLikeEveryOtherExceptionOfCore() {
+        assertThat(RuntimeException.class).isAssignableFrom(SerializationProcessingException.class);
+    }
+
+    @Test
     @DisplayName("UT DeserializationException should belong to the group a caller catches")
     void resultDeserializationException_shouldBelongToGroupCallerCatches() {
         // given - the transport catches SerializationProcessingException to answer a problem response; a failure
