@@ -332,6 +332,12 @@ class CoreExceptionsUnitTest {
     }
 
     @Test
+    @DisplayName("UT IdempifyException should be unchecked like every exception of the library")
+    void idempifyException_shouldBeUncheckedLikeEveryExceptionOfLibrary() {
+        assertThat(RuntimeException.class).isAssignableFrom(IdempifyException.class);
+    }
+
+    @Test
     @DisplayName("UT IdempifyException should carry the message and keep the cause it was given")
     void idempifyException_shouldCarryMessageAndKeepCauseItWasGiven() {
         // given
