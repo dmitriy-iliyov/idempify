@@ -118,6 +118,31 @@ class NonBlockingOperationDeserializerUnitTest {
         verifyNoInteractions(resultDeserializer);
     }
 
+    @Test
+    @DisplayName("UT deserialize() when the stored exception has no message constructor should fail with that cause")
+    void deserialize_whenStoredExceptionHasNoMessageConstructor_shouldFailWithThatCause() {
+        // given
+        RawNonBlockingOperation row = new RawNonBlockingOperation(
+                KEY,
+                OperationStatus.EXCEPTIONALLY_PROCESSED,
+                false,
+                "card declined",
+                NoMessageConstructorException.class.getName(),
+                null,
+                "fingerprint",
+                REMAINING_MILLIS,
+                NOW,
+                LOCK_TOKEN,
+                REMAINING_LOCK_MILLIS
+        );
+
+        // when / then
+        assertThatThrownBy(() -> tested().deserialize(row, RESULT_TYPE))
+                .isInstanceOf(RuntimeException.class)
+                .hasCauseInstanceOf(NoSuchMethodException.class);
+        verifyNoInteractions(resultDeserializer);
+    }
+
     private NonBlockingOperationDeserializer tested() {
         return new NonBlockingOperationDeserializer(resultDeserializer, responseDeserializer);
     }
@@ -136,5 +161,10 @@ class NonBlockingOperationDeserializerUnitTest {
                 LOCK_TOKEN,
                 REMAINING_LOCK_MILLIS
         );
+    }
+
+    static class NoMessageConstructorException extends RuntimeException {
+
+        NoMessageConstructorException() { }
     }
 }
